@@ -1,0 +1,26 @@
+{
+  "name": "@vistone-server/vistone-server-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "implicitDependencies": [
+      "@vistone-server/vistone-server"
+    ],
+    "targets": {
+      "e2e": {
+        "executor": "@nx/jest:jest",
+        "outputs": [
+          "{projectRoot}/test-output/jest/coverage"
+        ],
+        "options": {
+          "jestConfig": "apps/vistone-server-e2e/jest.config.ts",
+          "passWithNoTests": true
+        },
+        "dependsOn": [
+          "@vistone-server/vistone-server:build",
+          "@vistone-server/vistone-server:serve"
+        ]
+      }
+    }
+  }
+}
