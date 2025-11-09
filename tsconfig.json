@@ -4,10 +4,28 @@
   "files": [],
   "references": [
     {
-      "path": "./apps/vistone-server-e2e"
+      "path": "./apps/api-gateway-e2e"
     },
     {
-      "path": "./apps/vistone-server"
+      "path": "./apps/api-gateway"
+    },
+    {
+      "path": "./apps/realtime-services-e2e"
+    },
+    {
+      "path": "./apps/realtime-services"
+    },
+    {
+      "path": "./apps/backend-services-e2e"
+    },
+    {
+      "path": "./apps/backend-services"
+    },
+    {
+      "path": "./apps/media-server-e2e"
+    },
+    {
+      "path": "./apps/media-server"
     }
   ]
 }

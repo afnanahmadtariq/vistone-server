@@ -1,10 +1,10 @@
 {
-  "name": "@vistone-server/vistone-server-e2e",
+  "name": "@vistone-server/realtime-services-e2e",
   "version": "0.0.1",
   "private": true,
   "nx": {
     "implicitDependencies": [
-      "@vistone-server/vistone-server"
+      "@vistone-server/realtime-services"
     ],
     "targets": {
       "e2e": {
@@ -13,12 +13,12 @@
           "{projectRoot}/test-output/jest/coverage"
         ],
         "options": {
-          "jestConfig": "apps/vistone-server-e2e/jest.config.ts",
+          "jestConfig": "apps/realtime-services-e2e/jest.config.ts",
           "passWithNoTests": true
         },
         "dependsOn": [
-          "@vistone-server/vistone-server:build",
-          "@vistone-server/vistone-server:serve"
+          "@vistone-server/realtime-services:build",
+          "@vistone-server/realtime-services:serve"
         ]
       }
     }

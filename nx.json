@@ -41,7 +41,12 @@
       "options": {
         "targetName": "test"
       },
-      "exclude": ["apps/vistone-server-e2e/**/*"]
+      "exclude": [
+        "apps/api-gateway-e2e/**/*",
+        "apps/realtime-services-e2e/**/*",
+        "apps/backend-services-e2e/**/*",
+        "apps/media-server-e2e/**/*"
+      ]
     },
     {
       "plugin": "@nx/docker",

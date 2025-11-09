@@ -10,7 +10,7 @@ const swcJestConfig = JSON.parse(
 swcJestConfig.swcrc = false;
 
 export default {
-  displayName: '@vistone-server/vistone-server',
+  displayName: '@vistone-server/backend-services',
   preset: '../../jest.preset.js',
   testEnvironment: 'node',
   transform: {

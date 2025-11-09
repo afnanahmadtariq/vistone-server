@@ -1,5 +1,5 @@
 {
-  "name": "@vistone-server/vistone-server",
+  "name": "@vistone-server/realtime-services",
   "version": "0.0.1",
   "private": true,
   "nx": {
@@ -12,15 +12,15 @@
         "defaultConfiguration": "production",
         "options": {
           "platform": "node",
-          "outputPath": "apps/vistone-server/dist",
+          "outputPath": "apps/realtime-services/dist",
           "format": [
             "cjs"
           ],
           "bundle": false,
-          "main": "apps/vistone-server/src/main.ts",
-          "tsConfig": "apps/vistone-server/tsconfig.app.json",
+          "main": "apps/realtime-services/src/main.ts",
+          "tsConfig": "apps/realtime-services/tsconfig.app.json",
           "assets": [
-            "apps/vistone-server/src/assets"
+            "apps/realtime-services/src/assets"
           ],
           "esbuildOptions": {
             "sourcemap": true,
@@ -32,7 +32,6 @@
         "configurations": {
           "development": {},
           "production": {
-            "generateLockfile": true,
             "esbuildOptions": {
               "sourcemap": false,
               "outExtension": {
@@ -49,8 +48,8 @@
         "cache": true,
         "executor": "@nx/js:prune-lockfile",
         "outputs": [
-          "{workspaceRoot}/apps/vistone-server/dist/package.json",
-          "{workspaceRoot}/apps/vistone-server/dist/package-lock.json"
+          "{workspaceRoot}/apps/realtime-services/dist/package.json",
+          "{workspaceRoot}/apps/realtime-services/dist/package-lock.json"
         ],
         "options": {
           "buildTarget": "build"
@@ -62,7 +61,7 @@
         ],
         "cache": true,
         "outputs": [
-          "{workspaceRoot}/apps/vistone-server/dist/workspace_modules"
+          "{workspaceRoot}/apps/realtime-services/dist/workspace_modules"
         ],
         "executor": "@nx/js:copy-workspace-modules",
         "options": {
@@ -84,15 +83,15 @@
           "build"
         ],
         "options": {
-          "buildTarget": "@vistone-server/vistone-server:build",
+          "buildTarget": "@vistone-server/realtime-services:build",
           "runBuildTargetDependencies": false
         },
         "configurations": {
           "development": {
-            "buildTarget": "@vistone-server/vistone-server:build:development"
+            "buildTarget": "@vistone-server/realtime-services:build:development"
           },
           "production": {
-            "buildTarget": "@vistone-server/vistone-server:build:production"
+            "buildTarget": "@vistone-server/realtime-services:build:production"
           }
         }
       },
@@ -100,12 +99,6 @@
         "options": {
           "passWithNoTests": true
         }
-      },
-      "docker:build": {
-        "dependsOn": [
-          "build",
-          "prune"
-        ]
       }
     }
   },
