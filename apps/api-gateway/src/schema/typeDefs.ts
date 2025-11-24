@@ -3,8 +3,10 @@ import { gql } from 'apollo-server-express';
 export const typeDefs = gql`
   scalar DateTime
   scalar JSON
+  scalar Decimal
 
-  # User & Organization Types
+  # 1. Core User & Organization Types
+
   type Organization {
     id: ID!
     name: String!
@@ -58,6 +60,8 @@ export const typeDefs = gql`
     id: ID!
     userId: String!
     enabled: Boolean!
+    secret: String
+    backupCodes: [String!]!
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -74,7 +78,8 @@ export const typeDefs = gql`
     createdAt: DateTime!
   }
 
-  # Team Types
+  # 2. Team & Workforce Types
+
   type Team {
     id: ID!
     organizationId: String!
@@ -112,7 +117,8 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
-  # Project Types
+  # 3. Project Management Types
+
   type Project {
     id: ID!
     organizationId: String!
@@ -121,7 +127,7 @@ export const typeDefs = gql`
     status: String!
     startDate: DateTime
     endDate: DateTime
-    budget: Float
+    budget: Decimal
     metadata: JSON
     createdAt: DateTime!
     updatedAt: DateTime!
@@ -193,7 +199,8 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
-  # Client Types
+  # 4. Client Management Types
+
   type Client {
     id: ID!
     name: String!
@@ -232,7 +239,8 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
-  # Documentation Types
+  # 5. Documentation & Knowledge Types
+
   type WikiPage {
     id: ID!
     title: String!
@@ -291,7 +299,8 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
-  # Communication Types
+  # 6. Communication Types
+
   type ChatChannel {
     id: ID!
     name: String
@@ -343,7 +352,8 @@ export const typeDefs = gql`
     createdAt: DateTime!
   }
 
-  # AI & Automation Types
+  # 7. AI & Automation Types
+
   type AiConversation {
     id: ID!
     userId: String
@@ -381,7 +391,8 @@ export const typeDefs = gql`
     createdAt: DateTime!
   }
 
-  # Monitoring Types
+  # 8. Monitoring & Reporting Types
+
   type KpiDefinition {
     id: ID!
     name: String!
@@ -423,7 +434,8 @@ export const typeDefs = gql`
     createdAt: DateTime!
   }
 
-  # Notification Types
+  # 9. Notification Types
+
   type NotificationTemplate {
     id: ID!
     name: String!
@@ -450,7 +462,8 @@ export const typeDefs = gql`
     createdAt: DateTime!
   }
 
-  # Dashboard Types
+  # 10. Analytics & Dashboard Types
+
   type Dashboard {
     id: ID!
     userId: String!
@@ -603,6 +616,13 @@ export const typeDefs = gql`
     createRole(input: JSON!): Role!
     updateRole(id: ID!, input: JSON!): Role!
     deleteRole(id: ID!): DeleteResponse!
+    createKycData(input: JSON!): KycData!
+    updateKycData(id: ID!, input: JSON!): KycData!
+    deleteKycData(id: ID!): DeleteResponse!
+    createMfaSetting(input: JSON!): MfaSetting!
+    updateMfaSetting(id: ID!, input: JSON!): MfaSetting!
+    deleteMfaSetting(id: ID!): DeleteResponse!
+    createActivityLog(input: JSON!): ActivityLog!
 
     # Teams
     createTeam(input: JSON!): Team!
@@ -611,46 +631,121 @@ export const typeDefs = gql`
     createTeamMember(input: JSON!): TeamMember!
     updateTeamMember(id: ID!, input: JSON!): TeamMember!
     deleteTeamMember(id: ID!): DeleteResponse!
+    createUserSkill(input: JSON!): UserSkill!
+    updateUserSkill(id: ID!, input: JSON!): UserSkill!
+    deleteUserSkill(id: ID!): DeleteResponse!
+    createUserAvailability(input: JSON!): UserAvailability!
+    updateUserAvailability(id: ID!, input: JSON!): UserAvailability!
+    deleteUserAvailability(id: ID!): DeleteResponse!
 
     # Projects
     createProject(input: JSON!): Project!
     updateProject(id: ID!, input: JSON!): Project!
     deleteProject(id: ID!): DeleteResponse!
+    createProjectMember(input: JSON!): ProjectMember!
+    updateProjectMember(id: ID!, input: JSON!): ProjectMember!
+    deleteProjectMember(id: ID!): DeleteResponse!
     createTask(input: JSON!): Task!
     updateTask(id: ID!, input: JSON!): Task!
     deleteTask(id: ID!): DeleteResponse!
+    createTaskChecklist(input: JSON!): TaskChecklist!
+    updateTaskChecklist(id: ID!, input: JSON!): TaskChecklist!
+    deleteTaskChecklist(id: ID!): DeleteResponse!
+    createTaskDependency(input: JSON!): TaskDependency!
+    updateTaskDependency(id: ID!, input: JSON!): TaskDependency!
+    deleteTaskDependency(id: ID!): DeleteResponse!
     createMilestone(input: JSON!): Milestone!
     updateMilestone(id: ID!, input: JSON!): Milestone!
     deleteMilestone(id: ID!): DeleteResponse!
+    createRiskRegister(input: JSON!): RiskRegister!
+    updateRiskRegister(id: ID!, input: JSON!): RiskRegister!
+    deleteRiskRegister(id: ID!): DeleteResponse!
 
     # Clients
     createClient(input: JSON!): Client!
     updateClient(id: ID!, input: JSON!): Client!
     deleteClient(id: ID!): DeleteResponse!
+    createProjectClient(input: JSON!): ProjectClient!
+    updateProjectClient(id: ID!, input: JSON!): ProjectClient!
+    deleteProjectClient(id: ID!): DeleteResponse!
+    createClientFeedback(input: JSON!): ClientFeedback!
+    updateClientFeedback(id: ID!, input: JSON!): ClientFeedback!
+    deleteClientFeedback(id: ID!): DeleteResponse!
     createProposal(input: JSON!): Proposal!
     updateProposal(id: ID!, input: JSON!): Proposal!
     deleteProposal(id: ID!): DeleteResponse!
+
+    # Documentation
+    createWikiPage(input: JSON!): WikiPage!
+    updateWikiPage(id: ID!, input: JSON!): WikiPage!
+    deleteWikiPage(id: ID!): DeleteResponse!
+    createWikiPageVersion(input: JSON!): WikiPageVersion!
+    createDocumentFolder(input: JSON!): DocumentFolder!
+    updateDocumentFolder(id: ID!, input: JSON!): DocumentFolder!
+    deleteDocumentFolder(id: ID!): DeleteResponse!
+    createDocument(input: JSON!): Document!
+    updateDocument(id: ID!, input: JSON!): Document!
+    deleteDocument(id: ID!): DeleteResponse!
+    createDocumentPermission(input: JSON!): DocumentPermission!
+    updateDocumentPermission(id: ID!, input: JSON!): DocumentPermission!
+    deleteDocumentPermission(id: ID!): DeleteResponse!
+    createDocumentLink(input: JSON!): DocumentLink!
+    updateDocumentLink(id: ID!, input: JSON!): DocumentLink!
+    deleteDocumentLink(id: ID!): DeleteResponse!
 
     # Communication
     createChatChannel(input: JSON!): ChatChannel!
     updateChatChannel(id: ID!, input: JSON!): ChatChannel!
     deleteChatChannel(id: ID!): DeleteResponse!
+    createChannelMember(input: JSON!): ChannelMember!
+    updateChannelMember(id: ID!, input: JSON!): ChannelMember!
+    deleteChannelMember(id: ID!): DeleteResponse!
     createChatMessage(input: JSON!): ChatMessage!
     updateChatMessage(id: ID!, input: JSON!): ChatMessage!
     deleteChatMessage(id: ID!): DeleteResponse!
+    createMessageMention(input: JSON!): MessageMention!
+    createMessageAttachment(input: JSON!): MessageAttachment!
+    createCommunicationLog(input: JSON!): CommunicationLog!
 
-    # Documents
-    createDocument(input: JSON!): Document!
-    updateDocument(id: ID!, input: JSON!): Document!
-    deleteDocument(id: ID!): DeleteResponse!
-    createDocumentFolder(input: JSON!): DocumentFolder!
-    updateDocumentFolder(id: ID!, input: JSON!): DocumentFolder!
-    deleteDocumentFolder(id: ID!): DeleteResponse!
+    # AI & Automation
+    createAiConversation(input: JSON!): AiConversation!
+    updateAiConversation(id: ID!, input: JSON!): AiConversation!
+    deleteAiConversation(id: ID!): DeleteResponse!
+    createAiInsight(input: JSON!): AiInsight!
+    createAutomationRule(input: JSON!): AutomationRule!
+    updateAutomationRule(id: ID!, input: JSON!): AutomationRule!
+    deleteAutomationRule(id: ID!): DeleteResponse!
+    createAutomationLog(input: JSON!): AutomationLog!
+
+    # Monitoring
+    createKpiDefinition(input: JSON!): KpiDefinition!
+    updateKpiDefinition(id: ID!, input: JSON!): KpiDefinition!
+    deleteKpiDefinition(id: ID!): DeleteResponse!
+    createKpiMeasurement(input: JSON!): KpiMeasurement!
+    createReportTemplate(input: JSON!): ReportTemplate!
+    updateReportTemplate(id: ID!, input: JSON!): ReportTemplate!
+    deleteReportTemplate(id: ID!): DeleteResponse!
+    createGeneratedReport(input: JSON!): GeneratedReport!
+    createMemberPerformance(input: JSON!): MemberPerformance!
 
     # Notifications
+    createNotificationTemplate(input: JSON!): NotificationTemplate!
+    updateNotificationTemplate(id: ID!, input: JSON!): NotificationTemplate!
+    deleteNotificationTemplate(id: ID!): DeleteResponse!
+    createNotificationPreference(input: JSON!): NotificationPreference!
+    updateNotificationPreference(id: ID!, input: JSON!): NotificationPreference!
+    deleteNotificationPreference(id: ID!): DeleteResponse!
     createNotification(input: JSON!): Notification!
     updateNotification(id: ID!, input: JSON!): Notification!
     deleteNotification(id: ID!): DeleteResponse!
+
+    # Dashboards
+    createDashboard(input: JSON!): Dashboard!
+    updateDashboard(id: ID!, input: JSON!): Dashboard!
+    deleteDashboard(id: ID!): DeleteResponse!
+    createDashboardWidget(input: JSON!): DashboardWidget!
+    updateDashboardWidget(id: ID!, input: JSON!): DashboardWidget!
+    deleteDashboardWidget(id: ID!): DeleteResponse!
   }
 
   type DeleteResponse {

@@ -35,9 +35,27 @@ const jsonScalar = new GraphQLScalarType({
   },
 });
 
+const decimalScalar = new GraphQLScalarType({
+  name: 'Decimal',
+  description: 'Decimal custom scalar type',
+  serialize(value: any) {
+    return value ? parseFloat(value.toString()) : null;
+  },
+  parseValue(value: any) {
+    return value ? parseFloat(value.toString()) : null;
+  },
+  parseLiteral(ast) {
+    if (ast.kind === Kind.FLOAT || ast.kind === Kind.INT) {
+      return parseFloat(ast.value);
+    }
+    return null;
+  },
+});
+
 export const resolvers = {
   DateTime: dateTimeScalar,
   JSON: jsonScalar,
+  Decimal: decimalScalar,
 
   Query: {
     // Users & Organizations
@@ -171,6 +189,13 @@ export const resolvers = {
     createRole: (_: any, { input }: { input: any }) => backendClient.post('/roles', input),
     updateRole: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/roles', id, input),
     deleteRole: (_: any, { id }: { id: string }) => backendClient.delete('/roles', id),
+    createKycData: (_: any, { input }: { input: any }) => backendClient.post('/kyc-data', input),
+    updateKycData: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/kyc-data', id, input),
+    deleteKycData: (_: any, { id }: { id: string }) => backendClient.delete('/kyc-data', id),
+    createMfaSetting: (_: any, { input }: { input: any }) => backendClient.post('/mfa-settings', input),
+    updateMfaSetting: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/mfa-settings', id, input),
+    deleteMfaSetting: (_: any, { id }: { id: string }) => backendClient.delete('/mfa-settings', id),
+    createActivityLog: (_: any, { input }: { input: any }) => backendClient.post('/activity-logs', input),
 
     // Teams
     createTeam: (_: any, { input }: { input: any }) => backendClient.post('/teams', input),
@@ -179,45 +204,120 @@ export const resolvers = {
     createTeamMember: (_: any, { input }: { input: any }) => backendClient.post('/team-members', input),
     updateTeamMember: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/team-members', id, input),
     deleteTeamMember: (_: any, { id }: { id: string }) => backendClient.delete('/team-members', id),
+    createUserSkill: (_: any, { input }: { input: any }) => backendClient.post('/user-skills', input),
+    updateUserSkill: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/user-skills', id, input),
+    deleteUserSkill: (_: any, { id }: { id: string }) => backendClient.delete('/user-skills', id),
+    createUserAvailability: (_: any, { input }: { input: any }) => backendClient.post('/user-availability', input),
+    updateUserAvailability: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/user-availability', id, input),
+    deleteUserAvailability: (_: any, { id }: { id: string }) => backendClient.delete('/user-availability', id),
 
     // Projects
     createProject: (_: any, { input }: { input: any }) => backendClient.post('/projects', input),
     updateProject: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/projects', id, input),
     deleteProject: (_: any, { id }: { id: string }) => backendClient.delete('/projects', id),
+    createProjectMember: (_: any, { input }: { input: any }) => backendClient.post('/project-members', input),
+    updateProjectMember: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/project-members', id, input),
+    deleteProjectMember: (_: any, { id }: { id: string }) => backendClient.delete('/project-members', id),
     createTask: (_: any, { input }: { input: any }) => backendClient.post('/tasks', input),
     updateTask: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/tasks', id, input),
     deleteTask: (_: any, { id }: { id: string }) => backendClient.delete('/tasks', id),
+    createTaskChecklist: (_: any, { input }: { input: any }) => backendClient.post('/task-checklists', input),
+    updateTaskChecklist: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/task-checklists', id, input),
+    deleteTaskChecklist: (_: any, { id }: { id: string }) => backendClient.delete('/task-checklists', id),
+    createTaskDependency: (_: any, { input }: { input: any }) => backendClient.post('/task-dependencies', input),
+    updateTaskDependency: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/task-dependencies', id, input),
+    deleteTaskDependency: (_: any, { id }: { id: string }) => backendClient.delete('/task-dependencies', id),
     createMilestone: (_: any, { input }: { input: any }) => backendClient.post('/milestones', input),
     updateMilestone: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/milestones', id, input),
     deleteMilestone: (_: any, { id }: { id: string }) => backendClient.delete('/milestones', id),
+    createRiskRegister: (_: any, { input }: { input: any }) => backendClient.post('/risk-register', input),
+    updateRiskRegister: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/risk-register', id, input),
+    deleteRiskRegister: (_: any, { id }: { id: string }) => backendClient.delete('/risk-register', id),
 
     // Clients
     createClient: (_: any, { input }: { input: any }) => backendClient.post('/clients', input),
     updateClient: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/clients', id, input),
     deleteClient: (_: any, { id }: { id: string }) => backendClient.delete('/clients', id),
+    createProjectClient: (_: any, { input }: { input: any }) => backendClient.post('/project-clients', input),
+    updateProjectClient: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/project-clients', id, input),
+    deleteProjectClient: (_: any, { id }: { id: string }) => backendClient.delete('/project-clients', id),
+    createClientFeedback: (_: any, { input }: { input: any }) => backendClient.post('/client-feedback', input),
+    updateClientFeedback: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/client-feedback', id, input),
+    deleteClientFeedback: (_: any, { id }: { id: string }) => backendClient.delete('/client-feedback', id),
     createProposal: (_: any, { input }: { input: any }) => backendClient.post('/proposals', input),
     updateProposal: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/proposals', id, input),
     deleteProposal: (_: any, { id }: { id: string }) => backendClient.delete('/proposals', id),
+
+    // Documentation
+    createWikiPage: (_: any, { input }: { input: any }) => backendClient.post('/wiki-pages', input),
+    updateWikiPage: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/wiki-pages', id, input),
+    deleteWikiPage: (_: any, { id }: { id: string }) => backendClient.delete('/wiki-pages', id),
+    createWikiPageVersion: (_: any, { input }: { input: any }) => backendClient.post('/wiki-page-versions', input),
+    createDocumentFolder: (_: any, { input }: { input: any }) => backendClient.post('/document-folders', input),
+    updateDocumentFolder: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/document-folders', id, input),
+    deleteDocumentFolder: (_: any, { id }: { id: string }) => backendClient.delete('/document-folders', id),
+    createDocument: (_: any, { input }: { input: any }) => backendClient.post('/documents', input),
+    updateDocument: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/documents', id, input),
+    deleteDocument: (_: any, { id }: { id: string }) => backendClient.delete('/documents', id),
+    createDocumentPermission: (_: any, { input }: { input: any }) => backendClient.post('/document-permissions', input),
+    updateDocumentPermission: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/document-permissions', id, input),
+    deleteDocumentPermission: (_: any, { id }: { id: string }) => backendClient.delete('/document-permissions', id),
+    createDocumentLink: (_: any, { input }: { input: any }) => backendClient.post('/document-links', input),
+    updateDocumentLink: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/document-links', id, input),
+    deleteDocumentLink: (_: any, { id }: { id: string }) => backendClient.delete('/document-links', id),
 
     // Communication
     createChatChannel: (_: any, { input }: { input: any }) => backendClient.post('/chat-channels', input),
     updateChatChannel: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/chat-channels', id, input),
     deleteChatChannel: (_: any, { id }: { id: string }) => backendClient.delete('/chat-channels', id),
+    createChannelMember: (_: any, { input }: { input: any }) => backendClient.post('/channel-members', input),
+    updateChannelMember: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/channel-members', id, input),
+    deleteChannelMember: (_: any, { id }: { id: string }) => backendClient.delete('/channel-members', id),
     createChatMessage: (_: any, { input }: { input: any }) => backendClient.post('/chat-messages', input),
     updateChatMessage: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/chat-messages', id, input),
     deleteChatMessage: (_: any, { id }: { id: string }) => backendClient.delete('/chat-messages', id),
+    createMessageMention: (_: any, { input }: { input: any }) => backendClient.post('/message-mentions', input),
+    createMessageAttachment: (_: any, { input }: { input: any }) => backendClient.post('/message-attachments', input),
+    createCommunicationLog: (_: any, { input }: { input: any }) => backendClient.post('/communication-logs', input),
 
-    // Documents
-    createDocument: (_: any, { input }: { input: any }) => backendClient.post('/documents', input),
-    updateDocument: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/documents', id, input),
-    deleteDocument: (_: any, { id }: { id: string }) => backendClient.delete('/documents', id),
-    createDocumentFolder: (_: any, { input }: { input: any }) => backendClient.post('/document-folders', input),
-    updateDocumentFolder: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/document-folders', id, input),
-    deleteDocumentFolder: (_: any, { id }: { id: string }) => backendClient.delete('/document-folders', id),
+    // AI & Automation
+    createAiConversation: (_: any, { input }: { input: any }) => backendClient.post('/ai-conversations', input),
+    updateAiConversation: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/ai-conversations', id, input),
+    deleteAiConversation: (_: any, { id }: { id: string }) => backendClient.delete('/ai-conversations', id),
+    createAiInsight: (_: any, { input }: { input: any }) => backendClient.post('/ai-insights', input),
+    createAutomationRule: (_: any, { input }: { input: any }) => backendClient.post('/automation-rules', input),
+    updateAutomationRule: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/automation-rules', id, input),
+    deleteAutomationRule: (_: any, { id }: { id: string }) => backendClient.delete('/automation-rules', id),
+    createAutomationLog: (_: any, { input }: { input: any }) => backendClient.post('/automation-logs', input),
+
+    // Monitoring
+    createKpiDefinition: (_: any, { input }: { input: any }) => backendClient.post('/kpi-definitions', input),
+    updateKpiDefinition: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/kpi-definitions', id, input),
+    deleteKpiDefinition: (_: any, { id }: { id: string }) => backendClient.delete('/kpi-definitions', id),
+    createKpiMeasurement: (_: any, { input }: { input: any }) => backendClient.post('/kpi-measurements', input),
+    createReportTemplate: (_: any, { input }: { input: any }) => backendClient.post('/report-templates', input),
+    updateReportTemplate: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/report-templates', id, input),
+    deleteReportTemplate: (_: any, { id }: { id: string }) => backendClient.delete('/report-templates', id),
+    createGeneratedReport: (_: any, { input }: { input: any }) => backendClient.post('/generated-reports', input),
+    createMemberPerformance: (_: any, { input }: { input: any }) => backendClient.post('/member-performance', input),
 
     // Notifications
+    createNotificationTemplate: (_: any, { input }: { input: any }) => backendClient.post('/notification-templates', input),
+    updateNotificationTemplate: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/notification-templates', id, input),
+    deleteNotificationTemplate: (_: any, { id }: { id: string }) => backendClient.delete('/notification-templates', id),
+    createNotificationPreference: (_: any, { input }: { input: any }) => backendClient.post('/notification-preferences', input),
+    updateNotificationPreference: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/notification-preferences', id, input),
+    deleteNotificationPreference: (_: any, { id }: { id: string }) => backendClient.delete('/notification-preferences', id),
     createNotification: (_: any, { input }: { input: any }) => backendClient.post('/notifications', input),
     updateNotification: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/notifications', id, input),
     deleteNotification: (_: any, { id }: { id: string }) => backendClient.delete('/notifications', id),
+
+    // Dashboards
+    createDashboard: (_: any, { input }: { input: any }) => backendClient.post('/dashboards', input),
+    updateDashboard: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/dashboards', id, input),
+    deleteDashboard: (_: any, { id }: { id: string }) => backendClient.delete('/dashboards', id),
+    createDashboardWidget: (_: any, { input }: { input: any }) => backendClient.post('/dashboard-widgets', input),
+    updateDashboardWidget: (_: any, { id, input }: { id: string; input: any }) => backendClient.put('/dashboard-widgets', id, input),
+    deleteDashboardWidget: (_: any, { id }: { id: string }) => backendClient.delete('/dashboard-widgets', id),
   },
 };
