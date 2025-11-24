@@ -1,0 +1,770 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 1. Core User & Organization Tables
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  settings    Json?    // Organization settings
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  members     OrganizationMember[]
+  teams       Team[]
+  projects    Project[]
+  roles       Role[]
+  documents   Document[]
+  folders     DocumentFolder[]
+  
+  @@map("organizations")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  firstName   String?
+  lastName    String?
+  password    String?  // Hashed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  organizationMemberships OrganizationMember[]
+  teamMemberships         TeamMember[]
+  projectMemberships      ProjectMember[]
+  skills                  UserSkill[]
+  availability            UserAvailability[]
+  assignedTasks           Task[]
+  kycData                 KycData?
+  mfaSettings             MfaSetting?
+  activityLogs            ActivityLog[]
+  messages                ChatMessage[]
+  mentions                MessageMention[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  dashboards              Dashboard[]
+  
+  @@map("users")
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String
+  roleId         String?
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+  role           Role?        @relation(fields: [roleId], references: [id])
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("organization_members")
+}
+
+model Role {
+  id             String       @id @default(uuid())
+  organizationId String?      // Null for system roles
+  name           String
+  permissions    Json         // JSONB permissions
+  isSystem       Boolean      @default(false)
+  
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  members        OrganizationMember[]
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("roles")
+}
+
+model KycData {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  status      String
+  documents   Json?    // Document verification data
+  verifiedAt  DateTime?
+  
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("kyc_data")
+}
+
+model MfaSetting {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  enabled     Boolean  @default(false)
+  secret      String?  // Encrypted
+  backupCodes String[]
+  
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("mfa_settings")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  
+  user        User?    @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("activity_logs")
+}
+
+// 2. Team & Workforce Tables
+
+model Team {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  managerId      String?
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  members        TeamMember[]
+  chatChannels   ChatChannel[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String
+  role      String?  // Role within the team
+  
+  team      Team     @relation(fields: [teamId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("team_members")
+}
+
+model UserSkill {
+  id          String   @id @default(uuid())
+  userId      String
+  skillName   String
+  proficiency Int?     // 1-5 or similar
+  
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("user_skills")
+}
+
+model UserAvailability {
+  id          String   @id @default(uuid())
+  userId      String
+  date        DateTime
+  hoursAvailable Int
+  
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("user_availability")
+}
+
+// 3. Project Management Tables
+
+model Project {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  status         String
+  startDate      DateTime?
+  endDate        DateTime?
+  budget         Decimal?
+  metadata       Json?    // AI metadata
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  members        ProjectMember[]
+  tasks          Task[]
+  milestones     Milestone[]
+  risks          RiskRegister[]
+  clients        ProjectClient[]
+  documents      Document[]
+  chatChannels   ChatChannel[]
+  aiInsights     AiInsight[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String
+  userId    String
+  role      String?
+  
+  project   Project  @relation(fields: [projectId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("project_members")
+}
+
+model Task {
+  id             String   @id @default(uuid())
+  projectId      String
+  parentId       String?
+  assigneeId     String?
+  title          String
+  description    String?
+  status         String
+  priority       String?
+  dueDate        DateTime?
+  aiSuggestions  Json?
+  
+  project        Project  @relation(fields: [projectId], references: [id])
+  parent         Task?    @relation("Subtasks", fields: [parentId], references: [id])
+  subtasks       Task[]   @relation("Subtasks")
+  assignee       User?    @relation(fields: [assigneeId], references: [id])
+  
+  checklists     TaskChecklist[]
+  dependencies   TaskDependency[] @relation("TaskDependencies")
+  dependentOn    TaskDependency[] @relation("TaskDependents")
+  aiInsights     AiInsight[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("tasks")
+}
+
+model TaskChecklist {
+  id        String   @id @default(uuid())
+  taskId    String
+  item      String
+  isCompleted Boolean @default(false)
+  
+  task      Task     @relation(fields: [taskId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("task_checklists")
+}
+
+model TaskDependency {
+  id          String   @id @default(uuid())
+  taskId      String
+  dependsOnId String
+  type        String   // e.g., "finish_to_start"
+  
+  task        Task     @relation("TaskDependencies", fields: [taskId], references: [id])
+  dependsOn   Task     @relation("TaskDependents", fields: [dependsOnId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("task_dependencies")
+}
+
+model Milestone {
+  id          String   @id @default(uuid())
+  projectId   String
+  title       String
+  description String?
+  dueDate     DateTime?
+  status      String
+  
+  project     Project  @relation(fields: [projectId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("milestones")
+}
+
+model RiskRegister {
+  id          String   @id @default(uuid())
+  projectId   String
+  description String
+  probability String?  // High, Medium, Low or score
+  impact      String?
+  mitigationPlan String?
+  status      String
+  
+  project     Project  @relation(fields: [projectId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("risk_register")
+}
+
+// 4. Client Management Tables
+
+model Client {
+  id          String   @id @default(uuid())
+  name        String
+  contactInfo Json?
+  portalAccess Boolean @default(false)
+  
+  projects    ProjectClient[]
+  feedback    ClientFeedback[]
+  proposals   Proposal[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("clients")
+}
+
+model ProjectClient {
+  id        String   @id @default(uuid())
+  projectId String
+  clientId  String
+  
+  project   Project  @relation(fields: [projectId], references: [id])
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("project_clients")
+}
+
+model ClientFeedback {
+  id        String   @id @default(uuid())
+  clientId  String
+  projectId String?
+  rating    Int?
+  comment   String?
+  response  String?
+  
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("client_feedback")
+}
+
+model Proposal {
+  id        String   @id @default(uuid())
+  clientId  String
+  title     String
+  content   String?
+  status    String
+  
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("proposals")
+}
+
+// 5. Documentation & Knowledge Tables
+
+model WikiPage {
+  id          String   @id @default(uuid())
+  title       String
+  content     String?
+  parentId    String?
+  
+  parent      WikiPage? @relation("WikiHierarchy", fields: [parentId], references: [id])
+  children    WikiPage[] @relation("WikiHierarchy")
+  versions    WikiPageVersion[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wiki_pages")
+}
+
+model WikiPageVersion {
+  id          String   @id @default(uuid())
+  wikiPageId  String
+  content     String
+  version     Int
+  
+  wikiPage    WikiPage @relation(fields: [wikiPageId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("wiki_page_versions")
+}
+
+model DocumentFolder {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  parentId       String?
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  parent         DocumentFolder? @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children       DocumentFolder[] @relation("FolderHierarchy")
+  documents      Document[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("document_folders")
+}
+
+model Document {
+  id             String   @id @default(uuid())
+  organizationId String
+  folderId       String?
+  projectId      String?
+  name           String
+  url            String
+  version        Int      @default(1)
+  metadata       Json?
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  folder         DocumentFolder? @relation(fields: [folderId], references: [id])
+  project        Project? @relation(fields: [projectId], references: [id])
+  permissions    DocumentPermission[]
+  links          DocumentLink[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("documents")
+}
+
+model DocumentPermission {
+  id          String   @id @default(uuid())
+  documentId  String
+  userId      String?
+  roleId      String?
+  permission  String   // e.g., "read", "write"
+  
+  document    Document @relation(fields: [documentId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("document_permissions")
+}
+
+model DocumentLink {
+  id          String   @id @default(uuid())
+  documentId  String
+  entityType  String   // "task", "project", etc.
+  entityId    String
+  
+  document    Document @relation(fields: [documentId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("document_links")
+}
+
+// 6. Communication Tables
+
+model ChatChannel {
+  id          String   @id @default(uuid())
+  name        String?
+  type        String   // "team", "project", "direct"
+  teamId      String?
+  projectId   String?
+  
+  team        Team?    @relation(fields: [teamId], references: [id])
+  project     Project? @relation(fields: [projectId], references: [id])
+  members     ChannelMember[]
+  messages    ChatMessage[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("chat_channels")
+}
+
+model ChannelMember {
+  id          String   @id @default(uuid())
+  channelId   String
+  userId      String
+  role        String?
+  
+  channel     ChatChannel @relation(fields: [channelId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("channel_members")
+}
+
+model ChatMessage {
+  id          String   @id @default(uuid())
+  channelId   String
+  senderId    String
+  content     String
+  aiFlags     Json?    // AI-generated flags
+  
+  channel     ChatChannel @relation(fields: [channelId], references: [id])
+  sender      User     @relation(fields: [senderId], references: [id])
+  mentions    MessageMention[]
+  attachments MessageAttachment[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("chat_messages")
+}
+
+model MessageMention {
+  id          String   @id @default(uuid())
+  messageId   String
+  userId      String
+  
+  message     ChatMessage @relation(fields: [messageId], references: [id])
+  user        User        @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("message_mentions")
+}
+
+model MessageAttachment {
+  id          String   @id @default(uuid())
+  messageId   String
+  url         String
+  fileType    String
+  
+  message     ChatMessage @relation(fields: [messageId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("message_attachments")
+}
+
+model CommunicationLog {
+  id          String   @id @default(uuid())
+  type        String
+  details     Json
+  
+  createdAt   DateTime @default(now())
+
+  @@map("communication_logs")
+}
+
+// 7. AI & Automation Tables
+
+model AiConversation {
+  id          String   @id @default(uuid())
+  userId      String?
+  context     Json?
+  tokensUsed  Int?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ai_conversations")
+}
+
+model AiInsight {
+  id          String   @id @default(uuid())
+  projectId   String?
+  taskId      String?
+  content     String
+  confidence  Float?
+  actionable  Boolean  @default(false)
+  
+  project     Project? @relation(fields: [projectId], references: [id])
+  task        Task?    @relation(fields: [taskId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("ai_insights")
+}
+
+model AutomationRule {
+  id          String   @id @default(uuid())
+  name        String
+  trigger     Json     // Trigger conditions
+  actions     Json     // Actions to perform
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("automation_rules")
+}
+
+model AutomationLog {
+  id          String   @id @default(uuid())
+  ruleId      String
+  status      String   // "success", "failure"
+  details     Json?
+  
+  createdAt   DateTime @default(now())
+
+  @@map("automation_logs")
+}
+
+// 8. Monitoring & Reporting Tables
+
+model KpiDefinition {
+  id          String   @id @default(uuid())
+  name        String
+  formula     String?
+  
+  measurements KpiMeasurement[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("kpi_definitions")
+}
+
+model KpiMeasurement {
+  id          String   @id @default(uuid())
+  kpiId       String
+  value       Float
+  measuredAt  DateTime
+  
+  kpi         KpiDefinition @relation(fields: [kpiId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("kpi_measurements")
+}
+
+model ReportTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  config      Json
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("report_templates")
+}
+
+model GeneratedReport {
+  id          String   @id @default(uuid())
+  templateId  String?
+  url         String
+  format      String
+  
+  createdAt   DateTime @default(now())
+
+  @@map("generated_reports")
+}
+
+model MemberPerformance {
+  id          String   @id @default(uuid())
+  userId      String
+  metric      String
+  value       Float
+  period      String
+  
+  createdAt   DateTime @default(now())
+
+  @@map("member_performance")
+}
+
+// 9. Notification Tables
+
+model NotificationTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  content     String
+  channels    Json     // Supported channels
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("notification_templates")
+}
+
+model NotificationPreference {
+  id          String   @id @default(uuid())
+  userId      String
+  preferences Json
+  
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("notification_preferences")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  content     String
+  isRead      Boolean  @default(false)
+  type        String?
+  
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("notifications")
+}
+
+// 10. Analytics & Dashboard Tables
+
+model Dashboard {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  layout      Json?
+  
+  user        User     @relation(fields: [userId], references: [id])
+  widgets     DashboardWidget[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("dashboards")
+}
+
+model DashboardWidget {
+  id          String   @id @default(uuid())
+  dashboardId String
+  type        String
+  config      Json?
+  
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("dashboard_widgets")
+}

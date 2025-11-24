@@ -5,6 +5,7 @@
   "scripts": {},
   "private": true,
   "dependencies": {
+    "@prisma/client": "^7.0.0",
     "axios": "^1.6.0",
     "express": "^4.21.2"
   },
@@ -33,6 +34,7 @@
     "jest-util": "^30.0.2",
     "nx": "22.0.2",
     "prettier": "^2.6.2",
+    "prisma": "^7.0.0",
     "ts-jest": "^29.4.0",
     "ts-node": "10.9.1",
     "tslib": "^2.3.0",
