@@ -4,8 +4,22 @@
   "private": true,
   "nx": {
     "targets": {
+      "prisma:generate": {
+        "executor": "nx:run-commands",
+        "outputs": [
+          "{projectRoot}/node_modules/.prisma"
+        ],
+        "cache": true,
+        "options": {
+          "command": "prisma generate --schema={projectRoot}/prisma/schema.prisma"
+        }
+      },
       "build": {
         "executor": "@nx/esbuild:esbuild",
+        "dependsOn": [
+          "prisma:generate",
+          "^build"
+        ],
         "outputs": [
           "{options.outputPath}"
         ],
