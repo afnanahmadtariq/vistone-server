@@ -45,14 +45,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: backend-services
-          path: dist/apps/backend-services
+          path: apps/backend-services/dist
 
       - name: Upload api-gateway artifact
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: api-gateway
-          path: dist/apps/api-gateway
+          path: apps/api-gateway/dist
 
   deploy-backend-services:
     runs-on: ubuntu-latest
