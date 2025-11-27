@@ -1,5 +1,6 @@
 import express from 'express';
-import { ApolloServer } from 'apollo-server-express';
+import { ApolloServer } from '@apollo/server';
+import { expressMiddleware } from '@as-integrations/express5';
 import dotenv from 'dotenv';
 import { typeDefs } from './schema/typeDefs';
 import { resolvers } from './schema/resolvers';
@@ -17,20 +18,15 @@ async function startServer() {
   const apolloServer = new ApolloServer({
     typeDefs,
     resolvers,
-    formatError: (error) => {
-      console.error('GraphQL Error:', error);
-      return error;
-    },
-    context: ({ req }) => {
-      return {
-        headers: req.headers,
-      };
-    },
   });
 
   await apolloServer.start();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  apolloServer.applyMiddleware({ app: app as any, path: '/graphql' });
+
+  app.use('/graphql', expressMiddleware(apolloServer, {
+    context: async ({ req }: { req: express.Request }) => ({
+      headers: req.headers,
+    }),
+  }));
 
   app.get('/', (_req, res) => {
     res.send({
@@ -46,7 +42,7 @@ async function startServer() {
   app.listen(port, host, () => {
     console.log(`[ ready ] API Gateway running at http://${host}:${port}`);
     console.log(
-      `[ ready ] GraphQL endpoint: http://${host}:${port}${apolloServer.graphqlPath}`
+      `[ ready ] GraphQL endpoint: http://${host}:${port}/graphql`
     );
   });
 }
