@@ -113,6 +113,11 @@
         "options": {
           "passWithNoTests": true
         }
+      },
+      "typecheck": {
+        "dependsOn": [
+          "prisma:generate"
+        ]
       }
     }
   },
