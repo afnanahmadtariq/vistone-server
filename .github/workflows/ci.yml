@@ -33,6 +33,9 @@ jobs:
 
       - run: npm ci
 
+      # Generate Prisma client before running tasks
+      - run: npx nx run @vistone-server/backend-services:prisma:generate
+
       # Prepend any command with "nx-cloud record --" to record its logs to Nx Cloud
       # - run: npx nx-cloud record -- echo Hello World
       - run: npx nx run-many -t lint test build typecheck
