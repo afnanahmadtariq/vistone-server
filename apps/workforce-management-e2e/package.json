@@ -1,0 +1,26 @@
+{
+  "name": "@vistone-server/workforce-management-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "implicitDependencies": [
+      "@vistone-server/workforce-management"
+    ],
+    "targets": {
+      "e2e": {
+        "executor": "@nx/jest:jest",
+        "outputs": [
+          "{projectRoot}/test-output/jest/coverage"
+        ],
+        "options": {
+          "jestConfig": "apps/workforce-management-e2e/jest.config.ts",
+          "passWithNoTests": true
+        },
+        "dependsOn": [
+          "@vistone-server/workforce-management:build",
+          "@vistone-server/workforce-management:serve"
+        ]
+      }
+    }
+  }
+}

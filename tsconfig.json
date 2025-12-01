@@ -44,6 +44,12 @@
     },
     {
       "path": "./apps/notification"
+    },
+    {
+      "path": "./apps/workforce-management-e2e"
+    },
+    {
+      "path": "./apps/workforce-management"
     }
   ]
 }
