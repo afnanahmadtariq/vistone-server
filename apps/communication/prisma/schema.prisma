@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/communication-client"
+  previewFeatures = ["driverAdapters", "multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["communication"]
+}
+
+// Communication Schema - Chat & Messaging
+
+model ChatChannel {
+  id          String   @id @default(uuid())
+  name        String?
+  type        String
+  teamId      String?
+  projectId   String?
+  
+  members     ChannelMember[]
+  messages    ChatMessage[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("chat_channels")
+  @@schema("communication")
+}
+
+model ChannelMember {
+  id          String   @id @default(uuid())
+  channelId   String
+  userId      String
+  role        String?
+  
+  channel     ChatChannel @relation(fields: [channelId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("channel_members")
+  @@schema("communication")
+}
+
+model ChatMessage {
+  id          String   @id @default(uuid())
+  channelId   String
+  senderId    String
+  content     String
+  aiFlags     Json?
+  
+  channel     ChatChannel @relation(fields: [channelId], references: [id])
+  mentions    MessageMention[]
+  attachments MessageAttachment[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("chat_messages")
+  @@schema("communication")
+}
+
+model MessageMention {
+  id          String   @id @default(uuid())
+  messageId   String
+  userId      String
+  
+  message     ChatMessage @relation(fields: [messageId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("message_mentions")
+  @@schema("communication")
+}
+
+model MessageAttachment {
+  id          String   @id @default(uuid())
+  messageId   String
+  url         String
+  fileType    String
+  
+  message     ChatMessage @relation(fields: [messageId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("message_attachments")
+  @@schema("communication")
+}
+
+model CommunicationLog {
+  id          String   @id @default(uuid())
+  type        String
+  details     Json
+  
+  createdAt   DateTime @default(now())
+
+  @@map("communication_logs")
+  @@schema("communication")
+}

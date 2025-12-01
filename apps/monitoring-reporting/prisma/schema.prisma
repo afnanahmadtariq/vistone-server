@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/monitoring-client"
+  previewFeatures = ["driverAdapters", "multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["monitoring"]
+}
+
+// Monitoring & Reporting Schema - KPIs, Reports, AI, Automation, Dashboards
+
+model KpiDefinition {
+  id          String   @id @default(uuid())
+  name        String
+  formula     String?
+  
+  measurements KpiMeasurement[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("kpi_definitions")
+  @@schema("monitoring")
+}
+
+model KpiMeasurement {
+  id          String   @id @default(uuid())
+  kpiId       String
+  value       Float
+  measuredAt  DateTime
+  
+  kpi         KpiDefinition @relation(fields: [kpiId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("kpi_measurements")
+  @@schema("monitoring")
+}
+
+model ReportTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  config      Json
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("report_templates")
+  @@schema("monitoring")
+}
+
+model GeneratedReport {
+  id          String   @id @default(uuid())
+  templateId  String?
+  url         String
+  format      String
+  
+  createdAt   DateTime @default(now())
+
+  @@map("generated_reports")
+  @@schema("monitoring")
+}
+
+model MemberPerformance {
+  id          String   @id @default(uuid())
+  userId      String
+  metric      String
+  value       Float
+  period      String
+  
+  createdAt   DateTime @default(now())
+
+  @@map("member_performance")
+  @@schema("monitoring")
+}
+
+model AiConversation {
+  id          String   @id @default(uuid())
+  userId      String?
+  context     Json?
+  tokensUsed  Int?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ai_conversations")
+  @@schema("monitoring")
+}
+
+model AutomationRule {
+  id          String   @id @default(uuid())
+  name        String
+  trigger     Json
+  actions     Json
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("automation_rules")
+  @@schema("monitoring")
+}
+
+model AutomationLog {
+  id          String   @id @default(uuid())
+  ruleId      String
+  status      String
+  details     Json?
+  
+  createdAt   DateTime @default(now())
+
+  @@map("automation_logs")
+  @@schema("monitoring")
+}
+
+model Dashboard {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  layout      Json?
+  
+  widgets     DashboardWidget[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("dashboards")
+  @@schema("monitoring")
+}
+
+model DashboardWidget {
+  id          String   @id @default(uuid())
+  dashboardId String
+  type        String
+  config      Json?
+  
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("dashboard_widgets")
+  @@schema("monitoring")
+}

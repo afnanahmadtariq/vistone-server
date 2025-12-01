@@ -1,11 +1,9 @@
 import axios, { AxiosInstance } from 'axios';
 
-class BackendClient {
+class ServiceClient {
   private client: AxiosInstance;
 
-  constructor() {
-    const baseURL = process.env.BACKEND_SERVICES_URL || 'http://localhost:3000';
-
+  constructor(baseURL: string) {
     this.client = axios.create({
       baseURL,
       timeout: 30000,
@@ -41,4 +39,38 @@ class BackendClient {
   }
 }
 
-export default new BackendClient();
+// Individual service clients for each microservice
+export const authClient = new ServiceClient(
+  process.env.AUTH_SERVICE_URL || 'http://localhost:3001'
+);
+
+export const workforceClient = new ServiceClient(
+  process.env.WORKFORCE_SERVICE_URL || 'http://localhost:3002'
+);
+
+export const projectClient = new ServiceClient(
+  process.env.PROJECT_SERVICE_URL || 'http://localhost:3003'
+);
+
+export const clientMgmtClient = new ServiceClient(
+  process.env.CLIENT_SERVICE_URL || 'http://localhost:3004'
+);
+
+export const knowledgeClient = new ServiceClient(
+  process.env.KNOWLEDGE_SERVICE_URL || 'http://localhost:3005'
+);
+
+export const communicationClient = new ServiceClient(
+  process.env.COMMUNICATION_SERVICE_URL || 'http://localhost:3006'
+);
+
+export const monitoringClient = new ServiceClient(
+  process.env.MONITORING_SERVICE_URL || 'http://localhost:3007'
+);
+
+export const notificationClient = new ServiceClient(
+  process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3008'
+);
+
+// Legacy export for backward compatibility (deprecated)
+export default authClient;
