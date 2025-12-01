@@ -10,22 +10,40 @@
       "path": "./apps/api-gateway"
     },
     {
-      "path": "./apps/realtime-services-e2e"
+      "path": "./apps/project-management-e2e"
     },
     {
-      "path": "./apps/realtime-services"
+      "path": "./apps/project-management"
     },
     {
-      "path": "./apps/backend-services-e2e"
+      "path": "./apps/knowledge-hub-e2e"
     },
     {
-      "path": "./apps/backend-services"
+      "path": "./apps/knowledge-hub"
     },
     {
-      "path": "./apps/media-server-e2e"
+      "path": "./apps/communication-e2e"
     },
     {
-      "path": "./apps/media-server"
+      "path": "./apps/communication"
+    },
+    {
+      "path": "./apps/client-management-e2e"
+    },
+    {
+      "path": "./apps/client-management"
+    },
+    {
+      "path": "./apps/monitoring-reporting-e2e"
+    },
+    {
+      "path": "./apps/monitoring-reporting"
+    },
+    {
+      "path": "./apps/notification-e2e"
+    },
+    {
+      "path": "./apps/notification"
     }
   ]
 }

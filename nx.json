@@ -43,9 +43,13 @@
       },
       "exclude": [
         "apps/api-gateway-e2e/**/*",
-        "apps/realtime-services-e2e/**/*",
-        "apps/backend-services-e2e/**/*",
-        "apps/media-server-e2e/**/*"
+        "apps/auth-service-e2e/**/*",
+        "apps/project-management-e2e/**/*",
+        "apps/knowledge-hub-e2e/**/*",
+        "apps/communication-e2e/**/*",
+        "apps/client-management-e2e/**/*",
+        "apps/monitoring-reporting-e2e/**/*",
+        "apps/notification-e2e/**/*"
       ]
     },
     {

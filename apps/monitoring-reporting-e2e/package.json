@@ -1,0 +1,26 @@
+{
+  "name": "@vistone-server/monitoring-reporting-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "implicitDependencies": [
+      "@vistone-server/monitoring-reporting"
+    ],
+    "targets": {
+      "e2e": {
+        "executor": "@nx/jest:jest",
+        "outputs": [
+          "{projectRoot}/test-output/jest/coverage"
+        ],
+        "options": {
+          "jestConfig": "apps/monitoring-reporting-e2e/jest.config.ts",
+          "passWithNoTests": true
+        },
+        "dependsOn": [
+          "@vistone-server/monitoring-reporting:build",
+          "@vistone-server/monitoring-reporting:serve"
+        ]
+      }
+    }
+  }
+}

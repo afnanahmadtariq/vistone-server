@@ -1,0 +1,26 @@
+{
+  "name": "@vistone-server/notification-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "implicitDependencies": [
+      "@vistone-server/notification"
+    ],
+    "targets": {
+      "e2e": {
+        "executor": "@nx/jest:jest",
+        "outputs": [
+          "{projectRoot}/test-output/jest/coverage"
+        ],
+        "options": {
+          "jestConfig": "apps/notification-e2e/jest.config.ts",
+          "passWithNoTests": true
+        },
+        "dependsOn": [
+          "@vistone-server/notification:build",
+          "@vistone-server/notification:serve"
+        ]
+      }
+    }
+  }
+}
