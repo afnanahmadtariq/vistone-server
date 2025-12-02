@@ -50,6 +50,12 @@
     },
     {
       "path": "./apps/workforce-management"
+    },
+    {
+      "path": "./apps/ai-engine-e2e"
+    },
+    {
+      "path": "./apps/ai-engine"
     }
   ]
 }

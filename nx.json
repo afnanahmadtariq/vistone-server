@@ -50,7 +50,8 @@
         "apps/client-management-e2e/**/*",
         "apps/monitoring-reporting-e2e/**/*",
         "apps/notification-e2e/**/*",
-        "apps/workforce-management-e2e/**/*"
+        "apps/workforce-management-e2e/**/*",
+        "apps/ai-engine-e2e/**/*"
       ]
     },
     {
