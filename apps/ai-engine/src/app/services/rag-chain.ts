@@ -170,7 +170,7 @@ export class RAGChain {
     userMessage: string,
     userId?: string,
     organizationId?: string,
-    executeActions: boolean = true
+    executeActions = true
   ): Promise<RAGResponse> {
     // Step 1: Retrieve relevant context
     const filter: Record<string, any> = {};

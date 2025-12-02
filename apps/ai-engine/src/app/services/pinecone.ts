@@ -19,7 +19,7 @@ export function getPineconeClient(): Pinecone {
   return pineconeClient;
 }
 
-export async function getOrCreateIndex(dimension: number = 1024) {
+export async function getOrCreateIndex(dimension = 1024) {
   const pinecone = await initPinecone();
   const indexName = config.pinecone.indexName;
   
@@ -140,7 +140,7 @@ export async function upsertVectors(
 
 export async function queryVectors(
   queryVector: number[],
-  topK: number = 5,
+  topK = 5,
   filter?: Record<string, any>,
   namespace?: string
 ) {

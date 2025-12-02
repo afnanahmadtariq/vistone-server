@@ -206,7 +206,7 @@ async function search(
   }
 }
 
-export function startGrpcServer(port: number = 50060): grpc.Server | null {
+export function startGrpcServer(port = 50060): grpc.Server | null {
   try {
     const proto = loadProto();
     const server = new grpc.Server();
