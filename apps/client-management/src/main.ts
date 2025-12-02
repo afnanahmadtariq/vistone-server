@@ -3,9 +3,11 @@ import clientRoutes from './routes/clients';
 import projectClientRoutes from './routes/project-clients';
 import clientFeedbackRoutes from './routes/client-feedback';
 import proposalRoutes from './routes/proposals';
+import { startGrpcServer } from './grpc/server';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3004;
+const grpcPort = process.env.CLIENT_GRPC_PORT ? Number(process.env.CLIENT_GRPC_PORT) : 50054;
 
 const app = express();
 
@@ -28,3 +30,6 @@ app.use('/proposals', proposalRoutes);
 app.listen(port, host, () => {
   console.log(`[ ready ] Client Management Service running at http://${host}:${port}`);
 });
+
+// Start gRPC server
+startGrpcServer(grpcPort);

@@ -9,9 +9,11 @@ import automationRulesRouter from './routes/automation-rules';
 import automationLogsRouter from './routes/automation-logs';
 import dashboardsRouter from './routes/dashboards';
 import dashboardWidgetsRouter from './routes/dashboard-widgets';
+import { startGrpcServer } from './grpc/server';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3007;
+const grpcPort = process.env.MONITORING_GRPC_PORT ? Number(process.env.MONITORING_GRPC_PORT) : 50057;
 
 const app = express();
 
@@ -35,3 +37,6 @@ app.use('/dashboard-widgets', dashboardWidgetsRouter);
 app.listen(port, host, () => {
   console.log(`[ ready ] Monitoring & Reporting Service running at http://${host}:${port}`);
 });
+
+// Start gRPC server
+startGrpcServer(grpcPort);

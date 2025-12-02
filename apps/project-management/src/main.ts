@@ -7,9 +7,11 @@ import taskDependencyRoutes from './routes/task-dependencies';
 import milestoneRoutes from './routes/milestones';
 import riskRegisterRoutes from './routes/risk-register';
 import aiInsightRoutes from './routes/ai-insights';
+import { startGrpcServer } from './grpc/server';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3003;
+const grpcPort = process.env.PROJECT_GRPC_PORT ? Number(process.env.PROJECT_GRPC_PORT) : 50053;
 
 const app = express();
 
@@ -36,3 +38,6 @@ app.use('/ai-insights', aiInsightRoutes);
 app.listen(port, host, () => {
   console.log(`[ ready ] Project Management Service running at http://${host}:${port}`);
 });
+
+// Start gRPC server
+startGrpcServer(grpcPort);

@@ -5,9 +5,11 @@ import chatMessageRoutes from './routes/chat-messages';
 import messageMentionRoutes from './routes/message-mentions';
 import messageAttachmentRoutes from './routes/message-attachments';
 import communicationLogRoutes from './routes/communication-logs';
+import { startGrpcServer } from './grpc/server';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3006;
+const grpcPort = process.env.COMMUNICATION_GRPC_PORT ? Number(process.env.COMMUNICATION_GRPC_PORT) : 50056;
 
 const app = express();
 
@@ -32,3 +34,6 @@ app.use('/communication-logs', communicationLogRoutes);
 app.listen(port, host, () => {
   console.log(`[ ready ] Communication Service running at http://${host}:${port}`);
 });
+
+// Start gRPC server
+startGrpcServer(grpcPort);

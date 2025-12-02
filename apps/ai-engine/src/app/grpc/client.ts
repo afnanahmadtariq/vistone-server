@@ -3,20 +3,32 @@ import * as protoLoader from '@grpc/proto-loader';
 import * as path from 'path';
 import { config } from '../config/env';
 
-// Define the proto path
-const PROTO_PATH = path.join(__dirname, 'protos', 'vistone.proto');
+// Define the proto path - resolve from dist root
+const getProtoPath = () => {
+  // In production: __dirname is dist/apps/ai-engine/src/app/grpc
+  // Proto files are copied to: dist/app/grpc/protos/
+  const distRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
+  return path.join(distRoot, 'app', 'grpc', 'protos', 'vistone.proto');
+};
 
-// Load proto definition
-const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
-  keepCase: true,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true,
-});
+// Lazy load proto to avoid errors on import
+let vistone: any = null;
 
-const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any;
-const vistone = protoDescriptor.vistone;
+function loadProto() {
+  if (!vistone) {
+    const PROTO_PATH = getProtoPath();
+    const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
+      keepCase: true,
+      longs: String,
+      enums: String,
+      defaults: true,
+      oneofs: true,
+    });
+    const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any;
+    vistone = protoDescriptor.vistone;
+  }
+  return vistone;
+}
 
 // Service client types
 export interface GrpcClients {
@@ -40,15 +52,16 @@ function createClient(ServiceClass: any, port: string): any {
 
 // Initialize all gRPC clients
 export function initGrpcClients(): GrpcClients {
+  const proto = loadProto();
   return {
-    auth: createClient(vistone.AuthService, config.grpc.authService),
-    workforce: createClient(vistone.WorkforceService, config.grpc.workforceService),
-    project: createClient(vistone.ProjectService, config.grpc.projectService),
-    client: createClient(vistone.ClientService, config.grpc.clientService),
-    knowledge: createClient(vistone.KnowledgeService, config.grpc.knowledgeService),
-    communication: createClient(vistone.CommunicationService, config.grpc.communicationService),
-    notification: createClient(vistone.NotificationService, config.grpc.notificationService),
-    monitoring: createClient(vistone.MonitoringService, config.grpc.monitoringService),
+    auth: createClient(proto.AuthService, config.grpc.authService),
+    workforce: createClient(proto.WorkforceService, config.grpc.workforceService),
+    project: createClient(proto.ProjectService, config.grpc.projectService),
+    client: createClient(proto.ClientService, config.grpc.clientService),
+    knowledge: createClient(proto.KnowledgeService, config.grpc.knowledgeService),
+    communication: createClient(proto.CommunicationService, config.grpc.communicationService),
+    notification: createClient(proto.NotificationService, config.grpc.notificationService),
+    monitoring: createClient(proto.MonitoringService, config.grpc.monitoringService),
   };
 }
 

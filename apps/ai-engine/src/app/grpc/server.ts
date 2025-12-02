@@ -7,18 +7,30 @@ import { getRAGInstance } from '../services/rag-chain';
 import { querySimilarDocuments } from '../services/embedding';
 import { VectorMetadata } from '../services/pinecone';
 
-const PROTO_PATH = path.join(__dirname, 'protos', 'ai-engine.proto');
+// Define the proto path - resolve from dist root
+const getProtoPath = () => {
+  const distRoot = path.resolve(__dirname, '..', '..', '..', '..', '..');
+  return path.join(distRoot, 'app', 'grpc', 'protos', 'ai-engine.proto');
+};
 
-const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
-  keepCase: true,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true,
-});
+// Lazy load proto
+let aiEngineProto: any = null;
 
-const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any;
-const aiEngineProto = protoDescriptor.vistone.ai;
+function loadProto() {
+  if (!aiEngineProto) {
+    const PROTO_PATH = getProtoPath();
+    const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
+      keepCase: true,
+      longs: String,
+      enums: String,
+      defaults: true,
+      oneofs: true,
+    });
+    const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any;
+    aiEngineProto = protoDescriptor.vistone.ai;
+  }
+  return aiEngineProto;
+}
 
 // Service implementation
 const syncService = getDataSyncService();
@@ -195,9 +207,10 @@ async function search(
 }
 
 export function startGrpcServer(port: number = 50060): grpc.Server {
+  const proto = loadProto();
   const server = new grpc.Server();
 
-  server.addService(aiEngineProto.AIEngineService.service, {
+  server.addService(proto.AIEngineService.service, {
     SyncEntity: syncEntity,
     SyncBatch: syncBatch,
     RemoveEntity: removeEntity,

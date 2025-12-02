@@ -3,9 +3,11 @@ import teamRoutes from './routes/teams';
 import teamMemberRoutes from './routes/team-members';
 import userSkillRoutes from './routes/user-skills';
 import userAvailabilityRoutes from './routes/user-availability';
+import { startGrpcServer } from './grpc/server';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3002;
+const grpcPort = process.env.WORKFORCE_GRPC_PORT ? Number(process.env.WORKFORCE_GRPC_PORT) : 50052;
 
 const app = express();
 
@@ -28,3 +30,6 @@ app.use('/user-availability', userAvailabilityRoutes);
 app.listen(port, host, () => {
   console.log(`[ ready ] Workforce Management Service running at http://${host}:${port}`);
 });
+
+// Start gRPC server
+startGrpcServer(grpcPort);
