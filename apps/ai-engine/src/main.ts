@@ -23,8 +23,13 @@ server.listen({ port, host }, (err) => {
   } else {
     console.log(`[ ready ] AI Engine HTTP server: http://${host}:${port}`);
     
-    // Start gRPC server
-    startGrpcServer(grpcPort);
-    console.log(`[ ready ] AI Engine gRPC server: ${host}:${grpcPort}`);
+    // Start gRPC server (non-blocking, errors are logged but don't crash)
+    try {
+      startGrpcServer(grpcPort);
+      console.log(`[ info ] gRPC server starting on port ${grpcPort}...`);
+    } catch (error) {
+      console.error('Failed to initialize gRPC server:', error);
+      console.log('[ warn ] Continuing without gRPC server');
+    }
   }
 });

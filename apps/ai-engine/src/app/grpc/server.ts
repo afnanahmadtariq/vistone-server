@@ -206,29 +206,36 @@ async function search(
   }
 }
 
-export function startGrpcServer(port: number = 50060): grpc.Server {
-  const proto = loadProto();
-  const server = new grpc.Server();
+export function startGrpcServer(port: number = 50060): grpc.Server | null {
+  try {
+    const proto = loadProto();
+    const server = new grpc.Server();
 
-  server.addService(proto.AIEngineService.service, {
-    SyncEntity: syncEntity,
-    SyncBatch: syncBatch,
-    RemoveEntity: removeEntity,
-    Chat: chat,
-    Search: search,
-  });
+    server.addService(proto.AIEngineService.service, {
+      SyncEntity: syncEntity,
+      SyncBatch: syncBatch,
+      RemoveEntity: removeEntity,
+      Chat: chat,
+      Search: search,
+    });
 
-  server.bindAsync(
-    `0.0.0.0:${port}`,
-    grpc.ServerCredentials.createInsecure(),
-    (error, bindPort) => {
-      if (error) {
-        console.error('Failed to start gRPC server:', error);
-        return;
+    server.bindAsync(
+      `0.0.0.0:${port}`,
+      grpc.ServerCredentials.createInsecure(),
+      (error, bindPort) => {
+        if (error) {
+          console.error('Failed to start gRPC server:', error.message);
+          console.log('AI Engine will run without gRPC support');
+          return;
+        }
+        console.log(`AI Engine gRPC server listening on port ${bindPort}`);
       }
-      console.log(`AI Engine gRPC server listening on port ${bindPort}`);
-    }
-  );
+    );
 
-  return server;
+    return server;
+  } catch (error: any) {
+    console.error('Failed to initialize gRPC server:', error.message);
+    console.log('AI Engine will run without gRPC support');
+    return null;
+  }
 }

@@ -29,7 +29,7 @@ interface ChatResponse {
 export default async function (fastify: FastifyInstance) {
   // Chat endpoint
   fastify.post<{ Body: ChatRequestBody }>(
-    '/chat',
+    '/',
     {
       schema: {
         body: {
@@ -101,7 +101,7 @@ export default async function (fastify: FastifyInstance) {
 
   // Get conversation history
   fastify.get<{ Params: { sessionId: string } }>(
-    '/chat/:sessionId/history',
+    '/:sessionId/history',
     {
       schema: {
         params: {
@@ -144,7 +144,7 @@ export default async function (fastify: FastifyInstance) {
 
   // Clear conversation history
   fastify.delete<{ Params: { sessionId: string } }>(
-    '/chat/:sessionId',
+    '/:sessionId',
     {
       schema: {
         params: {
@@ -176,7 +176,7 @@ export default async function (fastify: FastifyInstance) {
 
   // Clear only history but keep session
   fastify.post<{ Params: { sessionId: string } }>(
-    '/chat/:sessionId/clear',
+    '/:sessionId/clear',
     {
       schema: {
         params: {
