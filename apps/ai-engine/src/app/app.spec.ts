@@ -9,12 +9,15 @@ describe('GET /', () => {
     server.register(app);
   });
 
-  it('should respond with a message', async () => {
+  it('should respond with service info', async () => {
     const response = await server.inject({
       method: 'GET',
       url: '/',
     });
 
-    expect(response.json()).toEqual({ message: 'Hello API' });
+    const json = response.json();
+    expect(json).toHaveProperty('service', 'Vistone AI Engine');
+    expect(json).toHaveProperty('version', '1.0.0');
+    expect(json).toHaveProperty('endpoints');
   });
 });
