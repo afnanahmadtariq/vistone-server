@@ -20,7 +20,12 @@
           "main": "apps/ai-engine/src/main.ts",
           "tsConfig": "apps/ai-engine/tsconfig.app.json",
           "assets": [
-            "apps/ai-engine/src/assets"
+            "apps/ai-engine/src/assets",
+            {
+              "glob": "**/*.proto",
+              "input": "apps/ai-engine/src/app/grpc/protos",
+              "output": "app/grpc/protos"
+            }
           ],
           "esbuildOptions": {
             "sourcemap": true,
@@ -101,11 +106,5 @@
         }
       }
     }
-  },
-  "dependencies": {
-    "fastify": "~5.2.1",
-    "fastify-plugin": "~5.0.1",
-    "@fastify/autoload": "~6.0.3",
-    "@fastify/sensible": "~6.0.2"
   }
 }

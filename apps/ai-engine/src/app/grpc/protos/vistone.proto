@@ -1,0 +1,548 @@
+syntax = "proto3";
+
+package vistone;
+
+// Common message types
+message Empty {}
+
+message ActionResult {
+  bool success = 1;
+  string message = 2;
+  string entityId = 3;
+}
+
+// ===== Auth Service =====
+service AuthService {
+  rpc GetUser(GetUserRequest) returns (UserResponse);
+  rpc GetUsers(GetUsersRequest) returns (UsersResponse);
+  rpc GetOrganization(GetOrganizationRequest) returns (OrganizationResponse);
+  rpc CreateUser(CreateUserRequest) returns (ActionResult);
+  rpc UpdateUser(UpdateUserRequest) returns (ActionResult);
+}
+
+message GetUserRequest {
+  string userId = 1;
+}
+
+message GetUsersRequest {
+  string organizationId = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message UserResponse {
+  string id = 1;
+  string email = 2;
+  string firstName = 3;
+  string lastName = 4;
+  string createdAt = 5;
+}
+
+message UsersResponse {
+  repeated UserResponse users = 1;
+  int32 total = 2;
+}
+
+message GetOrganizationRequest {
+  string organizationId = 1;
+}
+
+message OrganizationResponse {
+  string id = 1;
+  string name = 2;
+  string slug = 3;
+  string settings = 4;
+}
+
+message CreateUserRequest {
+  string email = 1;
+  string firstName = 2;
+  string lastName = 3;
+  string organizationId = 4;
+}
+
+message UpdateUserRequest {
+  string userId = 1;
+  string firstName = 2;
+  string lastName = 3;
+  string email = 4;
+}
+
+// ===== Workforce Service =====
+service WorkforceService {
+  rpc GetTeams(GetTeamsRequest) returns (TeamsResponse);
+  rpc GetTeam(GetTeamRequest) returns (TeamResponse);
+  rpc CreateTeam(CreateTeamRequest) returns (ActionResult);
+  rpc UpdateTeam(UpdateTeamRequest) returns (ActionResult);
+  rpc AddTeamMember(AddTeamMemberRequest) returns (ActionResult);
+  rpc GetUserSkills(GetUserSkillsRequest) returns (UserSkillsResponse);
+}
+
+message GetTeamsRequest {
+  string organizationId = 1;
+}
+
+message GetTeamRequest {
+  string teamId = 1;
+}
+
+message TeamResponse {
+  string id = 1;
+  string organizationId = 2;
+  string name = 3;
+  string description = 4;
+  string managerId = 5;
+  repeated TeamMemberResponse members = 6;
+}
+
+message TeamsResponse {
+  repeated TeamResponse teams = 1;
+}
+
+message TeamMemberResponse {
+  string id = 1;
+  string userId = 2;
+  string role = 3;
+}
+
+message CreateTeamRequest {
+  string organizationId = 1;
+  string name = 2;
+  string description = 3;
+  string managerId = 4;
+}
+
+message UpdateTeamRequest {
+  string teamId = 1;
+  string name = 2;
+  string description = 3;
+  string managerId = 4;
+}
+
+message AddTeamMemberRequest {
+  string teamId = 1;
+  string userId = 2;
+  string role = 3;
+}
+
+message GetUserSkillsRequest {
+  string userId = 1;
+}
+
+message UserSkillResponse {
+  string id = 1;
+  string skillName = 2;
+  int32 proficiency = 3;
+}
+
+message UserSkillsResponse {
+  repeated UserSkillResponse skills = 1;
+}
+
+// ===== Project Service =====
+service ProjectService {
+  rpc GetProjects(GetProjectsRequest) returns (ProjectsResponse);
+  rpc GetProject(GetProjectRequest) returns (ProjectResponse);
+  rpc CreateProject(CreateProjectRequest) returns (ActionResult);
+  rpc UpdateProject(UpdateProjectRequest) returns (ActionResult);
+  rpc GetTasks(GetTasksRequest) returns (TasksResponse);
+  rpc GetTask(GetTaskRequest) returns (TaskResponse);
+  rpc CreateTask(CreateTaskRequest) returns (ActionResult);
+  rpc UpdateTask(UpdateTaskRequest) returns (ActionResult);
+  rpc GetMilestones(GetMilestonesRequest) returns (MilestonesResponse);
+  rpc CreateMilestone(CreateMilestoneRequest) returns (ActionResult);
+}
+
+message GetProjectsRequest {
+  string organizationId = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetProjectRequest {
+  string projectId = 1;
+}
+
+message ProjectResponse {
+  string id = 1;
+  string organizationId = 2;
+  string name = 3;
+  string description = 4;
+  string status = 5;
+  string startDate = 6;
+  string endDate = 7;
+  string budget = 8;
+}
+
+message ProjectsResponse {
+  repeated ProjectResponse projects = 1;
+  int32 total = 2;
+}
+
+message CreateProjectRequest {
+  string organizationId = 1;
+  string name = 2;
+  string description = 3;
+  string status = 4;
+  string startDate = 5;
+  string endDate = 6;
+  string budget = 7;
+}
+
+message UpdateProjectRequest {
+  string projectId = 1;
+  string name = 2;
+  string description = 3;
+  string status = 4;
+  string startDate = 5;
+  string endDate = 6;
+  string budget = 7;
+}
+
+message GetTasksRequest {
+  string projectId = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetTaskRequest {
+  string taskId = 1;
+}
+
+message TaskResponse {
+  string id = 1;
+  string projectId = 2;
+  string parentId = 3;
+  string assigneeId = 4;
+  string title = 5;
+  string description = 6;
+  string status = 7;
+  string priority = 8;
+  string dueDate = 9;
+}
+
+message TasksResponse {
+  repeated TaskResponse tasks = 1;
+  int32 total = 2;
+}
+
+message CreateTaskRequest {
+  string projectId = 1;
+  string parentId = 2;
+  string assigneeId = 3;
+  string title = 4;
+  string description = 5;
+  string status = 6;
+  string priority = 7;
+  string dueDate = 8;
+}
+
+message UpdateTaskRequest {
+  string taskId = 1;
+  string assigneeId = 2;
+  string title = 3;
+  string description = 4;
+  string status = 5;
+  string priority = 6;
+  string dueDate = 7;
+}
+
+message GetMilestonesRequest {
+  string projectId = 1;
+}
+
+message MilestoneResponse {
+  string id = 1;
+  string projectId = 2;
+  string title = 3;
+  string description = 4;
+  string dueDate = 5;
+  string status = 6;
+}
+
+message MilestonesResponse {
+  repeated MilestoneResponse milestones = 1;
+}
+
+message CreateMilestoneRequest {
+  string projectId = 1;
+  string title = 2;
+  string description = 3;
+  string dueDate = 4;
+  string status = 5;
+}
+
+// ===== Client Service =====
+service ClientService {
+  rpc GetClients(GetClientsRequest) returns (ClientsResponse);
+  rpc GetClient(GetClientRequest) returns (ClientResponse);
+  rpc CreateClient(CreateClientRequest) returns (ActionResult);
+  rpc UpdateClient(UpdateClientRequest) returns (ActionResult);
+  rpc GetProposals(GetProposalsRequest) returns (ProposalsResponse);
+  rpc CreateProposal(CreateProposalRequest) returns (ActionResult);
+}
+
+message GetClientsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message GetClientRequest {
+  string clientId = 1;
+}
+
+message ClientResponse {
+  string id = 1;
+  string name = 2;
+  string contactInfo = 3;
+  bool portalAccess = 4;
+}
+
+message ClientsResponse {
+  repeated ClientResponse clients = 1;
+  int32 total = 2;
+}
+
+message CreateClientRequest {
+  string name = 1;
+  string contactInfo = 2;
+  bool portalAccess = 3;
+}
+
+message UpdateClientRequest {
+  string clientId = 1;
+  string name = 2;
+  string contactInfo = 3;
+  bool portalAccess = 4;
+}
+
+message GetProposalsRequest {
+  string clientId = 1;
+}
+
+message ProposalResponse {
+  string id = 1;
+  string clientId = 2;
+  string title = 3;
+  string content = 4;
+  string status = 5;
+}
+
+message ProposalsResponse {
+  repeated ProposalResponse proposals = 1;
+}
+
+message CreateProposalRequest {
+  string clientId = 1;
+  string title = 2;
+  string content = 3;
+  string status = 4;
+}
+
+// ===== Knowledge Service =====
+service KnowledgeService {
+  rpc GetWikiPages(GetWikiPagesRequest) returns (WikiPagesResponse);
+  rpc GetWikiPage(GetWikiPageRequest) returns (WikiPageResponse);
+  rpc CreateWikiPage(CreateWikiPageRequest) returns (ActionResult);
+  rpc UpdateWikiPage(UpdateWikiPageRequest) returns (ActionResult);
+  rpc GetDocuments(GetDocumentsRequest) returns (DocumentsResponse);
+  rpc CreateDocument(CreateDocumentRequest) returns (ActionResult);
+}
+
+message GetWikiPagesRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message GetWikiPageRequest {
+  string pageId = 1;
+}
+
+message WikiPageResponse {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  string parentId = 4;
+}
+
+message WikiPagesResponse {
+  repeated WikiPageResponse pages = 1;
+}
+
+message CreateWikiPageRequest {
+  string title = 1;
+  string content = 2;
+  string parentId = 3;
+}
+
+message UpdateWikiPageRequest {
+  string pageId = 1;
+  string title = 2;
+  string content = 3;
+}
+
+message GetDocumentsRequest {
+  string organizationId = 1;
+  string folderId = 2;
+}
+
+message DocumentResponse {
+  string id = 1;
+  string name = 2;
+  string url = 3;
+  int32 version = 4;
+  string metadata = 5;
+}
+
+message DocumentsResponse {
+  repeated DocumentResponse documents = 1;
+}
+
+message CreateDocumentRequest {
+  string organizationId = 1;
+  string folderId = 2;
+  string name = 3;
+  string url = 4;
+  string metadata = 5;
+}
+
+// ===== Communication Service =====
+service CommunicationService {
+  rpc GetChannels(GetChannelsRequest) returns (ChannelsResponse);
+  rpc GetMessages(GetMessagesRequest) returns (MessagesResponse);
+  rpc SendMessage(SendMessageRequest) returns (ActionResult);
+  rpc CreateChannel(CreateChannelRequest) returns (ActionResult);
+}
+
+message GetChannelsRequest {
+  string teamId = 1;
+  string projectId = 2;
+}
+
+message ChannelResponse {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string teamId = 4;
+  string projectId = 5;
+}
+
+message ChannelsResponse {
+  repeated ChannelResponse channels = 1;
+}
+
+message GetMessagesRequest {
+  string channelId = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message MessageResponse {
+  string id = 1;
+  string channelId = 2;
+  string senderId = 3;
+  string content = 4;
+  string createdAt = 5;
+}
+
+message MessagesResponse {
+  repeated MessageResponse messages = 1;
+}
+
+message SendMessageRequest {
+  string channelId = 1;
+  string senderId = 2;
+  string content = 3;
+}
+
+message CreateChannelRequest {
+  string name = 1;
+  string type = 2;
+  string teamId = 3;
+  string projectId = 4;
+}
+
+// ===== Notification Service =====
+service NotificationService {
+  rpc GetNotifications(GetNotificationsRequest) returns (NotificationsResponse);
+  rpc SendNotification(SendNotificationRequest) returns (ActionResult);
+  rpc MarkAsRead(MarkAsReadRequest) returns (ActionResult);
+}
+
+message GetNotificationsRequest {
+  string userId = 1;
+  bool unreadOnly = 2;
+}
+
+message NotificationResponse {
+  string id = 1;
+  string userId = 2;
+  string content = 3;
+  bool isRead = 4;
+  string type = 5;
+  string createdAt = 6;
+}
+
+message NotificationsResponse {
+  repeated NotificationResponse notifications = 1;
+}
+
+message SendNotificationRequest {
+  string userId = 1;
+  string content = 2;
+  string type = 3;
+}
+
+message MarkAsReadRequest {
+  string notificationId = 1;
+}
+
+// ===== Monitoring Service =====
+service MonitoringService {
+  rpc GetKPIs(GetKPIsRequest) returns (KPIsResponse);
+  rpc GetDashboards(GetDashboardsRequest) returns (DashboardsResponse);
+  rpc CreateDashboard(CreateDashboardRequest) returns (ActionResult);
+  rpc LogConversation(LogConversationRequest) returns (ActionResult);
+}
+
+message GetKPIsRequest {
+  string organizationId = 1;
+}
+
+message KPIResponse {
+  string id = 1;
+  string name = 2;
+  string formula = 3;
+  double latestValue = 4;
+}
+
+message KPIsResponse {
+  repeated KPIResponse kpis = 1;
+}
+
+message GetDashboardsRequest {
+  string userId = 1;
+}
+
+message DashboardResponse {
+  string id = 1;
+  string userId = 2;
+  string name = 3;
+  string layout = 4;
+}
+
+message DashboardsResponse {
+  repeated DashboardResponse dashboards = 1;
+}
+
+message CreateDashboardRequest {
+  string userId = 1;
+  string name = 2;
+  string layout = 3;
+}
+
+message LogConversationRequest {
+  string userId = 1;
+  string context = 2;
+  int32 tokensUsed = 3;
+}

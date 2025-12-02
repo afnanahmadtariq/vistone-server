@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package vistone.ai;
+
+// AI Engine gRPC Service - For other services to sync data
+service AIEngineService {
+  // Sync data to vector store
+  rpc SyncEntity(SyncEntityRequest) returns (SyncResponse);
+  rpc SyncBatch(SyncBatchRequest) returns (SyncResponse);
+  rpc RemoveEntity(RemoveEntityRequest) returns (SyncResponse);
+  
+  // Query AI
+  rpc Chat(ChatRequest) returns (ChatResponse);
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+message SyncEntityRequest {
+  string id = 1;
+  string type = 2; // project, task, user, team, client, document, wiki, message
+  string source = 3;
+  string organizationId = 4;
+  string content = 5;
+  map<string, string> additionalInfo = 6;
+}
+
+message SyncBatchRequest {
+  repeated SyncEntityRequest entities = 1;
+}
+
+message RemoveEntityRequest {
+  string entityId = 1;
+}
+
+message SyncResponse {
+  bool success = 1;
+  string message = 2;
+  repeated string chunkIds = 3;
+}
+
+message ChatRequest {
+  string message = 1;
+  string sessionId = 2;
+  string userId = 3;
+  string organizationId = 4;
+  bool executeActions = 5;
+}
+
+message ChatResponse {
+  string sessionId = 1;
+  string answer = 2;
+  ActionResult action = 3;
+  int32 documentsUsed = 4;
+  int32 tokensUsed = 5;
+}
+
+message ActionResult {
+  string type = 1;
+  bool executed = 2;
+  string result = 3;
+  string error = 4;
+}
+
+message SearchRequest {
+  string query = 1;
+  int32 topK = 2;
+  string organizationId = 3;
+  string type = 4;
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+}
+
+message SearchResult {
+  string content = 1;
+  float score = 2;
+  string source = 3;
+  string type = 4;
+  string entityId = 5;
+}
