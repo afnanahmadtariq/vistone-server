@@ -10,6 +10,11 @@ import {
   notificationClient,
 } from '../services/backendClient';
 
+interface Context {
+  headers: Record<string, string | string[] | undefined>;
+  token?: string;
+}
+
 const dateTimeScalar = new GraphQLScalarType({
   name: 'DateTime',
   description: 'DateTime custom scalar type',
@@ -67,6 +72,14 @@ export const resolvers = {
   Decimal: decimalScalar,
 
   Query: {
+    // Authentication
+    me: async (_: any, __: any, context: Context) => {
+      if (!context.token) {
+        throw new Error('Not authenticated');
+      }
+      return authClient.postWithAuth('/auth/me', {}, context.token);
+    },
+
     // Users & Organizations (Auth Service)
     users: () => authClient.get('/users'),
     user: (_: any, { id }: { id: string }) => authClient.getById('/users', id),
@@ -183,6 +196,28 @@ export const resolvers = {
   },
 
   Mutation: {
+    // Authentication
+    login: async (_: any, { email, password }: { email: string; password: string }) => {
+      return authClient.post('/auth/login', { email, password });
+    },
+    register: async (_: any, { name, email, password }: { name: string; email: string; password: string }) => {
+      return authClient.post('/auth/register', { name, email, password });
+    },
+    refreshToken: async (_: any, { refreshToken }: { refreshToken: string }) => {
+      return authClient.post('/auth/refresh', { refreshToken });
+    },
+    logout: async (_: any, __: any, context: Context) => {
+      if (!context.token) {
+        return true;
+      }
+      return authClient.postWithAuth('/auth/logout', {}, context.token);
+    },
+
+    // Teams - Enhanced
+    removeMember: async (_: any, { teamId, memberId }: { teamId: string; memberId: string }) => {
+      return workforceClient.post('/teams/remove-member', { teamId, memberId });
+    },
+
     // Users & Organizations (Auth Service)
     createUser: (_: any, { input }: { input: any }) => authClient.post('/users', input),
     updateUser: (_: any, { id, input }: { id: string; input: any }) => authClient.put('/users', id, input),

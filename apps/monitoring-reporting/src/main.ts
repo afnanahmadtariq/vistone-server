@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import kpiDefinitionsRouter from './routes/kpi-definitions';
 import kpiMeasurementsRouter from './routes/kpi-measurements';
 import reportTemplatesRouter from './routes/report-templates';
@@ -15,6 +16,8 @@ const port = process.env.PORT ? Number(process.env.PORT) : 3007;
 
 const app = express();
 
+// Enable CORS
+app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {

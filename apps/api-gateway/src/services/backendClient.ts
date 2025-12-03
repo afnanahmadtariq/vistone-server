@@ -28,6 +28,15 @@ class ServiceClient {
     return response.data;
   }
 
+  async postWithAuth(endpoint: string, data: any, token: string) {
+    const response = await this.client.post(endpoint, data, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    return response.data;
+  }
+
   async put(endpoint: string, id: string, data: any) {
     const response = await this.client.put(`${endpoint}/${id}`, data);
     return response.data;

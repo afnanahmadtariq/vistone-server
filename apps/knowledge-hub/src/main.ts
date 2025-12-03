@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import wikiPageRoutes from './routes/wiki-pages';
 import wikiPageVersionRoutes from './routes/wiki-page-versions';
 import documentFolderRoutes from './routes/document-folders';
@@ -11,6 +12,8 @@ const port = process.env.PORT ? Number(process.env.PORT) : 3005;
 
 const app = express();
 
+// Enable CORS
+app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {
