@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/auth-client"
+  previewFeatures = ["driverAdapters", "multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["auth"]
+}
+
+// Auth Service Schema - User & Organization Management
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  settings    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  members     OrganizationMember[]
+  roles       Role[]
+  
+  @@map("organizations")
+  @@schema("auth")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  firstName   String?
+  lastName    String?
+  password    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  organizationMemberships OrganizationMember[]
+  kycData                 KycData?
+  mfaSettings             MfaSetting?
+  activityLogs            ActivityLog[]
+  
+  @@map("users")
+  @@schema("auth")
+}
+
+model OrganizationMember {
+  id             String       @id @default(uuid())
+  organizationId String
+  userId         String
+  roleId         String?
+  
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+  role           Role?        @relation(fields: [roleId], references: [id])
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("organization_members")
+  @@schema("auth")
+}
+
+model Role {
+  id             String       @id @default(uuid())
+  organizationId String?
+  name           String
+  permissions    Json
+  isSystem       Boolean      @default(false)
+  
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  members        OrganizationMember[]
+  
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("roles")
+  @@schema("auth")
+}
+
+model KycData {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  status      String
+  documents   Json?
+  verifiedAt  DateTime?
+  
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("kyc_data")
+  @@schema("auth")
+}
+
+model MfaSetting {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  enabled     Boolean  @default(false)
+  secret      String?
+  backupCodes String[]
+  
+  user        User     @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("mfa_settings")
+  @@schema("auth")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  
+  user        User?    @relation(fields: [userId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("activity_logs")
+  @@schema("auth")
+}

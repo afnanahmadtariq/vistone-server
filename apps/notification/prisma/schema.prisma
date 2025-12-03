@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/notification-client"
+  previewFeatures = ["driverAdapters", "multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["notification"]
+}
+
+// Notification Schema
+
+model NotificationTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  content     String
+  channels    Json
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("notification_templates")
+  @@schema("notification")
+}
+
+model NotificationPreference {
+  id          String   @id @default(uuid())
+  userId      String
+  preferences Json
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("notification_preferences")
+  @@schema("notification")
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  content     String
+  isRead      Boolean  @default(false)
+  type        String?
+  
+  createdAt   DateTime @default(now())
+
+  @@map("notifications")
+  @@schema("notification")
+}

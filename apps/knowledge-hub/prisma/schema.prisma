@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/knowledge-client"
+  previewFeatures = ["driverAdapters", "multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["knowledge"]
+}
+
+// Knowledge Hub Schema - Documentation & Knowledge Management
+
+model WikiPage {
+  id          String   @id @default(uuid())
+  title       String
+  content     String?
+  parentId    String?
+  
+  parent      WikiPage? @relation("WikiHierarchy", fields: [parentId], references: [id])
+  children    WikiPage[] @relation("WikiHierarchy")
+  versions    WikiPageVersion[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("wiki_pages")
+  @@schema("knowledge")
+}
+
+model WikiPageVersion {
+  id          String   @id @default(uuid())
+  wikiPageId  String
+  content     String
+  version     Int
+  
+  wikiPage    WikiPage @relation(fields: [wikiPageId], references: [id])
+  
+  createdAt   DateTime @default(now())
+
+  @@map("wiki_page_versions")
+  @@schema("knowledge")
+}
+
+model DocumentFolder {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  parentId       String?
+  
+  parent         DocumentFolder? @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children       DocumentFolder[] @relation("FolderHierarchy")
+  documents      Document[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("document_folders")
+  @@schema("knowledge")
+}
+
+model Document {
+  id             String   @id @default(uuid())
+  organizationId String
+  folderId       String?
+  projectId      String?
+  name           String
+  url            String
+  version        Int      @default(1)
+  metadata       Json?
+  
+  folder         DocumentFolder? @relation(fields: [folderId], references: [id])
+  permissions    DocumentPermission[]
+  links          DocumentLink[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("documents")
+  @@schema("knowledge")
+}
+
+model DocumentPermission {
+  id          String   @id @default(uuid())
+  documentId  String
+  userId      String?
+  roleId      String?
+  permission  String
+  
+  document    Document @relation(fields: [documentId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("document_permissions")
+  @@schema("knowledge")
+}
+
+model DocumentLink {
+  id          String   @id @default(uuid())
+  documentId  String
+  entityType  String
+  entityId    String
+  
+  document    Document @relation(fields: [documentId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("document_links")
+  @@schema("knowledge")
+}

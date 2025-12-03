@@ -80,3 +80,33 @@ And join the Nx community:
 - [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
 - [Our Youtube channel](https://www.youtube.com/@nxdevtools)
 - [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+
+
+Steps to Seed Data
+1. Create .env file
+Copy the example and configure your database:
+
+Copy-Item .env.example .env
+
+Then edit .env with your actual PostgreSQL credentials.
+
+2. Create PostgreSQL schemas
+Run the SQL in init-schemas.sql against your database:
+
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE SCHEMA IF NOT EXISTS workforce;
+CREATE SCHEMA IF NOT EXISTS project;
+CREATE SCHEMA IF NOT EXISTS client;
+CREATE SCHEMA IF NOT EXISTS knowledge;
+CREATE SCHEMA IF NOT EXISTS communication;
+CREATE SCHEMA IF NOT EXISTS monitoring;
+CREATE SCHEMA IF NOT EXISTS notification;
+
+
+3. Push Prisma schemas and generate clients
+.\scripts\push-schemas.ps1
+4. Start all microservices
+npm run start:all
+5. Run the seed script
+npm run seed
+Would you like me to help you run these steps? What's your PostgreSQL connection string?

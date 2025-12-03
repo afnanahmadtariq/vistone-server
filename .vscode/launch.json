@@ -72,6 +72,168 @@
         "${workspaceFolder}/apps/media-server/dist/**/*.(m|c|)js",
         "!**/node_modules/**"
       ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug @vistone-server/auth-service with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "@vistone-server/auth-service"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9234"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/auth-service/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug @vistone-server/auth-service with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "@vistone-server/auth-service"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9235"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/auth-service/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug @vistone-server/project-management with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "@vistone-server/project-management"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9236"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/project-management/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug @vistone-server/knowledge-hub with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "@vistone-server/knowledge-hub"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9237"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/knowledge-hub/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug @vistone-server/communication with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "@vistone-server/communication"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9238"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/communication/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug @vistone-server/client-management with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "@vistone-server/client-management"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9239"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/client-management/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug @vistone-server/monitoring-reporting with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "@vistone-server/monitoring-reporting"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9240"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/monitoring-reporting/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug @vistone-server/notification with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "@vistone-server/notification"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9241"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/notification/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug @vistone-server/workforce-management with Nx",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "serve", "@vistone-server/workforce-management"],
+      "env": {
+        "NODE_OPTIONS": "--inspect=9242"
+      },
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**"],
+      "sourceMaps": true,
+      "outFiles": [
+        "${workspaceFolder}/apps/workforce-management/dist/**/*.(m|c|)js",
+        "!**/node_modules/**"
+      ]
     }
   ]
 }

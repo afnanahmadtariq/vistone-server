@@ -1,0 +1,26 @@
+{
+  "name": "@vistone-server/knowledge-hub-e2e",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "implicitDependencies": [
+      "@vistone-server/knowledge-hub"
+    ],
+    "targets": {
+      "e2e": {
+        "executor": "@nx/jest:jest",
+        "outputs": [
+          "{projectRoot}/test-output/jest/coverage"
+        ],
+        "options": {
+          "jestConfig": "apps/knowledge-hub-e2e/jest.config.ts",
+          "passWithNoTests": true
+        },
+        "dependsOn": [
+          "@vistone-server/knowledge-hub:build",
+          "@vistone-server/knowledge-hub:serve"
+        ]
+      }
+    }
+  }
+}

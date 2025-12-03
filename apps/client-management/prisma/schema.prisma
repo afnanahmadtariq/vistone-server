@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client-mgmt-client"
+  previewFeatures = ["driverAdapters", "multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["client"]
+}
+
+// Client Management Schema
+
+model Client {
+  id          String   @id @default(uuid())
+  name        String
+  contactInfo Json?
+  portalAccess Boolean @default(false)
+  
+  projects    ProjectClient[]
+  feedback    ClientFeedback[]
+  proposals   Proposal[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("clients")
+  @@schema("client")
+}
+
+model ProjectClient {
+  id        String   @id @default(uuid())
+  projectId String
+  clientId  String
+  
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("project_clients")
+  @@schema("client")
+}
+
+model ClientFeedback {
+  id        String   @id @default(uuid())
+  clientId  String
+  projectId String?
+  rating    Int?
+  comment   String?
+  response  String?
+  
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("client_feedback")
+  @@schema("client")
+}
+
+model Proposal {
+  id        String   @id @default(uuid())
+  clientId  String
+  title     String
+  content   String?
+  status    String
+  
+  client    Client   @relation(fields: [clientId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("proposals")
+  @@schema("client")
+}
