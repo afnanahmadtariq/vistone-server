@@ -20,6 +20,13 @@ model Project {
   startDate      DateTime?
   endDate        DateTime?
   budget         Decimal?
+  spentBudget    Decimal?
+  progress       Int      @default(0)
+  
+  clientId       String?
+  managerId      String?
+  teamIds        String[]
+
   metadata       Json?
   
   members        ProjectMember[]

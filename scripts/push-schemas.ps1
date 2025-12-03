@@ -28,7 +28,8 @@ $services = @(
     "knowledge-hub",
     "communication",
     "monitoring-reporting",
-    "notification"
+    "notification",
+    "ai-engine"
 )
 
 foreach ($service in $services) {

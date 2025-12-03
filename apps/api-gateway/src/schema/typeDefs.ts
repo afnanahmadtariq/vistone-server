@@ -20,7 +20,8 @@ export const typeDefs = gql`
 
   type AuthUser {
     id: ID!
-    name: String
+    firstName: String
+    lastName: String
     email: String!
     role: String
     avatar: String
@@ -188,10 +189,22 @@ export const typeDefs = gql`
     startDate: DateTime
     endDate: DateTime
     budget: Decimal
+    spentBudget: Decimal
+    progress: Int!
+    clientId: ID
+    managerId: ID
+    teamIds: [ID!]
+    memberIds: [ID!]
     metadata: JSON
     createdAt: DateTime!
     updatedAt: DateTime!
     deletedAt: DateTime
+
+    # Relations
+    tasks: [Task]
+    milestones: [Milestone]
+    client: Client
+    manager: User
   }
 
   type ProjectMember {
@@ -574,7 +587,7 @@ export const typeDefs = gql`
     userAvailabilityById(id: ID!): UserAvailability
 
     # Projects
-    projects: [Project!]!
+    projects(status: String, search: String): [Project!]!
     project(id: ID!): Project
     projectMembers: [ProjectMember!]!
     projectMember(id: ID!): ProjectMember

@@ -19,7 +19,21 @@ router.post('/', async (req, res) => {
 // Get all Projects
 router.get('/', async (req, res) => {
   try {
-    const projects = await prisma.project.findMany();
+    const { status, search } = req.query;
+    const where: any = {};
+    
+    if (status) {
+      where.status = status as string;
+    }
+    
+    if (search) {
+      where.OR = [
+        { name: { contains: search as string, mode: 'insensitive' } },
+        { description: { contains: search as string, mode: 'insensitive' } },
+      ];
+    }
+
+    const projects = await prisma.project.findMany({ where });
     res.json(projects);
   } catch (error) {
     console.error(error);

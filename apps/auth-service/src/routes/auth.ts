@@ -249,7 +249,8 @@ interface TeamMemberData {
 function formatAuthUser(user: UserData, teamMember: TeamMemberData | null) {
   return {
     id: user.id,
-    name: [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
+    firstName: user.firstName,
+    lastName: user.lastName,
     email: user.email,
     role: teamMember?.role || 'member',
     avatar: null, // Could be extended to support avatars

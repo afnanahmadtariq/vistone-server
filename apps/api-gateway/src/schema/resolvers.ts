@@ -107,7 +107,12 @@ export const resolvers = {
     userAvailabilityById: (_: any, { id }: { id: string }) => workforceClient.getById('/user-availability', id),
 
     // Projects (Project Service)
-    projects: () => projectClient.get('/projects'),
+    projects: (_: any, { status, search }: { status?: string; search?: string }) => {
+      const params = new URLSearchParams();
+      if (status) params.append('status', status);
+      if (search) params.append('search', search);
+      return projectClient.get(`/projects?${params.toString()}`);
+    },
     project: (_: any, { id }: { id: string }) => projectClient.getById('/projects', id),
     projectMembers: () => projectClient.get('/project-members'),
     projectMember: (_: any, { id }: { id: string }) => projectClient.getById('/project-members', id),
@@ -193,6 +198,13 @@ export const resolvers = {
     notificationPreference: (_: any, { id }: { id: string }) => notificationClient.getById('/notification-preferences', id),
     notifications: () => notificationClient.get('/notifications'),
     notification: (_: any, { id }: { id: string }) => notificationClient.getById('/notifications', id),
+  },
+
+  Project: {
+    tasks: (parent: any) => projectClient.get(`/tasks?projectId=${parent.id}`),
+    milestones: (parent: any) => projectClient.get(`/milestones?projectId=${parent.id}`),
+    client: (parent: any) => parent.clientId ? clientMgmtClient.getById('/clients', parent.clientId) : null,
+    manager: (parent: any) => parent.managerId ? authClient.getById('/users', parent.managerId) : null,
   },
 
   Mutation: {
