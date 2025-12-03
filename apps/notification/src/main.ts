@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import notificationTemplatesRouter from './routes/notification-templates';
 import notificationPreferencesRouter from './routes/notification-preferences';
 import notificationsRouter from './routes/notifications';
@@ -8,6 +9,8 @@ const port = process.env.PORT ? Number(process.env.PORT) : 3008;
 
 const app = express();
 
+// Enable CORS
+app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {

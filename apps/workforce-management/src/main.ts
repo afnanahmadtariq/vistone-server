@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import teamRoutes from './routes/teams';
 import teamMemberRoutes from './routes/team-members';
 import userSkillRoutes from './routes/user-skills';
@@ -9,6 +10,8 @@ const port = process.env.PORT ? Number(process.env.PORT) : 3002;
 
 const app = express();
 
+// Enable CORS
+app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {

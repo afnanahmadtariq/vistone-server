@@ -1,4 +1,6 @@
 import express from 'express';
+import cors from 'cors';
+import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import organizationRoutes from './routes/organizations';
 import organizationMemberRoutes from './routes/organization-members';
@@ -12,6 +14,8 @@ const port = process.env.PORT ? Number(process.env.PORT) : 3001;
 
 const app = express();
 
+// Enable CORS
+app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {
@@ -21,6 +25,9 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'auth-service', timestamp: new Date().toISOString() });
 });
+
+// Authentication routes
+app.use('/auth', authRoutes);
 
 // User & Organization routes
 app.use('/users', userRoutes);

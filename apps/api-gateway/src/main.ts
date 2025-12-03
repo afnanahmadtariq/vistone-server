@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@as-integrations/express5';
 import dotenv from 'dotenv';
@@ -13,6 +14,14 @@ const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 async function startServer() {
   const app = express();
 
+  // Enable CORS for all origins (configure as needed for production)
+  app.use(cors({
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }));
+
   app.use(express.json());
 
   const apolloServer = new ApolloServer({
@@ -25,6 +34,7 @@ async function startServer() {
   app.use('/graphql', expressMiddleware(apolloServer, {
     context: async ({ req }: { req: express.Request }) => ({
       headers: req.headers,
+      token: req.headers.authorization?.replace('Bearer ', ''),
     }),
   }));
 

@@ -5,6 +5,31 @@ export const typeDefs = gql`
   scalar JSON
   scalar Decimal
 
+  # Authentication Types
+
+  type AuthPayload {
+    accessToken: String!
+    refreshToken: String!
+    user: AuthUser!
+  }
+
+  type TokenPayload {
+    accessToken: String!
+    refreshToken: String!
+  }
+
+  type AuthUser {
+    id: ID!
+    name: String
+    email: String!
+    role: String
+    avatar: String
+    status: String
+    skills: [String]
+    teamId: ID
+    joinedAt: DateTime
+  }
+
   # 1. Core User & Organization Types
 
   type Organization {
@@ -86,8 +111,43 @@ export const typeDefs = gql`
     name: String!
     description: String
     managerId: String
+    memberCount: Int
+    assignedProjects: Int
+    tags: [String]
+    manager: TeamManager
+    members: [TeamMemberInfo]
+    ongoingProjects: [TeamProject]
+    completedProjects: [CompletedProject]
     createdAt: DateTime!
     updatedAt: DateTime!
+  }
+
+  type TeamManager {
+    id: ID!
+    name: String
+    avatar: String
+  }
+
+  type TeamMemberInfo {
+    id: ID!
+    name: String
+    role: String
+    email: String
+    status: String
+    avatar: String
+  }
+
+  type TeamProject {
+    id: ID!
+    name: String!
+    deadline: DateTime
+    status: String!
+  }
+
+  type CompletedProject {
+    id: ID!
+    name: String!
+    completedDate: DateTime
   }
 
   type TeamMember {
@@ -484,6 +544,9 @@ export const typeDefs = gql`
 
   # Query Type
   type Query {
+    # Authentication
+    me: AuthUser
+
     # Users & Organizations
     users: [User!]!
     user(id: ID!): User
@@ -603,6 +666,15 @@ export const typeDefs = gql`
 
   # Mutation Type
   type Mutation {
+    # Authentication
+    login(email: String!, password: String!): AuthPayload!
+    register(name: String!, email: String!, password: String!): AuthPayload!
+    refreshToken(refreshToken: String!): TokenPayload!
+    logout: Boolean!
+
+    # Teams - Enhanced
+    removeMember(teamId: ID!, memberId: ID!): RemoveMemberResponse!
+
     # Users & Organizations
     createUser(input: JSON!): User!
     updateUser(id: ID!, input: JSON!): User!
@@ -750,5 +822,9 @@ export const typeDefs = gql`
 
   type DeleteResponse {
     message: String!
+  }
+
+  type RemoveMemberResponse {
+    success: Boolean!
   }
 `;

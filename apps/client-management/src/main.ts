@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import clientRoutes from './routes/clients';
 import projectClientRoutes from './routes/project-clients';
 import clientFeedbackRoutes from './routes/client-feedback';
@@ -9,6 +10,8 @@ const port = process.env.PORT ? Number(process.env.PORT) : 3004;
 
 const app = express();
 
+// Enable CORS
+app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {

@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import chatChannelRoutes from './routes/chat-channels';
 import channelMemberRoutes from './routes/channel-members';
 import chatMessageRoutes from './routes/chat-messages';
@@ -11,6 +12,8 @@ const port = process.env.PORT ? Number(process.env.PORT) : 3006;
 
 const app = express();
 
+// Enable CORS
+app.use(cors());
 app.use(express.json());
 
 app.get('/', (req, res) => {
