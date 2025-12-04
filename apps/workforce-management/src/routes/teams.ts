@@ -75,7 +75,16 @@ router.post('/', async (req, res) => {
 // Get all Teams
 router.get('/', async (req, res) => {
   try {
+    const { organizationId } = req.query;
+    const where: any = {};
+    
+    // Filter by organizationId if provided
+    if (organizationId) {
+      where.organizationId = organizationId as string;
+    }
+    
     const teams = await prisma.team.findMany({
+      where,
       include: {
         members: true,
       },

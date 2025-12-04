@@ -1,0 +1,111 @@
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../../../node_modules/.prisma/ai-engine-client"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+  schemas    = ["ai_engine"]
+}
+
+// AI Engine Schema - RAG & Vector Storage
+
+/// Stores metadata about documents/entities that have been indexed for RAG
+model RagDocument {
+  id             String   @id @default(uuid())
+  organizationId String   // Ensures data isolation per organization
+  
+  // Source reference
+  sourceSchema   String   // e.g., "project", "knowledge", "client", "workforce", "auth"
+  sourceTable    String   // e.g., "projects", "tasks", "wiki_pages", "documents"
+  sourceId       String   // ID of the original record
+  
+  // Document metadata
+  title          String
+  content        String   // Raw text content
+  contentType    String   // e.g., "project", "task", "wiki", "document", "team", "user"
+  metadata       Json?    // Additional context like status, dates, etc.
+  
+  // Sync tracking
+  lastSyncedAt   DateTime @default(now())
+  contentHash    String?  // To detect content changes
+  
+  embeddings     RagEmbedding[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sourceSchema, sourceTable, sourceId])
+  @@index([organizationId])
+  @@index([organizationId, contentType])
+  @@map("rag_documents")
+  @@schema("ai_engine")
+}
+
+/// Stores vector embeddings for semantic search
+model RagEmbedding {
+  id          String                       @id @default(uuid())
+  documentId  String
+  chunkIndex  Int                          @default(0)    // For documents split into chunks
+  chunkText   String                       // The text chunk that was embedded
+  embedding   Unsupported("vector(1024)")? // Mistral embedding dimension is 1024
+  
+  document    RagDocument                  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime                     @default(now())
+
+  @@index([documentId])
+  @@map("rag_embeddings")
+  @@schema("ai_engine")
+}
+
+/// Stores chat/conversation history per user for context
+model ConversationHistory {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  sessionId      String   // Groups messages in a conversation session
+  
+  role           String   // "user" or "assistant"
+  content        String
+  metadata       Json?    // Stores sources/citations used in response
+  
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, userId])
+  @@index([sessionId])
+  @@map("conversation_history")
+  @@schema("ai_engine")
+}
+
+/// Caches system prompts and allowed query patterns
+model SystemPromptTemplate {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  template    String
+  category    String   // e.g., "project_query", "task_query", "general"
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_prompt_templates")
+  @@schema("ai_engine")
+}
+
+/// Tracks what data types the RAG system is allowed to access
+model RagAccessControl {
+  id             String   @id @default(uuid())
+  organizationId String?  // null means global default
+  contentType    String   // e.g., "project", "task", "wiki"
+  isEnabled      Boolean  @default(true)
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, contentType])
+  @@map("rag_access_control")
+  @@schema("ai_engine")
+}

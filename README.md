@@ -104,9 +104,59 @@ CREATE SCHEMA IF NOT EXISTS notification;
 
 
 3. Push Prisma schemas and generate clients
-.\scripts\push-schemas.ps1
-4. Start all microservices
-npm run start:all
+
+```sh
+npm run db:sync
+```
+
+4. Start all microservices (Development)
+
+```sh
+npm run dev
+```
+
 5. Run the seed script
+
+```sh
 npm run seed
+```
+
+## Database & Prisma Commands
+
+### Development Mode
+When running in development, the `npm run dev` command automatically:
+- Pushes all Prisma schemas to the database
+- Generates all Prisma clients
+- Starts all microservices in development mode
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Sync database + start all services (development) |
+| `npm run prod` | Generate clients + start all services (production) |
+| `npm run db:sync` | Push schemas to DB + generate clients |
+| `npm run db:push` | Push schemas to database only |
+| `npm run prisma:generate` | Generate all Prisma clients |
+| `npm run prisma:validate` | Validate all Prisma schemas |
+| `npm run seed` | Run seed script |
+
+### Individual Service Commands
+
+```sh
+# Run prisma generate for a specific service
+nx run @vistone-server/auth-service:prisma:generate
+
+# Push schema for a specific service
+nx run @vistone-server/auth-service:prisma:push
+
+# Serve a specific service
+nx run @vistone-server/auth-service:serve
+```
+
+### Production Notes
+- In production, `db:push` is disabled to prevent accidental schema changes
+- Use proper migrations for production database changes
+- The `npm run prod` command only generates clients, it doesn't modify the database
+
 Would you like me to help you run these steps? What's your PostgreSQL connection string?

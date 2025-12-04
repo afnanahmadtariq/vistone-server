@@ -74,6 +74,17 @@
     },
     "test": {
       "dependsOn": ["^build"]
+    },
+    "prisma:generate": {
+      "cache": true,
+      "inputs": ["{projectRoot}/prisma/schema.prisma"]
+    },
+    "prisma:push": {
+      "cache": false,
+      "dependsOn": ["prisma:generate"]
+    },
+    "serve": {
+      "dependsOn": ["prisma:generate"]
     }
   }
 }

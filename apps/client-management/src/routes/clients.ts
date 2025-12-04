@@ -19,7 +19,15 @@ router.post('/', async (req, res) => {
 // Get all Clients
 router.get('/', async (req, res) => {
   try {
-    const clients = await prisma.client.findMany();
+    const { organizationId } = req.query;
+    const where: any = {};
+    
+    // Filter by organizationId if provided
+    if (organizationId) {
+      where.organizationId = organizationId as string;
+    }
+    
+    const clients = await prisma.client.findMany({ where });
     res.json(clients);
   } catch (error) {
     console.error(error);

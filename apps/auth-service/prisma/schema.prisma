@@ -1,7 +1,6 @@
 generator client {
   provider = "prisma-client-js"
   output   = "../../../node_modules/.prisma/auth-client"
-  previewFeatures = ["driverAdapters", "multiSchema"]
 }
 
 datasource db {
@@ -33,6 +32,8 @@ model User {
   firstName   String?
   lastName    String?
   password    String?
+  googleId    String?  @unique
+  avatarUrl   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   deletedAt   DateTime?

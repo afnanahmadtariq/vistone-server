@@ -19,7 +19,12 @@ router.post('/', async (req, res) => {
 // Get all Tasks
 router.get('/', async (req, res) => {
   try {
-    const tasks = await prisma.task.findMany();
+    const { projectId } = req.query;
+    const where: any = {};
+    if (projectId) {
+      where.projectId = projectId as string;
+    }
+    const tasks = await prisma.task.findMany({ where });
     res.json(tasks);
   } catch (error) {
     console.error(error);

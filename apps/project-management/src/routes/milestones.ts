@@ -19,7 +19,12 @@ router.post('/', async (req, res) => {
 // Get all Milestones
 router.get('/', async (req, res) => {
   try {
-    const milestones = await prisma.milestone.findMany();
+    const { projectId } = req.query;
+    const where: any = {};
+    if (projectId) {
+      where.projectId = projectId as string;
+    }
+    const milestones = await prisma.milestone.findMany({ where });
     res.json(milestones);
   } catch (error) {
     console.error(error);

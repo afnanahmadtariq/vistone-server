@@ -75,11 +75,30 @@
         ],
         "executor": "nx:noop"
       },
+      "prisma:generate": {
+        "executor": "nx:run-commands",
+        "cache": true,
+        "inputs": ["{projectRoot}/prisma/schema.prisma"],
+        "outputs": ["{workspaceRoot}/node_modules/.prisma/ai-engine-client"],
+        "options": {
+          "command": "npx prisma generate --config=apps/ai-engine/prisma.config.ts",
+          "cwd": "{workspaceRoot}"
+        }
+      },
+      "prisma:push": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "options": {
+          "command": "npx prisma db push --config=apps/ai-engine/prisma.config.ts --accept-data-loss",
+          "cwd": "{workspaceRoot}"
+        }
+      },
       "serve": {
         "continuous": true,
         "executor": "@nx/js:node",
         "defaultConfiguration": "development",
         "dependsOn": [
+          "prisma:generate",
           "build"
         ],
         "options": {
@@ -106,6 +125,7 @@
     "fastify": "~5.2.1",
     "fastify-plugin": "~5.0.1",
     "@fastify/autoload": "~6.0.3",
-    "@fastify/sensible": "~6.0.2"
+    "@fastify/sensible": "~6.0.2",
+    "@fastify/cors": "~10.0.2"
   }
 }

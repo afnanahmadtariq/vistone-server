@@ -6,8 +6,38 @@ const router = Router();
 // Create Project
 router.post('/', async (req, res) => {
   try {
+    const {
+      organizationId,
+      name,
+      description,
+      status,
+      startDate,
+      endDate,
+      budget,
+      spentBudget,
+      progress,
+      clientId,
+      managerId,
+      teamIds,
+      metadata,
+    } = req.body;
+
     const project = await prisma.project.create({
-      data: req.body,
+      data: {
+        organizationId,
+        name,
+        description,
+        status,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        budget,
+        spentBudget,
+        progress: progress ?? 0,
+        clientId,
+        managerId,
+        teamIds: teamIds ?? [],
+        metadata,
+      },
     });
     res.json(project);
   } catch (error) {
@@ -19,7 +49,26 @@ router.post('/', async (req, res) => {
 // Get all Projects
 router.get('/', async (req, res) => {
   try {
-    const projects = await prisma.project.findMany();
+    const { status, search, organizationId } = req.query;
+    const where: any = {};
+    
+    // Filter by organizationId if provided
+    if (organizationId) {
+      where.organizationId = organizationId as string;
+    }
+    
+    if (status) {
+      where.status = status as string;
+    }
+    
+    if (search) {
+      where.OR = [
+        { name: { contains: search as string, mode: 'insensitive' } },
+        { description: { contains: search as string, mode: 'insensitive' } },
+      ];
+    }
+
+    const projects = await prisma.project.findMany({ where });
     res.json(projects);
   } catch (error) {
     console.error(error);

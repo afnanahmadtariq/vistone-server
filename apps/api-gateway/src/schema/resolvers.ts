@@ -9,8 +9,9 @@ import {
   monitoringClient,
   notificationClient,
 } from '../services/backendClient';
+import { requireAuth, requireAdmin, AuthContext } from '../lib/auth';
 
-interface Context {
+interface Context extends AuthContext {
   headers: Record<string, string | string[] | undefined>;
   token?: string;
 }
@@ -66,6 +67,64 @@ const decimalScalar = new GraphQLScalarType({
   },
 });
 
+// Helper function to enrich user with workforce data
+async function enrichUserWithWorkforceData(user: any): Promise<any> {
+  if (!user) return null;
+  
+  try {
+    // Get team membership for this user
+    const teamMembers = await workforceClient.get(`/team-members?userId=${user.id}`);
+    const teamMember = Array.isArray(teamMembers) ? teamMembers[0] : null;
+    
+    // Get skills for this user
+    const userSkills = await workforceClient.get(`/user-skills?userId=${user.id}`);
+    const skills = Array.isArray(userSkills) ? userSkills.map((s: any) => s.skillName) : [];
+    
+    return {
+      ...user,
+      role: teamMember?.role || null,
+      teamId: teamMember?.teamId || null,
+      joinedAt: teamMember?.createdAt || user.createdAt,
+      skills,
+      avatar: null,
+      status: 'active',
+    };
+  } catch {
+    // If workforce service is unavailable, return user with default enriched fields
+    return {
+      ...user,
+      role: null,
+      teamId: null,
+      joinedAt: user.createdAt,
+      skills: [],
+      avatar: null,
+      status: 'active',
+    };
+  }
+}
+
+// Cache for enriched users to avoid repeated calls during a single request
+const userCache = new Map<string, any>();
+
+// Helper to get enriched user by ID (with caching)
+async function getEnrichedUser(userId: string): Promise<any> {
+  if (userCache.has(userId)) {
+    return userCache.get(userId);
+  }
+  
+  try {
+    const user = await authClient.getById('/users', userId);
+    const enrichedUser = await enrichUserWithWorkforceData(user);
+    userCache.set(userId, enrichedUser);
+    return enrichedUser;
+  } catch {
+    return null;
+  }
+}
+
+// Clear cache periodically (simple approach)
+setInterval(() => userCache.clear(), 60000); // Clear every minute
+
 export const resolvers = {
   DateTime: dateTimeScalar,
   JSON: jsonScalar,
@@ -81,8 +140,24 @@ export const resolvers = {
     },
 
     // Users & Organizations (Auth Service)
-    users: () => authClient.get('/users'),
-    user: (_: any, { id }: { id: string }) => authClient.getById('/users', id),
+    users: async (_: any, { organizationId }: { organizationId?: string }) => {
+      const users = await authClient.get('/users');
+      let filteredUsers = users;
+      
+      // If organizationId is provided, filter users by organization membership
+      if (organizationId) {
+        // Get organization members for this organization
+        const members = await authClient.get(`/organization-members?organizationId=${organizationId}`);
+        const memberUserIds = new Set(members.map((m: any) => m.userId));
+        filteredUsers = users.filter((user: any) => memberUserIds.has(user.id));
+      }
+      
+      return Promise.all(filteredUsers.map(enrichUserWithWorkforceData));
+    },
+    user: async (_: any, { id }: { id: string }) => {
+      const user = await authClient.getById('/users', id);
+      return enrichUserWithWorkforceData(user);
+    },
     organizations: () => authClient.get('/organizations'),
     organization: (_: any, { id }: { id: string }) => authClient.getById('/organizations', id),
     organizationMembers: () => authClient.get('/organization-members'),
@@ -97,7 +172,11 @@ export const resolvers = {
     activityLog: (_: any, { id }: { id: string }) => authClient.getById('/activity-logs', id),
 
     // Teams (Workforce Service)
-    teams: () => workforceClient.get('/teams'),
+    teams: (_: any, { organizationId }: { organizationId?: string }) => {
+      const params = new URLSearchParams();
+      if (organizationId) params.append('organizationId', organizationId);
+      return workforceClient.get(`/teams?${params.toString()}`);
+    },
     team: (_: any, { id }: { id: string }) => workforceClient.getById('/teams', id),
     teamMembers: () => workforceClient.get('/team-members'),
     teamMember: (_: any, { id }: { id: string }) => workforceClient.getById('/team-members', id),
@@ -107,7 +186,13 @@ export const resolvers = {
     userAvailabilityById: (_: any, { id }: { id: string }) => workforceClient.getById('/user-availability', id),
 
     // Projects (Project Service)
-    projects: () => projectClient.get('/projects'),
+    projects: (_: any, { status, search, organizationId }: { status?: string; search?: string; organizationId?: string }) => {
+      const params = new URLSearchParams();
+      if (status) params.append('status', status);
+      if (search) params.append('search', search);
+      if (organizationId) params.append('organizationId', organizationId);
+      return projectClient.get(`/projects?${params.toString()}`);
+    },
     project: (_: any, { id }: { id: string }) => projectClient.getById('/projects', id),
     projectMembers: () => projectClient.get('/project-members'),
     projectMember: (_: any, { id }: { id: string }) => projectClient.getById('/project-members', id),
@@ -125,7 +210,11 @@ export const resolvers = {
     aiInsight: (_: any, { id }: { id: string }) => projectClient.getById('/ai-insights', id),
 
     // Clients (Client Management Service)
-    clients: () => clientMgmtClient.get('/clients'),
+    clients: (_: any, { organizationId }: { organizationId?: string }) => {
+      const params = new URLSearchParams();
+      if (organizationId) params.append('organizationId', organizationId);
+      return clientMgmtClient.get(`/clients?${params.toString()}`);
+    },
     client: (_: any, { id }: { id: string }) => clientMgmtClient.getById('/clients', id),
     projectClients: () => clientMgmtClient.get('/project-clients'),
     projectClient: (_: any, { id }: { id: string }) => clientMgmtClient.getById('/project-clients', id),
@@ -195,13 +284,58 @@ export const resolvers = {
     notification: (_: any, { id }: { id: string }) => notificationClient.getById('/notifications', id),
   },
 
+  Project: {
+    tasks: async (parent: any) => {
+      try {
+        return await projectClient.get(`/tasks?projectId=${parent.id}`);
+      } catch {
+        return [];
+      }
+    },
+    milestones: async (parent: any) => {
+      try {
+        return await projectClient.get(`/milestones?projectId=${parent.id}`);
+      } catch {
+        return [];
+      }
+    },
+    client: async (parent: any) => {
+      if (!parent.clientId) return null;
+      try {
+        return await clientMgmtClient.getById('/clients', parent.clientId);
+      } catch {
+        return null;
+      }
+    },
+    manager: async (parent: any) => {
+      if (!parent.managerId) return null;
+      return getEnrichedUser(parent.managerId);
+    },
+  },
+
+  // User resolver to handle enrichment for any User type returned
+  User: {
+    role: (parent: any) => parent.role ?? null,
+    avatar: (parent: any) => parent.avatar ?? null,
+    status: (parent: any) => parent.status ?? 'active',
+    skills: (parent: any) => parent.skills ?? [],
+    teamId: (parent: any) => parent.teamId ?? null,
+    joinedAt: (parent: any) => parent.joinedAt ?? parent.createdAt,
+  },
+
   Mutation: {
     // Authentication
     login: async (_: any, { email, password }: { email: string; password: string }) => {
       return authClient.post('/auth/login', { email, password });
     },
-    register: async (_: any, { name, email, password }: { name: string; email: string; password: string }) => {
-      return authClient.post('/auth/register', { name, email, password });
+    register: async (_: any, { name, email, password, organizationName }: { name: string; email: string; password: string; organizationName?: string }) => {
+      return authClient.post('/auth/register', { name, email, password, organizationName });
+    },
+    googleLogin: async (_: any, { idToken }: { idToken: string }) => {
+      return authClient.post('/auth/google', { idToken });
+    },
+    googleSignup: async (_: any, { idToken }: { idToken: string }) => {
+      return authClient.post('/auth/google', { idToken });
     },
     refreshToken: async (_: any, { refreshToken }: { refreshToken: string }) => {
       return authClient.post('/auth/refresh', { refreshToken });
@@ -219,7 +353,17 @@ export const resolvers = {
     },
 
     // Users & Organizations (Auth Service)
-    createUser: (_: any, { input }: { input: any }) => authClient.post('/users', input),
+    createUser: async (_: any, { input }: { input: any }, context: Context) => {
+      // Only Admins can create users
+      const currentUser = await requireAdmin(context);
+      
+      // Auto-assign organizationId from current user if not provided
+      if (!input.organizationId && currentUser.organizationId) {
+        input.organizationId = currentUser.organizationId;
+      }
+      
+      return authClient.post('/users', input);
+    },
     updateUser: (_: any, { id, input }: { id: string; input: any }) => authClient.put('/users', id, input),
     deleteUser: (_: any, { id }: { id: string }) => authClient.delete('/users', id),
     createOrganization: (_: any, { input }: { input: any }) => authClient.post('/organizations', input),
@@ -240,7 +384,16 @@ export const resolvers = {
     createActivityLog: (_: any, { input }: { input: any }) => authClient.post('/activity-logs', input),
 
     // Teams (Workforce Service)
-    createTeam: (_: any, { input }: { input: any }) => workforceClient.post('/teams', input),
+    createTeam: async (_: any, { input }: { input: any }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      
+      // Auto-assign organizationId from current user if not provided
+      if (!input.organizationId && currentUser.organizationId) {
+        input.organizationId = currentUser.organizationId;
+      }
+      
+      return workforceClient.post('/teams', input);
+    },
     updateTeam: (_: any, { id, input }: { id: string; input: any }) => workforceClient.put('/teams', id, input),
     deleteTeam: (_: any, { id }: { id: string }) => workforceClient.delete('/teams', id),
     createTeamMember: (_: any, { input }: { input: any }) => workforceClient.post('/team-members', input),
@@ -254,8 +407,89 @@ export const resolvers = {
     deleteUserAvailability: (_: any, { id }: { id: string }) => workforceClient.delete('/user-availability', id),
 
     // Projects (Project Service)
-    createProject: (_: any, { input }: { input: any }) => projectClient.post('/projects', input),
-    updateProject: (_: any, { id, input }: { id: string; input: any }) => projectClient.put('/projects', id, input),
+    createProject: async (_: any, { input }: { input: any }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      
+      // Auto-assign organizationId from current user if not provided
+      const organizationId = input.organizationId || currentUser.organizationId;
+      
+      if (!organizationId) {
+        throw new Error('Organization ID is required');
+      }
+      
+      // Transform input to match Prisma schema
+      const projectData: any = {
+        organizationId,
+        name: input.name,
+        description: input.description || null,
+        status: input.status,
+        startDate: input.startDate ? new Date(input.startDate) : null,
+        endDate: input.endDate ? new Date(input.endDate) : null,
+        clientId: input.clientId || null,
+        managerId: input.managerId || null,
+        teamIds: input.teamId ? [input.teamId] : [],
+        progress: 0,
+        metadata: {
+          type: input.type || 'general',
+          visibility: input.visibility || 'private',
+          notifyTeam: input.notifyTeam ?? false,
+          notifyClient: input.notifyClient ?? false,
+        },
+      };
+
+      const project = await projectClient.post('/projects', projectData);
+
+      // Add contributors as project members if provided
+      if (input.contributors && input.contributors.length > 0) {
+        for (const userId of input.contributors) {
+          try {
+            await projectClient.post('/project-members', {
+              projectId: project.id,
+              userId,
+              role: 'contributor',
+            });
+          } catch (error) {
+            console.error(`Failed to add contributor ${userId}:`, error);
+          }
+        }
+      }
+
+      return project;
+    },
+    updateProject: async (_: any, { id, input }: { id: string; input: any }) => {
+      // Transform input to match Prisma schema
+      const projectData: any = {};
+      
+      if (input.name !== undefined) projectData.name = input.name;
+      if (input.description !== undefined) projectData.description = input.description;
+      if (input.status !== undefined) projectData.status = input.status;
+      if (input.startDate !== undefined) projectData.startDate = input.startDate ? new Date(input.startDate) : null;
+      if (input.endDate !== undefined) projectData.endDate = input.endDate ? new Date(input.endDate) : null;
+      if (input.clientId !== undefined) projectData.clientId = input.clientId;
+      if (input.managerId !== undefined) projectData.managerId = input.managerId;
+      if (input.teamId !== undefined) projectData.teamIds = input.teamId ? [input.teamId] : [];
+      if (input.progress !== undefined) projectData.progress = input.progress;
+      if (input.budget !== undefined) projectData.budget = input.budget;
+      if (input.spentBudget !== undefined) projectData.spentBudget = input.spentBudget;
+      
+      // Handle metadata fields
+      if (input.type !== undefined || input.visibility !== undefined || 
+          input.notifyTeam !== undefined || input.notifyClient !== undefined) {
+        // First get existing project to preserve other metadata
+        const existingProject = await projectClient.getById('/projects', id);
+        const existingMetadata = existingProject?.metadata || {};
+        
+        projectData.metadata = {
+          ...existingMetadata,
+          ...(input.type !== undefined && { type: input.type }),
+          ...(input.visibility !== undefined && { visibility: input.visibility }),
+          ...(input.notifyTeam !== undefined && { notifyTeam: input.notifyTeam }),
+          ...(input.notifyClient !== undefined && { notifyClient: input.notifyClient }),
+        };
+      }
+
+      return projectClient.put('/projects', id, projectData);
+    },
     deleteProject: (_: any, { id }: { id: string }) => projectClient.delete('/projects', id),
     createProjectMember: (_: any, { input }: { input: any }) => projectClient.post('/project-members', input),
     updateProjectMember: (_: any, { id, input }: { id: string; input: any }) => projectClient.put('/project-members', id, input),
@@ -278,7 +512,16 @@ export const resolvers = {
     createAiInsight: (_: any, { input }: { input: any }) => projectClient.post('/ai-insights', input),
 
     // Clients (Client Management Service)
-    createClient: (_: any, { input }: { input: any }) => clientMgmtClient.post('/clients', input),
+    createClient: async (_: any, { input }: { input: any }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      
+      // Auto-assign organizationId from current user if not provided
+      if (!input.organizationId && currentUser.organizationId) {
+        input.organizationId = currentUser.organizationId;
+      }
+      
+      return clientMgmtClient.post('/clients', input);
+    },
     updateClient: (_: any, { id, input }: { id: string; input: any }) => clientMgmtClient.put('/clients', id, input),
     deleteClient: (_: any, { id }: { id: string }) => clientMgmtClient.delete('/clients', id),
     createProjectClient: (_: any, { input }: { input: any }) => clientMgmtClient.post('/project-clients', input),
