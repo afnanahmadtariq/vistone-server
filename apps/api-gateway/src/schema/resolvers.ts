@@ -66,6 +66,64 @@ const decimalScalar = new GraphQLScalarType({
   },
 });
 
+// Helper function to enrich user with workforce data
+async function enrichUserWithWorkforceData(user: any): Promise<any> {
+  if (!user) return null;
+  
+  try {
+    // Get team membership for this user
+    const teamMembers = await workforceClient.get(`/team-members?userId=${user.id}`);
+    const teamMember = Array.isArray(teamMembers) ? teamMembers[0] : null;
+    
+    // Get skills for this user
+    const userSkills = await workforceClient.get(`/user-skills?userId=${user.id}`);
+    const skills = Array.isArray(userSkills) ? userSkills.map((s: any) => s.skillName) : [];
+    
+    return {
+      ...user,
+      role: teamMember?.role || null,
+      teamId: teamMember?.teamId || null,
+      joinedAt: teamMember?.createdAt || user.createdAt,
+      skills,
+      avatar: null,
+      status: 'active',
+    };
+  } catch {
+    // If workforce service is unavailable, return user with default enriched fields
+    return {
+      ...user,
+      role: null,
+      teamId: null,
+      joinedAt: user.createdAt,
+      skills: [],
+      avatar: null,
+      status: 'active',
+    };
+  }
+}
+
+// Cache for enriched users to avoid repeated calls during a single request
+const userCache = new Map<string, any>();
+
+// Helper to get enriched user by ID (with caching)
+async function getEnrichedUser(userId: string): Promise<any> {
+  if (userCache.has(userId)) {
+    return userCache.get(userId);
+  }
+  
+  try {
+    const user = await authClient.getById('/users', userId);
+    const enrichedUser = await enrichUserWithWorkforceData(user);
+    userCache.set(userId, enrichedUser);
+    return enrichedUser;
+  } catch {
+    return null;
+  }
+}
+
+// Clear cache periodically (simple approach)
+setInterval(() => userCache.clear(), 60000); // Clear every minute
+
 export const resolvers = {
   DateTime: dateTimeScalar,
   JSON: jsonScalar,
@@ -81,8 +139,14 @@ export const resolvers = {
     },
 
     // Users & Organizations (Auth Service)
-    users: () => authClient.get('/users'),
-    user: (_: any, { id }: { id: string }) => authClient.getById('/users', id),
+    users: async () => {
+      const users = await authClient.get('/users');
+      return Promise.all(users.map(enrichUserWithWorkforceData));
+    },
+    user: async (_: any, { id }: { id: string }) => {
+      const user = await authClient.getById('/users', id);
+      return enrichUserWithWorkforceData(user);
+    },
     organizations: () => authClient.get('/organizations'),
     organization: (_: any, { id }: { id: string }) => authClient.getById('/organizations', id),
     organizationMembers: () => authClient.get('/organization-members'),
@@ -201,10 +265,42 @@ export const resolvers = {
   },
 
   Project: {
-    tasks: (parent: any) => projectClient.get(`/tasks?projectId=${parent.id}`),
-    milestones: (parent: any) => projectClient.get(`/milestones?projectId=${parent.id}`),
-    client: (parent: any) => parent.clientId ? clientMgmtClient.getById('/clients', parent.clientId) : null,
-    manager: (parent: any) => parent.managerId ? authClient.getById('/users', parent.managerId) : null,
+    tasks: async (parent: any) => {
+      try {
+        return await projectClient.get(`/tasks?projectId=${parent.id}`);
+      } catch {
+        return [];
+      }
+    },
+    milestones: async (parent: any) => {
+      try {
+        return await projectClient.get(`/milestones?projectId=${parent.id}`);
+      } catch {
+        return [];
+      }
+    },
+    client: async (parent: any) => {
+      if (!parent.clientId) return null;
+      try {
+        return await clientMgmtClient.getById('/clients', parent.clientId);
+      } catch {
+        return null;
+      }
+    },
+    manager: async (parent: any) => {
+      if (!parent.managerId) return null;
+      return getEnrichedUser(parent.managerId);
+    },
+  },
+
+  // User resolver to handle enrichment for any User type returned
+  User: {
+    role: (parent: any) => parent.role ?? null,
+    avatar: (parent: any) => parent.avatar ?? null,
+    status: (parent: any) => parent.status ?? 'active',
+    skills: (parent: any) => parent.skills ?? [],
+    teamId: (parent: any) => parent.teamId ?? null,
+    joinedAt: (parent: any) => parent.joinedAt ?? parent.createdAt,
   },
 
   Mutation: {

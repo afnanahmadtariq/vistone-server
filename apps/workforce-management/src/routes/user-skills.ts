@@ -19,7 +19,12 @@ router.post('/', async (req, res) => {
 // Get all User Skills
 router.get('/', async (req, res) => {
   try {
-    const userSkills = await prisma.userSkill.findMany();
+    const { userId } = req.query;
+    const where: any = {};
+    
+    if (userId) where.userId = userId as string;
+    
+    const userSkills = await prisma.userSkill.findMany({ where });
     res.json(userSkills);
   } catch (error) {
     console.error(error);

@@ -48,6 +48,12 @@ export const typeDefs = gql`
     email: String!
     firstName: String
     lastName: String
+    role: String
+    avatar: String
+    status: String
+    skills: [String]
+    teamId: ID
+    joinedAt: DateTime
     createdAt: DateTime!
     updatedAt: DateTime!
     deletedAt: DateTime
@@ -193,8 +199,7 @@ export const typeDefs = gql`
     progress: Int!
     clientId: ID
     managerId: ID
-    teamIds: [ID!]
-    memberIds: [ID!]
+    teamIds: [String!]
     metadata: JSON
     createdAt: DateTime!
     updatedAt: DateTime!

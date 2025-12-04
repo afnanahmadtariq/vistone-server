@@ -19,7 +19,13 @@ router.post('/', async (req, res) => {
 // Get all Team Members
 router.get('/', async (req, res) => {
   try {
-    const teamMembers = await prisma.teamMember.findMany();
+    const { userId, teamId } = req.query;
+    const where: any = {};
+    
+    if (userId) where.userId = userId as string;
+    if (teamId) where.teamId = teamId as string;
+    
+    const teamMembers = await prisma.teamMember.findMany({ where });
     res.json(teamMembers);
   } catch (error) {
     console.error(error);
