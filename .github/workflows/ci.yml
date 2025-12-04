@@ -89,7 +89,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ai-engine
-          path: .
+          path: ./deploy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install production dependencies
+        working-directory: ./deploy
+        run: npm install fastify @fastify/cors @fastify/autoload @fastify/sensible fastify-plugin @prisma/client @prisma/adapter-pg pg dotenv uuid axios @langchain/core @langchain/mistralai langchain --omit=dev
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -103,7 +112,7 @@ jobs:
         with:
           app-name: 'ai-service'
           slot-name: 'Production'
-          package: .
+          package: ./deploy
 
   deploy-auth-service:
     runs-on: ubuntu-latest
@@ -118,7 +127,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: auth-service
-          path: .
+          path: ./deploy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install production dependencies
+        working-directory: ./deploy
+        run: npm install express cors @prisma/client @prisma/adapter-pg pg dotenv jsonwebtoken google-auth-library --omit=dev
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -132,7 +150,7 @@ jobs:
         with:
           app-name: 'vistone-auth-service'
           slot-name: 'Production'
-          package: .
+          package: ./deploy
 
   deploy-project-management:
     runs-on: ubuntu-latest
@@ -147,7 +165,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: project-management
-          path: .
+          path: ./deploy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install production dependencies
+        working-directory: ./deploy
+        run: npm install express cors @prisma/client @prisma/adapter-pg pg dotenv --omit=dev
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -161,7 +188,7 @@ jobs:
         with:
           app-name: 'vistone-project'
           slot-name: 'Production'
-          package: .
+          package: ./deploy
 
   deploy-workforce-management:
     runs-on: ubuntu-latest
@@ -176,7 +203,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: workforce-management
-          path: .
+          path: ./deploy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install production dependencies
+        working-directory: ./deploy
+        run: npm install express cors @prisma/client @prisma/adapter-pg pg dotenv --omit=dev
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -190,7 +226,7 @@ jobs:
         with:
           app-name: 'workforce'
           slot-name: 'Production'
-          package: .
+          package: ./deploy
 
   deploy-api-gateway:
     runs-on: ubuntu-latest
@@ -205,7 +241,16 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: api-gateway
-          path: .
+          path: ./deploy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install production dependencies
+        working-directory: ./deploy
+        run: npm install express cors graphql graphql-tag @apollo/server @as-integrations/express5 dotenv --omit=dev
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -219,4 +264,4 @@ jobs:
         with:
           app-name: 'vistone-api-gateway'
           slot-name: 'Production'
-          package: .
+          package: ./deploy
