@@ -59,13 +59,16 @@ async function startServer() {
     token: req.headers.authorization?.replace('Bearer ', ''),
   });
 
-  // Mount GraphQL at both / and /graphql for flexibility
-  app.use('/', expressMiddleware(apolloServer, { context: apolloContext }));
-  app.use('/graphql', expressMiddleware(apolloServer, { context: apolloContext }));
-
+  // Health check endpoint (must be before GraphQL middleware)
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
+
+  // Mount GraphQL at /graphql
+  app.use('/graphql', expressMiddleware(apolloServer, { context: apolloContext }));
+
+  // Also mount at root for clients that use / as GraphQL endpoint
+  app.use('/', expressMiddleware(apolloServer, { context: apolloContext }));
 
   app.listen(port, host, () => {
     console.log(`[ ready ] API Gateway running at http://${host}:${port}`);
