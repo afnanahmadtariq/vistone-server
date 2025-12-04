@@ -3,11 +3,35 @@ import prisma from '../lib/prisma';
 
 const router = Router();
 
+// Helper function to generate a URL-friendly slug from name
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '') // Remove special characters
+    .replace(/\s+/g, '-')      // Replace spaces with hyphens
+    .replace(/-+/g, '-');      // Replace multiple hyphens with single hyphen
+}
+
 // Create Organization
 router.post('/', async (req, res) => {
   try {
+    const { name, slug, settings } = req.body;
+
+    if (!name) {
+      res.status(400).json({ error: 'Name is required' });
+      return;
+    }
+
+    // Generate slug from name if not provided
+    const organizationSlug = slug || generateSlug(name);
+
     const organization = await prisma.organization.create({
-      data: req.body,
+      data: {
+        name,
+        slug: organizationSlug,
+        settings,
+      },
     });
     res.json(organization);
   } catch (error) {
