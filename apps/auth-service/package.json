@@ -16,9 +16,10 @@
           "format": [
             "cjs"
           ],
-          "bundle": false,
+          "bundle": true,
           "main": "apps/auth-service/src/main.ts",
           "tsConfig": "apps/auth-service/tsconfig.app.json",
+          "external": ["@prisma/client", "@prisma/adapter-pg", "pg"],
           "assets": [
             "apps/auth-service/src/assets"
           ],

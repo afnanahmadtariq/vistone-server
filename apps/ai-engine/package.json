@@ -16,9 +16,10 @@
           "format": [
             "cjs"
           ],
-          "bundle": false,
+          "bundle": true,
           "main": "apps/ai-engine/src/main.ts",
           "tsConfig": "apps/ai-engine/tsconfig.app.json",
+          "external": ["@prisma/client", "@prisma/adapter-pg", "pg"],
           "assets": [
             "apps/ai-engine/src/assets"
           ],

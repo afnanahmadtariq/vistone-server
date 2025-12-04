@@ -16,9 +16,10 @@
           "format": [
             "cjs"
           ],
-          "bundle": false,
+          "bundle": true,
           "main": "apps/workforce-management/src/main.ts",
           "tsConfig": "apps/workforce-management/tsconfig.app.json",
+          "external": ["@prisma/client", "@prisma/adapter-pg", "pg"],
           "assets": [
             "apps/workforce-management/src/assets"
           ],
