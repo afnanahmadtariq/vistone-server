@@ -1,5 +1,5 @@
 import fp from 'fastify-plugin';
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyInstance, FastifyRequest } from 'fastify';
 
 export interface AuthenticatedUser {
   userId: string;
@@ -22,7 +22,7 @@ declare module 'fastify' {
 async function authPlugin(fastify: FastifyInstance) {
   fastify.decorateRequest('user', undefined);
 
-  fastify.addHook('preHandler', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.addHook('preHandler', async (request: FastifyRequest) => {
     // Skip auth for health check and root endpoints
     if (request.url === '/' || request.url === '/health') {
       return;

@@ -106,7 +106,7 @@ function isQueryInScope(query: string): boolean {
  */
 async function getConversationHistory(
   sessionId: string,
-  maxMessages: number = 10
+  maxMessages = 10
 ): Promise<ChatMessage[]> {
   const prisma = getPrismaClient();
   

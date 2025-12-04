@@ -88,7 +88,7 @@ export function buildContextFromDocuments(
     const metadata = doc.metadata as Record<string, unknown> | null;
     const metadataStr = metadata
       ? Object.entries(metadata)
-          .filter(([_, v]) => v !== null && v !== undefined)
+          .filter(([, v]) => v !== null && v !== undefined)
           .map(([k, v]) => `${k}: ${v}`)
           .join(', ')
       : '';

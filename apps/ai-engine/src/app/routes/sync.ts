@@ -20,7 +20,7 @@ interface SyncTypeParams {
   type: string;
 }
 
-interface IndexDocumentBody extends DocumentToIndex {}
+type IndexDocumentBody = DocumentToIndex;
 
 interface RemoveDocumentBody {
   sourceSchema: string;
