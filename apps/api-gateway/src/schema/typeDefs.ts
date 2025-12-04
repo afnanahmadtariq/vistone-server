@@ -572,6 +572,56 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
+  # 11. AI Engine Types
+
+  type AiChatResponse {
+    success: Boolean!
+    data: AiChatData
+    error: String
+  }
+
+  type AiChatData {
+    answer: String!
+    sessionId: String!
+    isOutOfScope: Boolean!
+    sources: [AiSource!]!
+  }
+
+  type AiSource {
+    contentType: String!
+    title: String!
+    sourceId: String!
+  }
+
+  type AiIndexingStats {
+    success: Boolean!
+    data: AiStatsData
+    error: String
+  }
+
+  type AiStatsData {
+    totalDocuments: Int!
+    byContentType: JSON
+  }
+
+  type AiSyncResponse {
+    success: Boolean!
+    data: AiSyncData
+    error: String
+  }
+
+  type AiSyncData {
+    totalSynced: Int!
+    totalErrors: Int!
+    details: JSON
+  }
+
+  type AiIndexResponse {
+    success: Boolean!
+    data: JSON
+    error: String
+  }
+
   # Query Type
   type Query {
     # Authentication
@@ -692,6 +742,9 @@ export const typeDefs = gql`
     dashboard(id: ID!): Dashboard
     dashboardWidgets: [DashboardWidget!]!
     dashboardWidget(id: ID!): DashboardWidget
+
+    # AI Engine
+    aiChatStats(organizationId: String!): AiIndexingStats!
   }
 
   # Mutation Type
@@ -850,6 +903,14 @@ export const typeDefs = gql`
     createDashboardWidget(input: JSON!): DashboardWidget!
     updateDashboardWidget(id: ID!, input: JSON!): DashboardWidget!
     deleteDashboardWidget(id: ID!): DeleteResponse!
+
+    # AI Engine
+    aiChat(input: AiChatInput!): AiChatResponse!
+    aiClearHistory(sessionId: String!): DeleteResponse!
+    aiSyncAll(organizationId: String!): AiSyncResponse!
+    aiSyncType(organizationId: String!, type: String!): AiSyncResponse!
+    aiIndexDocument(input: AiIndexDocumentInput!): AiIndexResponse!
+    aiRemoveDocument(sourceSchema: String!, sourceTable: String!, sourceId: String!): AiIndexResponse!
   }
 
   type DeleteResponse {
@@ -896,5 +957,25 @@ export const typeDefs = gql`
     progress: Int
     budget: Decimal
     spentBudget: Decimal
+  }
+
+  input AiChatInput {
+    organizationId: String!
+    organizationName: String
+    userId: String!
+    sessionId: String
+    query: String!
+    contentTypes: [String!]
+  }
+
+  input AiIndexDocumentInput {
+    organizationId: String!
+    sourceSchema: String!
+    sourceTable: String!
+    sourceId: String!
+    title: String!
+    content: String!
+    contentType: String!
+    metadata: JSON
   }
 `;

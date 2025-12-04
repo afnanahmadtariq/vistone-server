@@ -8,6 +8,7 @@ import {
   communicationClient,
   monitoringClient,
   notificationClient,
+  aiEngineClient,
 } from '../services/backendClient';
 import { requireAuth, requireAdmin, AuthContext } from '../lib/auth';
 
@@ -282,6 +283,10 @@ export const resolvers = {
     notificationPreference: (_: any, { id }: { id: string }) => notificationClient.getById('/notification-preferences', id),
     notifications: () => notificationClient.get('/notifications'),
     notification: (_: any, { id }: { id: string }) => notificationClient.getById('/notifications', id),
+
+    // AI Engine
+    aiChatStats: (_: any, { organizationId }: { organizationId: string }) =>
+      aiEngineClient.get(`/api/chat/stats/${organizationId}`),
   },
 
   Project: {
@@ -602,5 +607,20 @@ export const resolvers = {
     createNotification: (_: any, { input }: { input: any }) => notificationClient.post('/notifications', input),
     updateNotification: (_: any, { id, input }: { id: string; input: any }) => notificationClient.put('/notifications', id, input),
     deleteNotification: (_: any, { id }: { id: string }) => notificationClient.delete('/notifications', id),
+
+    // AI Engine
+    aiChat: (_: any, { input }: { input: any }) => aiEngineClient.post('/api/chat', input),
+    aiClearHistory: async (_: any, { sessionId }: { sessionId: string }) => {
+      await aiEngineClient.delete('/api/chat/history', sessionId);
+      return { message: 'Conversation history cleared' };
+    },
+    aiSyncAll: (_: any, { organizationId }: { organizationId: string }) =>
+      aiEngineClient.post('/api/sync/all', { organizationId }),
+    aiSyncType: (_: any, { organizationId, type }: { organizationId: string; type: string }) =>
+      aiEngineClient.post(`/api/sync/${type}`, { organizationId }),
+    aiIndexDocument: (_: any, { input }: { input: any }) =>
+      aiEngineClient.post('/api/index/document', input),
+    aiRemoveDocument: (_: any, { sourceSchema, sourceTable, sourceId }: { sourceSchema: string; sourceTable: string; sourceId: string }) =>
+      aiEngineClient.post('/api/index/document/remove', { sourceSchema, sourceTable, sourceId }),
   },
 };
