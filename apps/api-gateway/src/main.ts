@@ -11,16 +11,38 @@ dotenv.config();
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 
+// Parse CORS origins from environment variable (comma-separated)
+function getCorsOrigins(): string | string[] | boolean {
+  const corsOrigin = process.env.CORS_ORIGIN;
+  
+  if (!corsOrigin || corsOrigin === '*') {
+    return true; // Allow all origins
+  }
+  
+  // Support comma-separated origins
+  if (corsOrigin.includes(',')) {
+    return corsOrigin.split(',').map(origin => origin.trim());
+  }
+  
+  return corsOrigin;
+}
+
 async function startServer() {
   const app = express();
 
-  // Enable CORS for all origins (configure as needed for production)
-  app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  // CORS configuration
+  const corsOptions: cors.CorsOptions = {
+    origin: getCorsOrigins(),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  }));
+    allowedHeaders: ['Content-Type', 'Authorization', 'Apollo-Require-Preflight'],
+  };
+
+  // Enable CORS for all routes
+  app.use(cors(corsOptions));
+  
+  // Handle preflight requests explicitly
+  app.options('*', cors(corsOptions));
 
   app.use(express.json());
 
@@ -31,19 +53,15 @@ async function startServer() {
 
   await apolloServer.start();
 
-  app.use('/graphql', expressMiddleware(apolloServer, {
-    context: async ({ req }: { req: express.Request }) => ({
-      headers: req.headers,
-      token: req.headers.authorization?.replace('Bearer ', ''),
-    }),
-  }));
-
-  app.get('/', (_req, res) => {
-    res.send({
-      message: 'API Gateway is running',
-      graphql: `http://${host}:${port}/graphql`,
-    });
+  // Apollo GraphQL context
+  const apolloContext = async ({ req }: { req: express.Request }) => ({
+    headers: req.headers,
+    token: req.headers.authorization?.replace('Bearer ', ''),
   });
+
+  // Mount GraphQL at both / and /graphql for flexibility
+  app.use('/', expressMiddleware(apolloServer, { context: apolloContext }));
+  app.use('/graphql', expressMiddleware(apolloServer, { context: apolloContext }));
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
