@@ -49,8 +49,13 @@ router.post('/', async (req, res) => {
 // Get all Projects
 router.get('/', async (req, res) => {
   try {
-    const { status, search } = req.query;
+    const { status, search, organizationId } = req.query;
     const where: any = {};
+    
+    // Filter by organizationId if provided
+    if (organizationId) {
+      where.organizationId = organizationId as string;
+    }
     
     if (status) {
       where.status = status as string;

@@ -31,6 +31,15 @@ export const typeDefs = gql`
     skills: [String]
     teamId: ID
     joinedAt: DateTime
+    organizationId: ID
+    organization: AuthOrganization
+    permissions: JSON
+  }
+
+  type AuthOrganization {
+    id: ID!
+    name: String!
+    slug: String!
   }
 
   # 1. Core User & Organization Types
@@ -283,6 +292,7 @@ export const typeDefs = gql`
 
   type Client {
     id: ID!
+    organizationId: String
     name: String!
     contactInfo: JSON
     portalAccess: Boolean!
@@ -568,7 +578,7 @@ export const typeDefs = gql`
     me: AuthUser
 
     # Users & Organizations
-    users: [User!]!
+    users(organizationId: ID): [User!]!
     user(id: ID!): User
     organizations: [Organization!]!
     organization(id: ID!): Organization
@@ -584,7 +594,7 @@ export const typeDefs = gql`
     activityLog(id: ID!): ActivityLog
 
     # Teams
-    teams: [Team!]!
+    teams(organizationId: ID): [Team!]!
     team(id: ID!): Team
     teamMembers: [TeamMember!]!
     teamMember(id: ID!): TeamMember
@@ -594,7 +604,7 @@ export const typeDefs = gql`
     userAvailabilityById(id: ID!): UserAvailability
 
     # Projects
-    projects(status: String, search: String): [Project!]!
+    projects(status: String, search: String, organizationId: ID): [Project!]!
     project(id: ID!): Project
     projectMembers: [ProjectMember!]!
     projectMember(id: ID!): ProjectMember
@@ -610,7 +620,7 @@ export const typeDefs = gql`
     riskRegister(id: ID!): RiskRegister
 
     # Clients
-    clients: [Client!]!
+    clients(organizationId: ID): [Client!]!
     client(id: ID!): Client
     projectClients: [ProjectClient!]!
     projectClient(id: ID!): ProjectClient
@@ -688,7 +698,7 @@ export const typeDefs = gql`
   type Mutation {
     # Authentication
     login(email: String!, password: String!): AuthPayload!
-    register(name: String!, email: String!, password: String!): AuthPayload!
+    register(name: String!, email: String!, password: String!, organizationName: String): AuthPayload!
     googleLogin(idToken: String!): AuthPayload!
     googleSignup(idToken: String!): AuthPayload!
     refreshToken(refreshToken: String!): TokenPayload!

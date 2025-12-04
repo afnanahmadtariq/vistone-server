@@ -11,17 +11,18 @@ datasource db {
 // Client Management Schema
 
 model Client {
-  id          String   @id @default(uuid())
-  name        String
-  contactInfo Json?
-  portalAccess Boolean @default(false)
+  id             String   @id @default(uuid())
+  organizationId String?
+  name           String
+  contactInfo    Json?
+  portalAccess   Boolean  @default(false)
   
-  projects    ProjectClient[]
-  feedback    ClientFeedback[]
-  proposals   Proposal[]
+  projects       ProjectClient[]
+  feedback       ClientFeedback[]
+  proposals      Proposal[]
   
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@map("clients")
   @@schema("client")

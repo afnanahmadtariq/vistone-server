@@ -19,9 +19,104 @@ const hashPassword = (password: string): string => {
   return crypto.createHash('sha256').update(password).digest('hex');
 };
 
+// Generate a URL-friendly slug from a name
+const generateSlug = (name: string): string => {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 50);
+};
+
 // In-memory token store (in production, use Redis or database)
 const tokenStore = new Map<string, { userId: string; expiresAt: Date }>();
 const refreshTokenStore = new Map<string, { userId: string; expiresAt: Date }>();
+
+// Default admin permissions
+const ADMIN_PERMISSIONS = {
+  users: ['create', 'read', 'update', 'delete'],
+  teams: ['create', 'read', 'update', 'delete'],
+  projects: ['create', 'read', 'update', 'delete'],
+  clients: ['create', 'read', 'update', 'delete'],
+  settings: ['read', 'update'],
+};
+
+// Types for organization-related data
+interface OrganizationData {
+  id: string;
+  name: string;
+  slug: string;
+  settings?: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt?: Date | null;
+}
+
+interface RoleData {
+  id: string;
+  organizationId: string | null;
+  name: string;
+  permissions: Record<string, string[]>;
+  isSystem: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface MembershipData {
+  id: string;
+  organizationId: string;
+  userId: string;
+  roleId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Helper function to create organization, admin role, and membership for a new user
+async function createOrganizationForUser(userId: string, organizationName: string): Promise<{
+  organization: OrganizationData;
+  role: RoleData;
+  membership: MembershipData;
+}> {
+  // Generate a unique slug
+  const baseSlug = generateSlug(organizationName);
+  let slug = baseSlug;
+  let counter = 1;
+  
+  // Check for slug uniqueness and append number if needed
+  while (await prisma.organization.findUnique({ where: { slug } })) {
+    slug = `${baseSlug}-${counter}`;
+    counter++;
+  }
+
+  // Create organization
+  const organization = await prisma.organization.create({
+    data: {
+      name: organizationName,
+      slug,
+    },
+  });
+
+  // Create Admin role for this organization
+  const role = await prisma.role.create({
+    data: {
+      organizationId: organization.id,
+      name: 'Admin',
+      permissions: ADMIN_PERMISSIONS,
+      isSystem: true,
+    },
+  });
+
+  // Add user as organization member with Admin role
+  const membership = await prisma.organizationMember.create({
+    data: {
+      organizationId: organization.id,
+      userId,
+      roleId: role.id,
+    },
+  });
+
+  return { organization, role, membership };
+}
 
 // Login
 router.post('/login', async (req: Request, res: Response) => {
@@ -62,11 +157,17 @@ router.post('/login', async (req: Request, res: Response) => {
 
     // Get user's team membership
     const teamMember = await getTeamMembershipWithRole(user.id);
+    
+    // Get user's organization and role
+    const membership = await prisma.organizationMember.findFirst({
+      where: { userId: user.id },
+      include: { organization: true, role: true },
+    });
 
     res.json({
       accessToken,
       refreshToken,
-      user: formatAuthUser(user, teamMember),
+      user: formatAuthUser(user, teamMember, membership?.organization, membership?.role),
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -77,7 +178,7 @@ router.post('/login', async (req: Request, res: Response) => {
 // Register
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, organizationName } = req.body;
 
     if (!name || !email || !password) {
       res.status(400).json({ error: 'Name, email, and password are required' });
@@ -109,6 +210,11 @@ router.post('/register', async (req: Request, res: Response) => {
       },
     });
 
+    // Create organization for the new user
+    // Use provided organizationName or default to user's name + "'s Organization"
+    const orgName = organizationName || `${firstName}'s Organization`;
+    const { organization, role } = await createOrganizationForUser(user.id, orgName);
+
     // Generate tokens
     const accessToken = generateToken();
     const refreshToken = generateToken();
@@ -123,7 +229,8 @@ router.post('/register', async (req: Request, res: Response) => {
     res.json({
       accessToken,
       refreshToken,
-      user: formatAuthUser(user, null),
+      user: formatAuthUser(user, null, organization, role),
+      isNewUser: true,
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -177,6 +284,8 @@ router.post('/google', async (req: Request, res: Response) => {
     });
 
     let isNewUser = false;
+    let organization = null;
+    let role = null;
 
     if (user) {
       // Update user with Google info if not already set
@@ -188,6 +297,17 @@ router.post('/google', async (req: Request, res: Response) => {
             avatarUrl: user.avatarUrl || picture,
           },
         });
+      }
+      
+      // Get existing organization and role for returning user
+      const membership = await prisma.organizationMember.findFirst({
+        where: { userId: user.id },
+        include: { organization: true, role: true },
+      });
+      
+      if (membership) {
+        organization = membership.organization;
+        role = membership.role;
       }
     } else {
       // Create new user (signup with Google)
@@ -203,6 +323,12 @@ router.post('/google', async (req: Request, res: Response) => {
           password: null,
         },
       });
+
+      // Create organization for the new user
+      const orgName = `${given_name || 'User'}'s Organization`;
+      const orgData = await createOrganizationForUser(user.id, orgName);
+      organization = orgData.organization;
+      role = orgData.role;
     }
 
     // Generate tokens
@@ -222,7 +348,7 @@ router.post('/google', async (req: Request, res: Response) => {
     res.json({
       accessToken,
       refreshToken,
-      user: formatAuthUser(user, teamMember),
+      user: formatAuthUser(user, teamMember, organization, role),
       isNewUser,
     });
   } catch (error) {
@@ -333,8 +459,14 @@ router.post('/me', async (req: Request, res: Response) => {
     }
 
     const teamMember = await getTeamMembershipWithRole(user.id);
+    
+    // Get user's organization and role
+    const membership = await prisma.organizationMember.findFirst({
+      where: { userId: user.id },
+      include: { organization: true, role: true },
+    });
 
-    res.json(formatAuthUser(user, teamMember));
+    res.json(formatAuthUser(user, teamMember, membership?.organization, membership?.role));
   } catch (error) {
     console.error('Get me error:', error);
     res.status(500).json({ error: 'Failed to get user' });
@@ -356,7 +488,24 @@ interface TeamMemberData {
   teamId: string;
 }
 
-function formatAuthUser(user: UserData, teamMember: TeamMemberData | null) {
+interface FormatOrganizationData {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+interface FormatRoleData {
+  id: string;
+  name: string;
+  permissions: Record<string, string[]> | null;
+}
+
+function formatAuthUser(
+  user: UserData, 
+  teamMember: TeamMemberData | null, 
+  organization?: FormatOrganizationData | null,
+  role?: FormatRoleData | null
+) {
   // Combine firstName and lastName into name
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || null;
   
@@ -366,12 +515,19 @@ function formatAuthUser(user: UserData, teamMember: TeamMemberData | null) {
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
-    role: teamMember?.role || 'member',
+    role: role?.name || teamMember?.role || 'member',
     avatar: user.avatarUrl || null,
     status: 'active',
     skills: [], // Could be extended to fetch from workforce service
     teamId: teamMember?.teamId || null,
     joinedAt: user.createdAt,
+    organizationId: organization?.id || null,
+    organization: organization ? {
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+    } : null,
+    permissions: role?.permissions || null,
   };
 }
 

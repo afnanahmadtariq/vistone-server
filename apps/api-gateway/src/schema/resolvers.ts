@@ -9,8 +9,9 @@ import {
   monitoringClient,
   notificationClient,
 } from '../services/backendClient';
+import { requireAuth, requireAdmin, AuthContext } from '../lib/auth';
 
-interface Context {
+interface Context extends AuthContext {
   headers: Record<string, string | string[] | undefined>;
   token?: string;
 }
@@ -139,9 +140,19 @@ export const resolvers = {
     },
 
     // Users & Organizations (Auth Service)
-    users: async () => {
+    users: async (_: any, { organizationId }: { organizationId?: string }) => {
       const users = await authClient.get('/users');
-      return Promise.all(users.map(enrichUserWithWorkforceData));
+      let filteredUsers = users;
+      
+      // If organizationId is provided, filter users by organization membership
+      if (organizationId) {
+        // Get organization members for this organization
+        const members = await authClient.get(`/organization-members?organizationId=${organizationId}`);
+        const memberUserIds = new Set(members.map((m: any) => m.userId));
+        filteredUsers = users.filter((user: any) => memberUserIds.has(user.id));
+      }
+      
+      return Promise.all(filteredUsers.map(enrichUserWithWorkforceData));
     },
     user: async (_: any, { id }: { id: string }) => {
       const user = await authClient.getById('/users', id);
@@ -161,7 +172,11 @@ export const resolvers = {
     activityLog: (_: any, { id }: { id: string }) => authClient.getById('/activity-logs', id),
 
     // Teams (Workforce Service)
-    teams: () => workforceClient.get('/teams'),
+    teams: (_: any, { organizationId }: { organizationId?: string }) => {
+      const params = new URLSearchParams();
+      if (organizationId) params.append('organizationId', organizationId);
+      return workforceClient.get(`/teams?${params.toString()}`);
+    },
     team: (_: any, { id }: { id: string }) => workforceClient.getById('/teams', id),
     teamMembers: () => workforceClient.get('/team-members'),
     teamMember: (_: any, { id }: { id: string }) => workforceClient.getById('/team-members', id),
@@ -171,10 +186,11 @@ export const resolvers = {
     userAvailabilityById: (_: any, { id }: { id: string }) => workforceClient.getById('/user-availability', id),
 
     // Projects (Project Service)
-    projects: (_: any, { status, search }: { status?: string; search?: string }) => {
+    projects: (_: any, { status, search, organizationId }: { status?: string; search?: string; organizationId?: string }) => {
       const params = new URLSearchParams();
       if (status) params.append('status', status);
       if (search) params.append('search', search);
+      if (organizationId) params.append('organizationId', organizationId);
       return projectClient.get(`/projects?${params.toString()}`);
     },
     project: (_: any, { id }: { id: string }) => projectClient.getById('/projects', id),
@@ -194,7 +210,11 @@ export const resolvers = {
     aiInsight: (_: any, { id }: { id: string }) => projectClient.getById('/ai-insights', id),
 
     // Clients (Client Management Service)
-    clients: () => clientMgmtClient.get('/clients'),
+    clients: (_: any, { organizationId }: { organizationId?: string }) => {
+      const params = new URLSearchParams();
+      if (organizationId) params.append('organizationId', organizationId);
+      return clientMgmtClient.get(`/clients?${params.toString()}`);
+    },
     client: (_: any, { id }: { id: string }) => clientMgmtClient.getById('/clients', id),
     projectClients: () => clientMgmtClient.get('/project-clients'),
     projectClient: (_: any, { id }: { id: string }) => clientMgmtClient.getById('/project-clients', id),
@@ -308,8 +328,8 @@ export const resolvers = {
     login: async (_: any, { email, password }: { email: string; password: string }) => {
       return authClient.post('/auth/login', { email, password });
     },
-    register: async (_: any, { name, email, password }: { name: string; email: string; password: string }) => {
-      return authClient.post('/auth/register', { name, email, password });
+    register: async (_: any, { name, email, password, organizationName }: { name: string; email: string; password: string; organizationName?: string }) => {
+      return authClient.post('/auth/register', { name, email, password, organizationName });
     },
     googleLogin: async (_: any, { idToken }: { idToken: string }) => {
       return authClient.post('/auth/google', { idToken });
@@ -333,7 +353,17 @@ export const resolvers = {
     },
 
     // Users & Organizations (Auth Service)
-    createUser: (_: any, { input }: { input: any }) => authClient.post('/users', input),
+    createUser: async (_: any, { input }: { input: any }, context: Context) => {
+      // Only Admins can create users
+      const currentUser = await requireAdmin(context);
+      
+      // Auto-assign organizationId from current user if not provided
+      if (!input.organizationId && currentUser.organizationId) {
+        input.organizationId = currentUser.organizationId;
+      }
+      
+      return authClient.post('/users', input);
+    },
     updateUser: (_: any, { id, input }: { id: string; input: any }) => authClient.put('/users', id, input),
     deleteUser: (_: any, { id }: { id: string }) => authClient.delete('/users', id),
     createOrganization: (_: any, { input }: { input: any }) => authClient.post('/organizations', input),
@@ -354,7 +384,16 @@ export const resolvers = {
     createActivityLog: (_: any, { input }: { input: any }) => authClient.post('/activity-logs', input),
 
     // Teams (Workforce Service)
-    createTeam: (_: any, { input }: { input: any }) => workforceClient.post('/teams', input),
+    createTeam: async (_: any, { input }: { input: any }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      
+      // Auto-assign organizationId from current user if not provided
+      if (!input.organizationId && currentUser.organizationId) {
+        input.organizationId = currentUser.organizationId;
+      }
+      
+      return workforceClient.post('/teams', input);
+    },
     updateTeam: (_: any, { id, input }: { id: string; input: any }) => workforceClient.put('/teams', id, input),
     deleteTeam: (_: any, { id }: { id: string }) => workforceClient.delete('/teams', id),
     createTeamMember: (_: any, { input }: { input: any }) => workforceClient.post('/team-members', input),
@@ -368,10 +407,19 @@ export const resolvers = {
     deleteUserAvailability: (_: any, { id }: { id: string }) => workforceClient.delete('/user-availability', id),
 
     // Projects (Project Service)
-    createProject: async (_: any, { input }: { input: any }) => {
+    createProject: async (_: any, { input }: { input: any }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      
+      // Auto-assign organizationId from current user if not provided
+      const organizationId = input.organizationId || currentUser.organizationId;
+      
+      if (!organizationId) {
+        throw new Error('Organization ID is required');
+      }
+      
       // Transform input to match Prisma schema
       const projectData: any = {
-        organizationId: input.organizationId,
+        organizationId,
         name: input.name,
         description: input.description || null,
         status: input.status,
@@ -464,7 +512,16 @@ export const resolvers = {
     createAiInsight: (_: any, { input }: { input: any }) => projectClient.post('/ai-insights', input),
 
     // Clients (Client Management Service)
-    createClient: (_: any, { input }: { input: any }) => clientMgmtClient.post('/clients', input),
+    createClient: async (_: any, { input }: { input: any }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      
+      // Auto-assign organizationId from current user if not provided
+      if (!input.organizationId && currentUser.organizationId) {
+        input.organizationId = currentUser.organizationId;
+      }
+      
+      return clientMgmtClient.post('/clients', input);
+    },
     updateClient: (_: any, { id, input }: { id: string; input: any }) => clientMgmtClient.put('/clients', id, input),
     deleteClient: (_: any, { id }: { id: string }) => clientMgmtClient.delete('/clients', id),
     createProjectClient: (_: any, { input }: { input: any }) => clientMgmtClient.post('/project-clients', input),
