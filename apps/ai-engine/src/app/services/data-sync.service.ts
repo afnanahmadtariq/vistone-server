@@ -113,7 +113,7 @@ export async function syncOrganizationOverview(organizationId: string): Promise<
         SELECT 
           COUNT(*) as total,
           COUNT(CASE WHEN m.status = 'completed' OR m.completed = true THEN 1 END) as completed,
-          COUNT(CASE WHEN m."dueDate" < NOW() AND (m.status != 'completed' AND m.completed = false) THEN 1 END) as overdue
+          COUNT(CASE WHEN m."dueDate" < NOW() AND m.status != 'completed' AND m.completed != true THEN 1 END) as overdue
         FROM project.milestones m
         JOIN project.projects p ON m."projectId" = p.id
         WHERE p."organizationId" = $1 AND p."deletedAt" IS NULL
