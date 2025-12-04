@@ -33,10 +33,8 @@ jobs:
 
       - run: npm ci
 
-      # Generate Prisma clients before running tasks (dummy DATABASE_URL for client generation only)
+      # Generate Prisma clients before running tasks
       - run: npx nx run @vistone-server/ai-engine:prisma:generate
-        env:
-          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
 
       # Prepend any command with "nx-cloud record --" to record its logs to Nx Cloud
       # - run: npx nx-cloud record -- echo Hello World
