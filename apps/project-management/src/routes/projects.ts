@@ -6,8 +6,38 @@ const router = Router();
 // Create Project
 router.post('/', async (req, res) => {
   try {
+    const {
+      organizationId,
+      name,
+      description,
+      status,
+      startDate,
+      endDate,
+      budget,
+      spentBudget,
+      progress,
+      clientId,
+      managerId,
+      teamIds,
+      metadata,
+    } = req.body;
+
     const project = await prisma.project.create({
-      data: req.body,
+      data: {
+        organizationId,
+        name,
+        description,
+        status,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        budget,
+        spentBudget,
+        progress: progress ?? 0,
+        clientId,
+        managerId,
+        teamIds: teamIds ?? [],
+        metadata,
+      },
     });
     res.json(project);
   } catch (error) {

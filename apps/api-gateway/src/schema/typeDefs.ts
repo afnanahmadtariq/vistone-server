@@ -20,6 +20,7 @@ export const typeDefs = gql`
 
   type AuthUser {
     id: ID!
+    name: String
     firstName: String
     lastName: String
     email: String!
@@ -729,8 +730,8 @@ export const typeDefs = gql`
     deleteUserAvailability(id: ID!): DeleteResponse!
 
     # Projects
-    createProject(input: JSON!): Project!
-    updateProject(id: ID!, input: JSON!): Project!
+    createProject(input: CreateProjectInput!): Project!
+    updateProject(id: ID!, input: UpdateProjectInput!): Project!
     deleteProject(id: ID!): DeleteResponse!
     createProjectMember(input: JSON!): ProjectMember!
     updateProjectMember(id: ID!, input: JSON!): ProjectMember!
@@ -844,5 +845,43 @@ export const typeDefs = gql`
 
   type RemoveMemberResponse {
     success: Boolean!
+  }
+
+  # Input Types
+
+  input CreateProjectInput {
+    name: String!
+    description: String
+    type: String
+    status: String!
+    visibility: String
+    notifyTeam: Boolean
+    notifyClient: Boolean
+    contributors: [String!]
+    clientId: String
+    startDate: String
+    endDate: String
+    teamId: String
+    managerId: String
+    organizationId: String!
+  }
+
+  input UpdateProjectInput {
+    name: String
+    description: String
+    type: String
+    status: String
+    visibility: String
+    notifyTeam: Boolean
+    notifyClient: Boolean
+    contributors: [String!]
+    clientId: String
+    startDate: String
+    endDate: String
+    teamId: String
+    managerId: String
+    progress: Int
+    budget: Decimal
+    spentBudget: Decimal
   }
 `;

@@ -362,8 +362,80 @@ export const resolvers = {
     deleteUserAvailability: (_: any, { id }: { id: string }) => workforceClient.delete('/user-availability', id),
 
     // Projects (Project Service)
-    createProject: (_: any, { input }: { input: any }) => projectClient.post('/projects', input),
-    updateProject: (_: any, { id, input }: { id: string; input: any }) => projectClient.put('/projects', id, input),
+    createProject: async (_: any, { input }: { input: any }) => {
+      // Transform input to match Prisma schema
+      const projectData: any = {
+        organizationId: input.organizationId,
+        name: input.name,
+        description: input.description || null,
+        status: input.status,
+        startDate: input.startDate ? new Date(input.startDate) : null,
+        endDate: input.endDate ? new Date(input.endDate) : null,
+        clientId: input.clientId || null,
+        managerId: input.managerId || null,
+        teamIds: input.teamId ? [input.teamId] : [],
+        progress: 0,
+        metadata: {
+          type: input.type || 'general',
+          visibility: input.visibility || 'private',
+          notifyTeam: input.notifyTeam ?? false,
+          notifyClient: input.notifyClient ?? false,
+        },
+      };
+
+      const project = await projectClient.post('/projects', projectData);
+
+      // Add contributors as project members if provided
+      if (input.contributors && input.contributors.length > 0) {
+        for (const userId of input.contributors) {
+          try {
+            await projectClient.post('/project-members', {
+              projectId: project.id,
+              userId,
+              role: 'contributor',
+            });
+          } catch (error) {
+            console.error(`Failed to add contributor ${userId}:`, error);
+          }
+        }
+      }
+
+      return project;
+    },
+    updateProject: async (_: any, { id, input }: { id: string; input: any }) => {
+      // Transform input to match Prisma schema
+      const projectData: any = {};
+      
+      if (input.name !== undefined) projectData.name = input.name;
+      if (input.description !== undefined) projectData.description = input.description;
+      if (input.status !== undefined) projectData.status = input.status;
+      if (input.startDate !== undefined) projectData.startDate = input.startDate ? new Date(input.startDate) : null;
+      if (input.endDate !== undefined) projectData.endDate = input.endDate ? new Date(input.endDate) : null;
+      if (input.clientId !== undefined) projectData.clientId = input.clientId;
+      if (input.managerId !== undefined) projectData.managerId = input.managerId;
+      if (input.teamId !== undefined) projectData.teamIds = input.teamId ? [input.teamId] : [];
+      if (input.progress !== undefined) projectData.progress = input.progress;
+      if (input.budget !== undefined) projectData.budget = input.budget;
+      if (input.spentBudget !== undefined) projectData.spentBudget = input.spentBudget;
+      
+      // Handle metadata fields
+      if (input.type !== undefined || input.visibility !== undefined || 
+          input.notifyTeam !== undefined || input.notifyClient !== undefined) {
+        // First get existing project to preserve other metadata
+        const existingProject = await projectClient.getById('/projects', id);
+        const existingMetadata = existingProject?.metadata || {};
+        
+        projectData.metadata = {
+          ...existingMetadata,
+          ...(input.type !== undefined && { type: input.type }),
+          ...(input.visibility !== undefined && { visibility: input.visibility }),
+          ...(input.notifyTeam !== undefined && { notifyTeam: input.notifyTeam }),
+          ...(input.notifyClient !== undefined && { notifyClient: input.notifyClient }),
+        };
+      }
+
+      return projectClient.put('/projects', id, projectData);
+    },
     deleteProject: (_: any, { id }: { id: string }) => projectClient.delete('/projects', id),
     createProjectMember: (_: any, { input }: { input: any }) => projectClient.post('/project-members', input),
     updateProjectMember: (_: any, { id, input }: { id: string; input: any }) => projectClient.put('/project-members', id, input),

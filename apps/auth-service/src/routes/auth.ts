@@ -247,8 +247,12 @@ interface TeamMemberData {
 }
 
 function formatAuthUser(user: UserData, teamMember: TeamMemberData | null) {
+  // Combine firstName and lastName into name
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || null;
+  
   return {
     id: user.id,
+    name,
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
