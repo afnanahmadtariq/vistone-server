@@ -5,7 +5,15 @@
   "private": true,
   "scripts": {
     "seed": "npx ts-node scripts/seed.ts",
-    "start:all": "nx run-many --target=serve --all --parallel=10"
+    "start:all": "nx run-many --target=serve --all --parallel=10",
+    "dev": "npm run db:sync && nx run-many --target=serve --all --parallel=10 --configuration=development",
+    "dev:service": "nx run serve --configuration=development",
+    "prod": "npm run prisma:generate && nx run-many --target=serve --all --parallel=10 --configuration=production",
+    "db:sync": "npx ts-node scripts/prisma-sync.ts sync",
+    "db:push": "npx ts-node scripts/prisma-sync.ts push",
+    "prisma:generate": "npx ts-node scripts/prisma-sync.ts generate",
+    "prisma:validate": "npx ts-node scripts/prisma-sync.ts validate",
+    "db:init": "psql -f scripts/init-schemas.sql && npm run db:sync"
   },
   "dependencies": {
     "@apollo/server": "^5.2.0",
