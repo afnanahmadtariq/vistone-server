@@ -228,8 +228,11 @@ export const resolvers = {
     aiInsight: (_: any, { id }: { id: string }) => projectClient.getById('/ai-insights', id),
 
     // Clients (Client Management Service)
-    clients: (_: any, { organizationId }: { organizationId?: string }) => {
+    clients: (_: any, { search, status, industry, organizationId }: { search?: string; status?: string; industry?: string; organizationId?: string }) => {
       const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (status) params.append('status', status);
+      if (industry) params.append('industry', industry);
       if (organizationId) params.append('organizationId', organizationId);
       return clientMgmtClient.get(`/clients?${params.toString()}`);
     },
@@ -399,16 +402,78 @@ export const resolvers = {
     company: (parent: any) => parent.company ?? parent.contactInfo?.company ?? null,
     phone: (parent: any) => parent.phone ?? parent.contactInfo?.phone ?? null,
     address: (parent: any) => parent.address ?? parent.contactInfo?.address ?? null,
+    industry: (parent: any) => parent.industry ?? null,
+    status: (parent: any) => parent.status ?? 'active',
+    rating: async (parent: any) => {
+      try {
+        // Calculate rating from client feedback
+        const feedbacks = await clientMgmtClient.get(`/client-feedback?clientId=${parent.id}`);
+        if (!Array.isArray(feedbacks) || feedbacks.length === 0) {
+          return null;
+        }
+        const ratings = feedbacks.filter((f: any) => f.rating != null);
+        if (ratings.length === 0) return null;
+        const avgRating = ratings.reduce((sum: number, f: any) => sum + f.rating, 0) / ratings.length;
+        return {
+          budget: avgRating,
+          communication: avgRating,
+          schedule: avgRating,
+          overall: avgRating,
+        };
+      } catch {
+        return null;
+      }
+    },
+    projects: async (parent: any) => {
+      try {
+        const projectClients = await clientMgmtClient.get(`/project-clients?clientId=${parent.id}`);
+        if (!Array.isArray(projectClients) || projectClients.length === 0) return [];
+        const projects = await Promise.all(
+          projectClients.map((pc: any) => projectClient.getById('/projects', pc.projectId).catch(() => null))
+        );
+        return projects.filter(Boolean);
+      } catch {
+        return [];
+      }
+    },
+    contracts: async () => {
+      // Contracts are not implemented yet - return empty array
+      return [];
+    },
+    contactPerson: async (parent: any) => {
+      if (!parent.contactPersonId) return null;
+      return getEnrichedUser(parent.contactPersonId);
+    },
   },
 
   // User resolver to handle enrichment for any User type returned
   User: {
     role: (parent: any) => parent.role ?? null,
-    avatar: (parent: any) => parent.avatar ?? null,
+    avatar: (parent: any) => parent.avatar ?? parent.avatarUrl ?? null,
     status: (parent: any) => parent.status ?? 'active',
     skills: (parent: any) => parent.skills ?? [],
     teamId: (parent: any) => parent.teamId ?? null,
     joinedAt: (parent: any) => parent.joinedAt ?? parent.createdAt,
+    team: async (parent: any) => {
+      const teamId = parent.teamId;
+      if (!teamId) {
+        // Try to find team from team members
+        try {
+          const teamMembers = await workforceClient.get(`/team-members?userId=${parent.id}`);
+          if (Array.isArray(teamMembers) && teamMembers.length > 0) {
+            return workforceClient.getById('/teams', teamMembers[0].teamId);
+          }
+        } catch {
+          return null;
+        }
+        return null;
+      }
+      try {
+        return await workforceClient.getById('/teams', teamId);
+      } catch {
+        return null;
+      }
+    },
   },
 
   Mutation: {
@@ -454,6 +519,60 @@ export const resolvers = {
     },
     updateUser: (_: any, { id, input }: { id: string; input: any }) => authClient.put('/users', id, input),
     deleteUser: (_: any, { id }: { id: string }) => authClient.delete('/users', id),
+    inviteMember: async (_: any, { input }: { input: any }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      
+      // Use organizationId from input or current user
+      const organizationId = input.organizationId || currentUser.organizationId;
+      if (!organizationId) {
+        throw new Error('Organization ID is required');
+      }
+      
+      // Create user if doesn't exist, or get existing user
+      let user;
+      try {
+        // Try to find existing user by email
+        const users = await authClient.get('/users');
+        user = users.find((u: any) => u.email === input.email);
+        
+        if (!user) {
+          // Create new user
+          user = await authClient.post('/users', {
+            email: input.email,
+            firstName: input.firstName || '',
+            lastName: input.lastName || '',
+          });
+        }
+      } catch {
+        throw new Error('Failed to create or find user');
+      }
+      
+      // Add user to organization as a member
+      try {
+        await authClient.post('/organization-members', {
+          userId: user.id,
+          organizationId,
+          roleId: null, // Default role
+        });
+      } catch {
+        // User might already be a member, continue
+      }
+      
+      // If teamId provided, add user to team
+      if (input.teamId) {
+        try {
+          await workforceClient.post('/team-members', {
+            teamId: input.teamId,
+            userId: user.id,
+            role: input.role || 'member',
+          });
+        } catch {
+          // Team membership might already exist
+        }
+      }
+      
+      return enrichUserWithWorkforceData(user);
+    },
     createOrganization: (_: any, { input }: { input: any }) => authClient.post('/organizations', input),
     updateOrganization: (_: any, { id, input }: { id: string; input: any }) => authClient.put('/organizations', id, input),
     deleteOrganization: (_: any, { id }: { id: string }) => authClient.delete('/organizations', id),
@@ -484,6 +603,25 @@ export const resolvers = {
     },
     updateTeam: (_: any, { id, input }: { id: string; input: any }) => workforceClient.put('/teams', id, input),
     deleteTeam: (_: any, { id }: { id: string }) => workforceClient.delete('/teams', id),
+    addTeamMember: async (_: any, { teamId, userId }: { teamId: string; userId: string }) => {
+      // Add user to team
+      await workforceClient.post('/team-members', {
+        teamId,
+        userId,
+        role: 'member',
+      });
+      // Return updated team
+      return workforceClient.getById('/teams', teamId);
+    },
+    removeTeamMember: async (_: any, { teamId, userId }: { teamId: string; userId: string }) => {
+      // Find and delete the team member
+      const teamMembers = await workforceClient.get(`/team-members?teamId=${teamId}&userId=${userId}`);
+      if (Array.isArray(teamMembers) && teamMembers.length > 0) {
+        await workforceClient.delete('/team-members', teamMembers[0].id);
+      }
+      // Return updated team
+      return workforceClient.getById('/teams', teamId);
+    },
     createTeamMember: (_: any, { input }: { input: any }) => workforceClient.post('/team-members', input),
     updateTeamMember: (_: any, { id, input }: { id: string; input: any }) => workforceClient.put('/team-members', id, input),
     deleteTeamMember: (_: any, { id }: { id: string }) => workforceClient.delete('/team-members', id),

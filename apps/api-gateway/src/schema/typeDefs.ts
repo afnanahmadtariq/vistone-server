@@ -68,6 +68,9 @@ export const typeDefs = gql`
     createdAt: DateTime!
     updatedAt: DateTime!
     deletedAt: DateTime
+
+    # Relations
+    team: Team
   }
 
   type OrganizationMember {
@@ -312,10 +315,36 @@ export const typeDefs = gql`
     company: String
     phone: String
     address: String
+    industry: String
+    status: String
     contactInfo: JSON
     portalAccess: Boolean!
+    contactPersonId: String
     createdAt: DateTime!
     updatedAt: DateTime!
+
+    # Relations
+    rating: ClientRating
+    projects: [Project!]
+    contracts: [Contract!]
+    contactPerson: User
+  }
+
+  type ClientRating {
+    budget: Float
+    communication: Float
+    schedule: Float
+    overall: Float
+  }
+
+  type Contract {
+    id: ID!
+    title: String!
+    status: String!
+    startDate: DateTime
+    endDate: DateTime
+    amount: Float
+    clientId: ID!
   }
 
   type ProjectClient {
@@ -688,7 +717,7 @@ export const typeDefs = gql`
     riskRegister(id: ID!): RiskRegister
 
     # Clients
-    clients(organizationId: ID): [Client!]!
+    clients(search: String, status: String, industry: String, organizationId: ID): [Client!]!
     client(id: ID!): Client
     projectClients: [ProjectClient!]!
     projectClient(id: ID!): ProjectClient
@@ -782,6 +811,7 @@ export const typeDefs = gql`
     createUser(input: JSON!): User!
     updateUser(id: ID!, input: JSON!): User!
     deleteUser(id: ID!): DeleteResponse!
+    inviteMember(input: InviteMemberInput!): User!
     createOrganization(input: JSON!): Organization!
     updateOrganization(id: ID!, input: JSON!): Organization!
     deleteOrganization(id: ID!): DeleteResponse!
@@ -803,6 +833,8 @@ export const typeDefs = gql`
     createTeam(input: JSON!): Team!
     updateTeam(id: ID!, input: JSON!): Team!
     deleteTeam(id: ID!): DeleteResponse!
+    addTeamMember(teamId: ID!, userId: ID!): Team!
+    removeTeamMember(teamId: ID!, userId: ID!): Team!
     createTeamMember(input: JSON!): TeamMember!
     updateTeamMember(id: ID!, input: JSON!): TeamMember!
     deleteTeamMember(id: ID!): DeleteResponse!
@@ -940,6 +972,91 @@ export const typeDefs = gql`
   }
 
   # Input Types
+
+  input InviteMemberInput {
+    email: String!
+    firstName: String
+    lastName: String
+    role: String
+    teamId: ID
+    organizationId: ID!
+  }
+
+  input CreateTeamInput {
+    name: String!
+    description: String
+    managerId: ID
+    memberIds: [ID!]
+    organizationId: ID!
+  }
+
+  input UpdateTeamInput {
+    name: String
+    description: String
+    managerId: ID
+  }
+
+  input CreateClientInput {
+    name: String!
+    email: String
+    company: String
+    phone: String
+    address: String
+    industry: String
+    portalAccess: Boolean
+    contactPersonId: ID
+    organizationId: ID!
+  }
+
+  input UpdateClientInput {
+    name: String
+    email: String
+    company: String
+    phone: String
+    address: String
+    industry: String
+    status: String
+    portalAccess: Boolean
+    contactPersonId: ID
+  }
+
+  input CreateTaskInput {
+    title: String!
+    description: String
+    status: String
+    priority: String
+    projectId: ID!
+    assigneeId: ID
+    dueDate: DateTime
+    startDate: DateTime
+    estimatedHours: Float
+  }
+
+  input UpdateTaskInput {
+    title: String
+    description: String
+    status: String
+    priority: String
+    assigneeId: ID
+    dueDate: DateTime
+    startDate: DateTime
+    estimatedHours: Float
+    actualHours: Float
+  }
+
+  input CreateMilestoneInput {
+    title: String!
+    description: String
+    projectId: ID!
+    dueDate: DateTime!
+  }
+
+  input UpdateMilestoneInput {
+    title: String
+    description: String
+    dueDate: DateTime
+    completed: Boolean
+  }
 
   input CreateProjectInput {
     name: String!

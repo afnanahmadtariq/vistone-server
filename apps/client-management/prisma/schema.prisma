@@ -14,8 +14,15 @@ model Client {
   id             String   @id @default(uuid())
   organizationId String?
   name           String
+  email          String?
+  company        String?
+  phone          String?
+  address        String?
+  industry       String?
+  status         String   @default("active")
   contactInfo    Json?
   portalAccess   Boolean  @default(false)
+  contactPersonId String?
   
   projects       ProjectClient[]
   feedback       ClientFeedback[]

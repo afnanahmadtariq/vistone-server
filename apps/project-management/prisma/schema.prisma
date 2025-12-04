@@ -62,11 +62,15 @@ model Task {
   projectId      String
   parentId       String?
   assigneeId     String?
+  creatorId      String?
   title          String
   description    String?
   status         String
   priority       String?
   dueDate        DateTime?
+  startDate      DateTime?
+  estimatedHours Float?
+  actualHours    Float?
   aiSuggestions  Json?
   
   project        Project  @relation(fields: [projectId], references: [id])
@@ -123,6 +127,8 @@ model Milestone {
   description String?
   dueDate     DateTime?
   status      String
+  completed   Boolean  @default(false)
+  completedAt DateTime?
   
   project     Project  @relation(fields: [projectId], references: [id])
   
