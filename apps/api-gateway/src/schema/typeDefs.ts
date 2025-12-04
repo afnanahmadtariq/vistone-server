@@ -210,6 +210,7 @@ export const typeDefs = gql`
     progress: Int!
     clientId: ID
     managerId: ID
+    memberIds: [ID!]
     teamIds: [String!]
     metadata: JSON
     createdAt: DateTime!
@@ -221,6 +222,8 @@ export const typeDefs = gql`
     milestones: [Milestone]
     client: Client
     manager: User
+    members: [User!]
+    teams: [Team!]
   }
 
   type ProjectMember {
@@ -240,11 +243,19 @@ export const typeDefs = gql`
     title: String!
     description: String
     status: String!
-    priority: String
+    priority: String!
     dueDate: DateTime
+    startDate: DateTime
+    estimatedHours: Float
+    actualHours: Float
+    creatorId: String
     aiSuggestions: JSON
     createdAt: DateTime!
     updatedAt: DateTime!
+
+    # Relations
+    assignees: [User!]
+    creator: User
   }
 
   type TaskChecklist {
@@ -269,9 +280,12 @@ export const typeDefs = gql`
     id: ID!
     projectId: String!
     title: String!
+    name: String
     description: String
-    dueDate: DateTime
+    dueDate: DateTime!
     status: String!
+    completed: Boolean!
+    completedAt: DateTime
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -294,6 +308,10 @@ export const typeDefs = gql`
     id: ID!
     organizationId: String
     name: String!
+    email: String
+    company: String
+    phone: String
+    address: String
     contactInfo: JSON
     portalAccess: Boolean!
     createdAt: DateTime!

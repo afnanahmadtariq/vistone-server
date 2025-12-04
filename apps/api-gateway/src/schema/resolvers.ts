@@ -335,6 +335,70 @@ export const resolvers = {
       if (!parent.managerId) return null;
       return getEnrichedUser(parent.managerId);
     },
+    members: async (parent: any) => {
+      try {
+        // Get project members
+        const projectMembers = await projectClient.get(`/project-members?projectId=${parent.id}`);
+        if (!Array.isArray(projectMembers) || projectMembers.length === 0) return [];
+        
+        // Get user details for each member
+        const members = await Promise.all(
+          projectMembers.map((pm: any) => getEnrichedUser(pm.userId))
+        );
+        return members.filter(Boolean);
+      } catch {
+        return [];
+      }
+    },
+    memberIds: async (parent: any) => {
+      try {
+        const projectMembers = await projectClient.get(`/project-members?projectId=${parent.id}`);
+        return Array.isArray(projectMembers) ? projectMembers.map((pm: any) => pm.userId) : [];
+      } catch {
+        return [];
+      }
+    },
+    teams: async (parent: any) => {
+      if (!parent.teamIds || parent.teamIds.length === 0) return [];
+      try {
+        const teams = await Promise.all(
+          parent.teamIds.map((teamId: string) => workforceClient.getById('/teams', teamId))
+        );
+        return teams.filter(Boolean);
+      } catch {
+        return [];
+      }
+    },
+  },
+
+  Task: {
+    priority: (parent: any) => parent.priority ?? 'medium',
+    assignees: async (parent: any) => {
+      // If there's an assigneeId, return that user as a single-element array
+      if (parent.assigneeId) {
+        const user = await getEnrichedUser(parent.assigneeId);
+        return user ? [user] : [];
+      }
+      return [];
+    },
+    creator: async (parent: any) => {
+      if (!parent.creatorId) return null;
+      return getEnrichedUser(parent.creatorId);
+    },
+  },
+
+  Milestone: {
+    name: (parent: any) => parent.name ?? parent.title,
+    completed: (parent: any) => parent.completed ?? (parent.status === 'completed'),
+    completedAt: (parent: any) => parent.completedAt ?? null,
+    dueDate: (parent: any) => parent.dueDate ?? new Date(),
+  },
+
+  Client: {
+    email: (parent: any) => parent.email ?? parent.contactInfo?.email ?? null,
+    company: (parent: any) => parent.company ?? parent.contactInfo?.company ?? null,
+    phone: (parent: any) => parent.phone ?? parent.contactInfo?.phone ?? null,
+    address: (parent: any) => parent.address ?? parent.contactInfo?.address ?? null,
   },
 
   // User resolver to handle enrichment for any User type returned
