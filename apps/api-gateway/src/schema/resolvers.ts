@@ -10,11 +10,28 @@ import {
   notificationClient,
   aiEngineClient,
 } from '../services/backendClient';
-import { requireAuth, requireAdmin, AuthContext } from '../lib/auth';
+import { requireAuth, requireAdmin, requireOrganization, AuthContext } from '../lib/auth';
 
 interface Context extends AuthContext {
   headers: Record<string, string | string[] | undefined>;
   token?: string;
+}
+
+/**
+ * Validate AI Engine request: user must be authenticated and belong to the organization
+ */
+async function validateAiRequest(
+  context: Context,
+  organizationId: string,
+  userId?: string
+): Promise<void> {
+  // Require authentication and organization membership
+  const user = await requireOrganization(context, organizationId);
+  
+  // If userId is provided, it must match the authenticated user
+  if (userId && userId !== user.id) {
+    throw new Error('Forbidden: userId must match the authenticated user');
+  }
 }
 
 const dateTimeScalar = new GraphQLScalarType({
@@ -285,8 +302,10 @@ export const resolvers = {
     notification: (_: any, { id }: { id: string }) => notificationClient.getById('/notifications', id),
 
     // AI Engine
-    aiChatStats: (_: any, { organizationId }: { organizationId: string }) =>
-      aiEngineClient.get(`/api/chat/stats/${organizationId}`),
+    aiChatStats: async (_: any, { organizationId }: { organizationId: string }, context: Context) => {
+      await requireOrganization(context, organizationId);
+      return aiEngineClient.get(`/api/chat/stats/${organizationId}`);
+    },
   },
 
   Project: {
@@ -609,18 +628,30 @@ export const resolvers = {
     deleteNotification: (_: any, { id }: { id: string }) => notificationClient.delete('/notifications', id),
 
     // AI Engine
-    aiChat: (_: any, { input }: { input: any }) => aiEngineClient.post('/api/chat', input),
-    aiClearHistory: async (_: any, { sessionId }: { sessionId: string }) => {
+    aiChat: async (_: any, { input }: { input: any }, context: Context) => {
+      await validateAiRequest(context, input.organizationId, input.userId);
+      return aiEngineClient.post('/api/chat', input);
+    },
+    aiClearHistory: async (_: any, { sessionId }: { sessionId: string }, context: Context) => {
+      await requireAuth(context);
       await aiEngineClient.delete('/api/chat/history', sessionId);
       return { message: 'Conversation history cleared' };
     },
-    aiSyncAll: (_: any, { organizationId }: { organizationId: string }) =>
-      aiEngineClient.post('/api/sync/all', { organizationId }),
-    aiSyncType: (_: any, { organizationId, type }: { organizationId: string; type: string }) =>
-      aiEngineClient.post(`/api/sync/${type}`, { organizationId }),
-    aiIndexDocument: (_: any, { input }: { input: any }) =>
-      aiEngineClient.post('/api/index/document', input),
-    aiRemoveDocument: (_: any, { sourceSchema, sourceTable, sourceId }: { sourceSchema: string; sourceTable: string; sourceId: string }) =>
-      aiEngineClient.post('/api/index/document/remove', { sourceSchema, sourceTable, sourceId }),
+    aiSyncAll: async (_: any, { organizationId }: { organizationId: string }, context: Context) => {
+      await requireOrganization(context, organizationId);
+      return aiEngineClient.post('/api/sync/all', { organizationId });
+    },
+    aiSyncType: async (_: any, { organizationId, type }: { organizationId: string; type: string }, context: Context) => {
+      await requireOrganization(context, organizationId);
+      return aiEngineClient.post(`/api/sync/${type}`, { organizationId });
+    },
+    aiIndexDocument: async (_: any, { input }: { input: any }, context: Context) => {
+      await requireOrganization(context, input.organizationId);
+      return aiEngineClient.post('/api/index/document', input);
+    },
+    aiRemoveDocument: async (_: any, { sourceSchema, sourceTable, sourceId }: { sourceSchema: string; sourceTable: string; sourceId: string }, context: Context) => {
+      await requireAuth(context);
+      return aiEngineClient.post('/api/index/document/remove', { sourceSchema, sourceTable, sourceId });
+    },
   },
 };
