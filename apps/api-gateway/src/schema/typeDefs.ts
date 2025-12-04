@@ -11,6 +11,7 @@ export const typeDefs = gql`
     accessToken: String!
     refreshToken: String!
     user: AuthUser!
+    isNewUser: Boolean
   }
 
   type TokenPayload {
@@ -688,6 +689,8 @@ export const typeDefs = gql`
     # Authentication
     login(email: String!, password: String!): AuthPayload!
     register(name: String!, email: String!, password: String!): AuthPayload!
+    googleLogin(idToken: String!): AuthPayload!
+    googleSignup(idToken: String!): AuthPayload!
     refreshToken(refreshToken: String!): TokenPayload!
     logout: Boolean!
 

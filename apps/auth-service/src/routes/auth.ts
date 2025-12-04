@@ -1,8 +1,13 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import * as crypto from 'crypto';
+import { OAuth2Client } from 'google-auth-library';
 
 const router = Router();
+
+// Google OAuth Client - set your Google Client ID in environment variable
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // Simple token generation (in production, use proper JWT library)
 const generateToken = (): string => {
@@ -126,6 +131,110 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 });
 
+// Google OAuth - handles both login and signup
+router.post('/google', async (req: Request, res: Response) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      res.status(400).json({ error: 'Google ID token is required' });
+      return;
+    }
+
+    if (!GOOGLE_CLIENT_ID) {
+      res.status(500).json({ error: 'Google OAuth is not configured' });
+      return;
+    }
+
+    // Verify the Google ID token
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    
+    if (!payload) {
+      res.status(401).json({ error: 'Invalid Google token' });
+      return;
+    }
+
+    const { sub: googleId, email, given_name, family_name, picture } = payload;
+
+    if (!email) {
+      res.status(400).json({ error: 'Email not provided by Google' });
+      return;
+    }
+
+    // Check if user exists by email or googleId
+    let user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email },
+          { googleId },
+        ],
+      },
+    });
+
+    let isNewUser = false;
+
+    if (user) {
+      // Update user with Google info if not already set
+      if (!user.googleId) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            googleId,
+            avatarUrl: user.avatarUrl || picture,
+          },
+        });
+      }
+    } else {
+      // Create new user (signup with Google)
+      isNewUser = true;
+      user = await prisma.user.create({
+        data: {
+          email,
+          firstName: given_name || '',
+          lastName: family_name || '',
+          googleId,
+          avatarUrl: picture,
+          // No password for Google-only users
+          password: null,
+        },
+      });
+    }
+
+    // Generate tokens
+    const accessToken = generateToken();
+    const refreshToken = generateToken();
+
+    // Store tokens
+    const accessTokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
+    refreshTokenStore.set(refreshToken, { userId: user.id, expiresAt: refreshTokenExpiry });
+
+    // Get user's team membership
+    const teamMember = await getTeamMembershipWithRole(user.id);
+
+    res.json({
+      accessToken,
+      refreshToken,
+      user: formatAuthUser(user, teamMember),
+      isNewUser,
+    });
+  } catch (error) {
+    console.error('Google OAuth error:', error);
+    if (error instanceof Error && error.message.includes('Token used too late')) {
+      res.status(401).json({ error: 'Google token expired' });
+      return;
+    }
+    res.status(500).json({ error: 'Google authentication failed' });
+  }
+});
+
 // Refresh Token
 router.post('/refresh', async (req: Request, res: Response) => {
   try {
@@ -238,6 +347,7 @@ interface UserData {
   firstName: string | null;
   lastName: string | null;
   email: string;
+  avatarUrl?: string | null;
   createdAt: Date;
 }
 
@@ -257,7 +367,7 @@ function formatAuthUser(user: UserData, teamMember: TeamMemberData | null) {
     lastName: user.lastName,
     email: user.email,
     role: teamMember?.role || 'member',
-    avatar: null, // Could be extended to support avatars
+    avatar: user.avatarUrl || null,
     status: 'active',
     skills: [], // Could be extended to fetch from workforce service
     teamId: teamMember?.teamId || null,

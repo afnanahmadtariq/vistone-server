@@ -311,6 +311,12 @@ export const resolvers = {
     register: async (_: any, { name, email, password }: { name: string; email: string; password: string }) => {
       return authClient.post('/auth/register', { name, email, password });
     },
+    googleLogin: async (_: any, { idToken }: { idToken: string }) => {
+      return authClient.post('/auth/google', { idToken });
+    },
+    googleSignup: async (_: any, { idToken }: { idToken: string }) => {
+      return authClient.post('/auth/google', { idToken });
+    },
     refreshToken: async (_: any, { refreshToken }: { refreshToken: string }) => {
       return authClient.post('/auth/refresh', { refreshToken });
     },
