@@ -96,6 +96,11 @@ jobs:
         with:
           node-version: 20
 
+      - name: Create package.json for Azure
+        working-directory: ./deploy
+        run: |
+          echo '{"name":"ai-engine","version":"1.0.0","scripts":{"start":"node main.js"},"engines":{"node":">=20.0.0"}}' > package.json
+
       - name: Install production dependencies
         working-directory: ./deploy
         run: npm install fastify @fastify/cors @fastify/autoload @fastify/sensible fastify-plugin @prisma/client @prisma/adapter-pg pg dotenv uuid axios @langchain/core @langchain/mistralai langchain --omit=dev
@@ -133,6 +138,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Create package.json for Azure
+        working-directory: ./deploy
+        run: |
+          echo '{"name":"auth-service","version":"1.0.0","scripts":{"start":"node main.js"},"engines":{"node":">=20.0.0"}}' > package.json
 
       - name: Install production dependencies
         working-directory: ./deploy
@@ -172,6 +182,11 @@ jobs:
         with:
           node-version: 20
 
+      - name: Create package.json for Azure
+        working-directory: ./deploy
+        run: |
+          echo '{"name":"project-management","version":"1.0.0","scripts":{"start":"node main.js"},"engines":{"node":">=20.0.0"}}' > package.json
+
       - name: Install production dependencies
         working-directory: ./deploy
         run: npm install express cors @prisma/client @prisma/adapter-pg pg dotenv --omit=dev
@@ -210,6 +225,11 @@ jobs:
         with:
           node-version: 20
 
+      - name: Create package.json for Azure
+        working-directory: ./deploy
+        run: |
+          echo '{"name":"workforce-management","version":"1.0.0","scripts":{"start":"node main.js"},"engines":{"node":">=20.0.0"}}' > package.json
+
       - name: Install production dependencies
         working-directory: ./deploy
         run: npm install express cors @prisma/client @prisma/adapter-pg pg dotenv --omit=dev
@@ -247,6 +267,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+
+      - name: Create package.json for Azure
+        working-directory: ./deploy
+        run: |
+          echo '{"name":"api-gateway","version":"1.0.0","scripts":{"start":"node main.js"},"engines":{"node":">=20.0.0"}}' > package.json
 
       - name: Install production dependencies
         working-directory: ./deploy
