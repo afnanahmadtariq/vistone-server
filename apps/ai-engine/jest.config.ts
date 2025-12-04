@@ -17,7 +17,7 @@ export default {
     '^.+\\.[tj]s$': ['@swc/jest', swcJestConfig],
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(p-retry|is-network-error|@langchain)/)',
+    'node_modules/(?!(p-retry|is-network-error|uuid|@langchain|@mistralai)/)',
   ],
   moduleFileExtensions: ['ts', 'js', 'html'],
   coverageDirectory: 'test-output/jest/coverage',

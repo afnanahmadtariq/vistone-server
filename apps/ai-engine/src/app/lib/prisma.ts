@@ -1,10 +1,24 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fs from 'fs';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 
+// Find the workspace root by looking for nx.json
+function findWorkspaceRoot(startDir: string): string {
+  let dir = startDir;
+  while (dir !== path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, 'nx.json'))) {
+      return dir;
+    }
+    dir = path.dirname(dir);
+  }
+  return process.cwd();
+}
+
 // Dynamic import to handle dist folder path resolution
-const clientPath = path.join(process.cwd(), 'node_modules', '.prisma', 'ai-engine-client');
+const workspaceRoot = findWorkspaceRoot(__dirname);
+const clientPath = path.join(workspaceRoot, 'node_modules', '.prisma', 'ai-engine-client');
 const { PrismaClient } = require(clientPath);
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
