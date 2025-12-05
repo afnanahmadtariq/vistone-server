@@ -1,0 +1,185 @@
+syntax = "proto3";
+
+package vistone.clientmanagement;
+
+import "common.proto";
+
+// Client Management Service
+service ClientManagementService {
+  // Clients
+  rpc CreateClient(CreateClientRequest) returns (ClientResponse);
+  rpc GetClient(vistone.common.IdRequest) returns (ClientResponse);
+  rpc UpdateClient(UpdateClientRequest) returns (ClientResponse);
+  rpc DeleteClient(vistone.common.IdRequest) returns (vistone.common.ApiResponse);
+  rpc ListClients(ListClientsRequest) returns (ClientListResponse);
+  
+  // Proposals
+  rpc CreateProposal(CreateProposalRequest) returns (ProposalResponse);
+  rpc GetProposal(vistone.common.IdRequest) returns (ProposalResponse);
+  rpc UpdateProposal(UpdateProposalRequest) returns (ProposalResponse);
+  rpc DeleteProposal(vistone.common.IdRequest) returns (vistone.common.ApiResponse);
+  rpc ListProposals(ListProposalsRequest) returns (ProposalListResponse);
+  rpc UpdateProposalStatus(UpdateProposalStatusRequest) returns (ProposalResponse);
+  
+  // Client Feedback
+  rpc CreateFeedback(CreateFeedbackRequest) returns (FeedbackResponse);
+  rpc GetFeedback(vistone.common.IdRequest) returns (FeedbackResponse);
+  rpc ListFeedback(ListFeedbackRequest) returns (FeedbackListResponse);
+}
+
+// Client Messages
+message Client {
+  string id = 1;
+  string organizationId = 2;
+  string name = 3;
+  string email = 4;
+  string phone = 5;
+  string company = 6;
+  string industry = 7;
+  string status = 8;
+  string notes = 9;
+  string createdAt = 10;
+  string updatedAt = 11;
+}
+
+message CreateClientRequest {
+  string organizationId = 1;
+  string name = 2;
+  string email = 3;
+  string phone = 4;
+  string company = 5;
+  string industry = 6;
+  string status = 7;
+  string notes = 8;
+}
+
+message UpdateClientRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string email = 3;
+  optional string phone = 4;
+  optional string company = 5;
+  optional string industry = 6;
+  optional string status = 7;
+  optional string notes = 8;
+}
+
+message ListClientsRequest {
+  string organizationId = 1;
+  optional string status = 2;
+  optional string search = 3;
+  optional string industry = 4;
+  vistone.common.PaginationRequest pagination = 5;
+}
+
+message ClientResponse {
+  bool success = 1;
+  Client client = 2;
+  string error = 3;
+}
+
+message ClientListResponse {
+  bool success = 1;
+  repeated Client clients = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}
+
+// Proposal Messages
+message Proposal {
+  string id = 1;
+  string clientId = 2;
+  string organizationId = 3;
+  string title = 4;
+  string description = 5;
+  double amount = 6;
+  string status = 7;
+  string validUntil = 8;
+  string createdById = 9;
+  string createdAt = 10;
+  string updatedAt = 11;
+}
+
+message CreateProposalRequest {
+  string clientId = 1;
+  string organizationId = 2;
+  string title = 3;
+  string description = 4;
+  double amount = 5;
+  string status = 6;
+  string validUntil = 7;
+  string createdById = 8;
+}
+
+message UpdateProposalRequest {
+  string id = 1;
+  optional string title = 2;
+  optional string description = 3;
+  optional double amount = 4;
+  optional string status = 5;
+  optional string validUntil = 6;
+}
+
+message UpdateProposalStatusRequest {
+  string proposalId = 1;
+  string status = 2;
+}
+
+message ListProposalsRequest {
+  string organizationId = 1;
+  optional string clientId = 2;
+  optional string status = 3;
+  vistone.common.PaginationRequest pagination = 4;
+}
+
+message ProposalResponse {
+  bool success = 1;
+  Proposal proposal = 2;
+  string error = 3;
+}
+
+message ProposalListResponse {
+  bool success = 1;
+  repeated Proposal proposals = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}
+
+// Feedback Messages
+message Feedback {
+  string id = 1;
+  string clientId = 2;
+  string projectId = 3;
+  string organizationId = 4;
+  int32 rating = 5;
+  string comment = 6;
+  string createdAt = 7;
+}
+
+message CreateFeedbackRequest {
+  string clientId = 1;
+  string projectId = 2;
+  string organizationId = 3;
+  int32 rating = 4;
+  string comment = 5;
+}
+
+message ListFeedbackRequest {
+  string organizationId = 1;
+  optional string clientId = 2;
+  optional string projectId = 3;
+  vistone.common.PaginationRequest pagination = 4;
+}
+
+message FeedbackResponse {
+  bool success = 1;
+  Feedback feedback = 2;
+  string error = 3;
+}
+
+message FeedbackListResponse {
+  bool success = 1;
+  repeated Feedback feedbacks = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}

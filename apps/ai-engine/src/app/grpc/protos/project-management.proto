@@ -1,0 +1,225 @@
+syntax = "proto3";
+
+package vistone.projectmanagement;
+
+import "common.proto";
+
+// Project Management Service
+service ProjectManagementService {
+  // Projects
+  rpc CreateProject(CreateProjectRequest) returns (ProjectResponse);
+  rpc GetProject(vistone.common.IdRequest) returns (ProjectResponse);
+  rpc UpdateProject(UpdateProjectRequest) returns (ProjectResponse);
+  rpc DeleteProject(vistone.common.IdRequest) returns (vistone.common.ApiResponse);
+  rpc ListProjects(ListProjectsRequest) returns (ProjectListResponse);
+  
+  // Tasks
+  rpc CreateTask(CreateTaskRequest) returns (TaskResponse);
+  rpc GetTask(vistone.common.IdRequest) returns (TaskResponse);
+  rpc UpdateTask(UpdateTaskRequest) returns (TaskResponse);
+  rpc DeleteTask(vistone.common.IdRequest) returns (vistone.common.ApiResponse);
+  rpc ListTasks(ListTasksRequest) returns (TaskListResponse);
+  rpc AssignTask(AssignTaskRequest) returns (TaskResponse);
+  rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (TaskResponse);
+  
+  // Milestones
+  rpc CreateMilestone(CreateMilestoneRequest) returns (MilestoneResponse);
+  rpc GetMilestone(vistone.common.IdRequest) returns (MilestoneResponse);
+  rpc UpdateMilestone(UpdateMilestoneRequest) returns (MilestoneResponse);
+  rpc DeleteMilestone(vistone.common.IdRequest) returns (vistone.common.ApiResponse);
+  rpc ListMilestones(ListMilestonesRequest) returns (MilestoneListResponse);
+}
+
+// Project Messages
+message Project {
+  string id = 1;
+  string organizationId = 2;
+  string name = 3;
+  string description = 4;
+  string status = 5;
+  string startDate = 6;
+  string endDate = 7;
+  double budget = 8;
+  double spentBudget = 9;
+  int32 progress = 10;
+  string clientId = 11;
+  string managerId = 12;
+  repeated string teamIds = 13;
+  string createdAt = 14;
+  string updatedAt = 15;
+}
+
+message CreateProjectRequest {
+  string organizationId = 1;
+  string name = 2;
+  string description = 3;
+  string status = 4;
+  string startDate = 5;
+  string endDate = 6;
+  double budget = 7;
+  string clientId = 8;
+  string managerId = 9;
+  repeated string teamIds = 10;
+}
+
+message UpdateProjectRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional string status = 4;
+  optional string startDate = 5;
+  optional string endDate = 6;
+  optional double budget = 7;
+  optional double spentBudget = 8;
+  optional int32 progress = 9;
+  optional string clientId = 10;
+  optional string managerId = 11;
+  repeated string teamIds = 12;
+}
+
+message ListProjectsRequest {
+  string organizationId = 1;
+  optional string status = 2;
+  optional string search = 3;
+  optional string managerId = 4;
+  vistone.common.PaginationRequest pagination = 5;
+}
+
+message ProjectResponse {
+  bool success = 1;
+  Project project = 2;
+  string error = 3;
+}
+
+message ProjectListResponse {
+  bool success = 1;
+  repeated Project projects = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}
+
+// Task Messages
+message Task {
+  string id = 1;
+  string projectId = 2;
+  string organizationId = 3;
+  string title = 4;
+  string description = 5;
+  string status = 6;
+  string priority = 7;
+  string dueDate = 8;
+  string assigneeId = 9;
+  string createdById = 10;
+  int32 estimatedHours = 11;
+  int32 actualHours = 12;
+  repeated string tags = 13;
+  string createdAt = 14;
+  string updatedAt = 15;
+}
+
+message CreateTaskRequest {
+  string projectId = 1;
+  string organizationId = 2;
+  string title = 3;
+  string description = 4;
+  string status = 5;
+  string priority = 6;
+  string dueDate = 7;
+  string assigneeId = 8;
+  string createdById = 9;
+  int32 estimatedHours = 10;
+  repeated string tags = 11;
+}
+
+message UpdateTaskRequest {
+  string id = 1;
+  optional string title = 2;
+  optional string description = 3;
+  optional string status = 4;
+  optional string priority = 5;
+  optional string dueDate = 6;
+  optional string assigneeId = 7;
+  optional int32 estimatedHours = 8;
+  optional int32 actualHours = 9;
+  repeated string tags = 10;
+}
+
+message AssignTaskRequest {
+  string taskId = 1;
+  string assigneeId = 2;
+}
+
+message UpdateTaskStatusRequest {
+  string taskId = 1;
+  string status = 2;
+}
+
+message ListTasksRequest {
+  string organizationId = 1;
+  optional string projectId = 2;
+  optional string assigneeId = 3;
+  optional string status = 4;
+  optional string priority = 5;
+  vistone.common.DateRange dueDate = 6;
+  vistone.common.PaginationRequest pagination = 7;
+}
+
+message TaskResponse {
+  bool success = 1;
+  Task task = 2;
+  string error = 3;
+}
+
+message TaskListResponse {
+  bool success = 1;
+  repeated Task tasks = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}
+
+// Milestone Messages
+message Milestone {
+  string id = 1;
+  string projectId = 2;
+  string name = 3;
+  string description = 4;
+  string dueDate = 5;
+  string status = 6;
+  string createdAt = 7;
+  string updatedAt = 8;
+}
+
+message CreateMilestoneRequest {
+  string projectId = 1;
+  string name = 2;
+  string description = 3;
+  string dueDate = 4;
+  string status = 5;
+}
+
+message UpdateMilestoneRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional string dueDate = 4;
+  optional string status = 5;
+}
+
+message ListMilestonesRequest {
+  string projectId = 1;
+  optional string status = 2;
+  vistone.common.PaginationRequest pagination = 3;
+}
+
+message MilestoneResponse {
+  bool success = 1;
+  Milestone milestone = 2;
+  string error = 3;
+}
+
+message MilestoneListResponse {
+  bool success = 1;
+  repeated Milestone milestones = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}

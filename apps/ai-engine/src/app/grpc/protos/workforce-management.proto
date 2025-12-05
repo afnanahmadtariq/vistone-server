@@ -1,0 +1,213 @@
+syntax = "proto3";
+
+package vistone.workforcemanagement;
+
+import "common.proto";
+
+// Workforce Management Service
+service WorkforceManagementService {
+  // Teams
+  rpc CreateTeam(CreateTeamRequest) returns (TeamResponse);
+  rpc GetTeam(vistone.common.IdRequest) returns (TeamResponse);
+  rpc UpdateTeam(UpdateTeamRequest) returns (TeamResponse);
+  rpc DeleteTeam(vistone.common.IdRequest) returns (vistone.common.ApiResponse);
+  rpc ListTeams(ListTeamsRequest) returns (TeamListResponse);
+  
+  // Team Members
+  rpc AddTeamMember(AddTeamMemberRequest) returns (TeamMemberResponse);
+  rpc RemoveTeamMember(RemoveTeamMemberRequest) returns (vistone.common.ApiResponse);
+  rpc GetTeamMembers(vistone.common.IdRequest) returns (TeamMemberListResponse);
+  rpc UpdateMemberRole(UpdateMemberRoleRequest) returns (TeamMemberResponse);
+  
+  // User Skills
+  rpc AddUserSkill(AddUserSkillRequest) returns (UserSkillResponse);
+  rpc RemoveUserSkill(RemoveUserSkillRequest) returns (vistone.common.ApiResponse);
+  rpc GetUserSkills(vistone.common.IdRequest) returns (UserSkillListResponse);
+  rpc ListUsersWithSkill(ListUsersWithSkillRequest) returns (UserListResponse);
+  
+  // User Availability
+  rpc SetUserAvailability(SetUserAvailabilityRequest) returns (UserAvailabilityResponse);
+  rpc GetUserAvailability(GetUserAvailabilityRequest) returns (UserAvailabilityResponse);
+  rpc ListAvailableUsers(ListAvailableUsersRequest) returns (UserListResponse);
+}
+
+// Team Messages
+message Team {
+  string id = 1;
+  string organizationId = 2;
+  string name = 3;
+  string description = 4;
+  string leaderId = 5;
+  int32 memberCount = 6;
+  string createdAt = 7;
+  string updatedAt = 8;
+}
+
+message CreateTeamRequest {
+  string organizationId = 1;
+  string name = 2;
+  string description = 3;
+  string leaderId = 4;
+}
+
+message UpdateTeamRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string description = 3;
+  optional string leaderId = 4;
+}
+
+message ListTeamsRequest {
+  string organizationId = 1;
+  optional string search = 2;
+  optional string leaderId = 3;
+  vistone.common.PaginationRequest pagination = 4;
+}
+
+message TeamResponse {
+  bool success = 1;
+  Team team = 2;
+  string error = 3;
+}
+
+message TeamListResponse {
+  bool success = 1;
+  repeated Team teams = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}
+
+// Team Member Messages
+message TeamMember {
+  string id = 1;
+  string teamId = 2;
+  string userId = 3;
+  string role = 4;
+  string joinedAt = 5;
+  User user = 6;
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  string firstName = 3;
+  string lastName = 4;
+  string role = 5;
+  string avatarUrl = 6;
+}
+
+message AddTeamMemberRequest {
+  string teamId = 1;
+  string userId = 2;
+  string role = 3;
+}
+
+message RemoveTeamMemberRequest {
+  string teamId = 1;
+  string userId = 2;
+}
+
+message UpdateMemberRoleRequest {
+  string teamId = 1;
+  string userId = 2;
+  string role = 3;
+}
+
+message TeamMemberResponse {
+  bool success = 1;
+  TeamMember member = 2;
+  string error = 3;
+}
+
+message TeamMemberListResponse {
+  bool success = 1;
+  repeated TeamMember members = 2;
+  string error = 3;
+}
+
+// User Skill Messages
+message UserSkill {
+  string id = 1;
+  string userId = 2;
+  string skillName = 3;
+  string proficiencyLevel = 4;
+  int32 yearsOfExperience = 5;
+  string createdAt = 6;
+}
+
+message AddUserSkillRequest {
+  string userId = 1;
+  string skillName = 2;
+  string proficiencyLevel = 3;
+  int32 yearsOfExperience = 4;
+}
+
+message RemoveUserSkillRequest {
+  string userId = 1;
+  string skillName = 2;
+}
+
+message ListUsersWithSkillRequest {
+  string organizationId = 1;
+  string skillName = 2;
+  optional string proficiencyLevel = 3;
+  vistone.common.PaginationRequest pagination = 4;
+}
+
+message UserSkillResponse {
+  bool success = 1;
+  UserSkill skill = 2;
+  string error = 3;
+}
+
+message UserSkillListResponse {
+  bool success = 1;
+  repeated UserSkill skills = 2;
+  string error = 3;
+}
+
+message UserListResponse {
+  bool success = 1;
+  repeated User users = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}
+
+// User Availability Messages
+message UserAvailability {
+  string userId = 1;
+  string status = 2;
+  int32 hoursPerWeek = 3;
+  string availableFrom = 4;
+  string availableUntil = 5;
+  string notes = 6;
+  string updatedAt = 7;
+}
+
+message SetUserAvailabilityRequest {
+  string userId = 1;
+  string status = 2;
+  int32 hoursPerWeek = 3;
+  string availableFrom = 4;
+  string availableUntil = 5;
+  string notes = 6;
+}
+
+message GetUserAvailabilityRequest {
+  string userId = 1;
+  vistone.common.DateRange dateRange = 2;
+}
+
+message ListAvailableUsersRequest {
+  string organizationId = 1;
+  int32 minHoursPerWeek = 2;
+  vistone.common.DateRange dateRange = 3;
+  repeated string requiredSkills = 4;
+  vistone.common.PaginationRequest pagination = 5;
+}
+
+message UserAvailabilityResponse {
+  bool success = 1;
+  UserAvailability availability = 2;
+  string error = 3;
+}

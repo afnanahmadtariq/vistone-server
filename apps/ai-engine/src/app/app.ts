@@ -9,6 +9,7 @@ import sensiblePlugin from './plugins/sensible';
 import rootRoutes from './routes/root';
 import chatRoutes from './routes/chat';
 import syncRoutes from './routes/sync';
+import agentRoutes from './routes/agent';
 
 /* eslint-disable-next-line */
 export interface AppOptions {}
@@ -28,4 +29,5 @@ export async function app(fastify: FastifyInstance, opts: AppOptions) {
   fastify.register(rootRoutes, opts);
   fastify.register(chatRoutes, opts);
   fastify.register(syncRoutes, opts);
+  fastify.register(agentRoutes, opts);
 }
