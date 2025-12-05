@@ -1,9 +1,12 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import {
   syncAllData,
+  syncOrganizationOverview,
+  syncOrganizationMembers,
   syncProjects,
   syncTasks,
   syncMilestones,
+  syncRisks,
   syncWikiPages,
   syncDocuments,
   syncTeams,
@@ -88,7 +91,7 @@ export default async function syncRoutes(fastify: FastifyInstance) {
           properties: {
             type: { 
               type: 'string',
-              enum: ['projects', 'tasks', 'milestones', 'wiki', 'documents', 'teams', 'clients', 'proposals']
+              enum: ['organization', 'members', 'projects', 'tasks', 'milestones', 'risks', 'wiki', 'documents', 'teams', 'clients', 'proposals']
             },
           },
         },
@@ -107,9 +110,12 @@ export default async function syncRoutes(fastify: FastifyInstance) {
         const { organizationId } = request.body;
 
         const syncFunctions: Record<string, (orgId: string) => Promise<{ synced: number; errors: string[] }>> = {
+          organization: syncOrganizationOverview,
+          members: syncOrganizationMembers,
           projects: syncProjects,
           tasks: syncTasks,
           milestones: syncMilestones,
+          risks: syncRisks,
           wiki: syncWikiPages,
           documents: syncDocuments,
           teams: syncTeams,

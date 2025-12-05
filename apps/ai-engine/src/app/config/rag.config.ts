@@ -26,9 +26,12 @@ export const ragConfig = {
   rag: {
     // Content types that can be indexed
     allowedContentTypes: [
+      'organization',
+      'member',
       'project',
       'task',
       'milestone',
+      'risk',
       'wiki',
       'document',
       'team',
@@ -66,6 +69,9 @@ export const ragConfig = {
       'knowledge base',
       'workforce',
       'organization data',
+      'deadlines',
+      'risks',
+      'milestones',
     ],
   },
 };
