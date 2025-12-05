@@ -1,7 +1,7 @@
 import { ChatMistralAI } from '@langchain/mistralai';
 import { HumanMessage, SystemMessage, AIMessage, type BaseMessage } from '@langchain/core/messages';
 import { ragConfig } from '../config';
-import { searchSimilarDocuments, buildContextFromDocuments, type SimilarDocument } from './vector-store.service';
+import { searchSimilarDocuments, buildContextFromDocuments, getOrganizationOverview, type SimilarDocument } from './vector-store.service';
 import { getPrismaClient } from '../lib/prisma';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -188,6 +188,15 @@ export async function queryWithRag(options: RagQueryOptions): Promise<RagRespons
     };
   }
 
+  // Check if query is asking for aggregate/count information
+  const isAggregateQuery = /how many|count|total|number of|statistics|stats|overview/i.test(query);
+
+  // Always fetch organization overview for aggregate queries
+  let orgOverview: SimilarDocument | null = null;
+  if (isAggregateQuery) {
+    orgOverview = await getOrganizationOverview(organizationId);
+  }
+
   // Search for relevant documents
   const similarDocs = await searchSimilarDocuments({
     organizationId,
@@ -196,8 +205,14 @@ export async function queryWithRag(options: RagQueryOptions): Promise<RagRespons
     topK: ragConfig.vectorSearch.topK,
   });
 
+  // Combine organization overview with similar docs (avoid duplicates)
+  let allDocs = [...similarDocs];
+  if (orgOverview && !similarDocs.some(d => d.sourceId === orgOverview?.sourceId)) {
+    allDocs = [orgOverview, ...similarDocs];
+  }
+
   // Build context from documents
-  const context = buildContextFromDocuments(similarDocs);
+  const context = buildContextFromDocuments(allDocs);
 
   // Get conversation history if enabled
   let history: ChatMessage[] = [];
@@ -250,12 +265,12 @@ Remember to only use information from the provided context. If the information i
     sessionId,
     'assistant',
     answer,
-    { sources: similarDocs.map(d => ({ id: d.sourceId, type: d.contentType })) }
+    { sources: allDocs.map(d => ({ id: d.sourceId, type: d.contentType })) }
   );
 
   return {
     answer,
-    sources: similarDocs,
+    sources: allDocs,
     sessionId,
     isOutOfScope: false,
   };

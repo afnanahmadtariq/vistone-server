@@ -18,8 +18,8 @@ export const ragConfig = {
 
   // Vector Search Configuration
   vectorSearch: {
-    topK: 5, // Number of similar documents to retrieve
-    similarityThreshold: 0.7, // Minimum similarity score
+    topK: 10, // Number of similar documents to retrieve
+    similarityThreshold: 0.3, // Minimum similarity score (lowered for better recall)
   },
 
   // RAG Behavior

@@ -53,6 +53,14 @@ export function prepareDocumentContent(
     if (metadata.dueDate) parts.push(`Due Date: ${metadata.dueDate}`);
     if (metadata.projectName) parts.push(`Project: ${metadata.projectName}`);
     if (metadata.teamName) parts.push(`Team: ${metadata.teamName}`);
+    
+    // Add count/statistics metadata for better aggregate query matching
+    if (metadata.memberCount !== undefined) parts.push(`Total Members: ${metadata.memberCount}`);
+    if (metadata.projectCount !== undefined) parts.push(`Total Projects: ${metadata.projectCount}`);
+    if (metadata.taskCount !== undefined) parts.push(`Total Tasks: ${metadata.taskCount}`);
+    if (metadata.teamCount !== undefined) parts.push(`Total Teams: ${metadata.teamCount}`);
+    if (metadata.clientCount !== undefined) parts.push(`Total Clients: ${metadata.clientCount}`);
+    if (metadata.milestoneCount !== undefined) parts.push(`Total Milestones: ${metadata.milestoneCount}`);
   }
   
   parts.push(`\nContent:\n${content}`);

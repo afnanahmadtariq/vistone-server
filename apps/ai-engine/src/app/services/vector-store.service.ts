@@ -130,3 +130,50 @@ export async function getDocumentBySource(
 
   return doc;
 }
+
+/**
+ * Get organization overview document directly (for aggregate queries)
+ * This is useful for questions like "how many clients/projects/tasks do I have?"
+ */
+export async function getOrganizationOverview(
+  organizationId: string
+): Promise<SimilarDocument | null> {
+  const prisma = getPrismaClient();
+  
+  // Find the organization overview document
+  const doc = await prisma.ragDocument.findFirst({
+    where: {
+      organizationId,
+      contentType: 'organization',
+      sourceTable: 'organizations',
+    },
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      contentType: true,
+      sourceSchema: true,
+      sourceTable: true,
+      sourceId: true,
+      metadata: true,
+    },
+  });
+
+  if (!doc) {
+    return null;
+  }
+
+  // Return as a SimilarDocument with high similarity score
+  return {
+    id: doc.id,
+    documentId: doc.id,
+    chunkText: doc.content,
+    title: doc.title,
+    contentType: doc.contentType,
+    sourceSchema: doc.sourceSchema,
+    sourceTable: doc.sourceTable,
+    sourceId: doc.sourceId,
+    metadata: doc.metadata as Record<string, unknown> | null,
+    similarity: 1.0, // Always include with highest relevance
+  };
+}
