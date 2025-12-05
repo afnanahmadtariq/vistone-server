@@ -2,6 +2,7 @@ import { ChatMistralAI } from '@langchain/mistralai';
 import { HumanMessage, SystemMessage, AIMessage, type BaseMessage } from '@langchain/core/messages';
 import { ragConfig } from '../config';
 import { searchSimilarDocuments, buildContextFromDocuments, getOrganizationOverview, type SimilarDocument } from './vector-store.service';
+import { getUserContext, formatUserContextForPrompt, type UserContext } from './user-context.service';
 import { getPrismaClient } from '../lib/prisma';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -29,13 +30,25 @@ function getChatModel(): ChatMistralAI {
 /**
  * Build the system prompt that restricts AI behavior
  */
-function buildSystemPrompt(organizationName?: string): string {
+function buildSystemPrompt(organizationName?: string, userContext?: UserContext | null): string {
   const allowedDomains = ragConfig.systemPrompt.allowedDomains.join(', ');
   const blockedTopics = ragConfig.systemPrompt.blockedTopics.join(', ');
 
+  // Build user context section if available
+  let userContextSection = '';
+  if (userContext) {
+    userContextSection = `
+
+${formatUserContextForPrompt(userContext)}
+
+IMPORTANT: When the user asks about themselves (e.g., "who am I?", "do you know me?", "what are my tasks?", "how many clients do I have?"), 
+use the CURRENT USER FACTS above to provide accurate, personalized responses. These are verified facts about the current user.
+`;
+  }
+
   return `You are an AI assistant for Vistone, a project management and workforce management platform.
 ${organizationName ? `You are currently helping a member of the organization: "${organizationName}".` : ''}
-
+${userContextSection}
 You have access to the full context of the organization including:
 - Organization overview with statistics (projects count, tasks, members, teams, clients)
 - All projects with their details (status, progress, deadlines, budgets)
@@ -55,6 +68,7 @@ IMPORTANT RULES:
 6. Always cite which source you're using when referencing specific data.
 7. Be helpful, concise, and professional.
 8. If you're unsure about something, say so rather than making up information.
+9. When the user asks personal questions about themselves, ALWAYS refer to the CURRENT USER FACTS section for accurate information.
 
 When answering:
 - Reference specific projects, tasks, or documents by name when available
@@ -63,7 +77,9 @@ When answering:
 - When asked about organization statistics, refer to the organization overview data
 - When asked about deadlines, prioritize upcoming and overdue items
 - When discussing risks, mention probability and impact levels
-- Include relevant metadata like status, priority, and dates when referencing items`;
+- Include relevant metadata like status, priority, and dates when referencing items
+- When the user asks "how many clients do I have?", refer to their personal client count in CURRENT USER FACTS
+- When the user asks about "my tasks" or "my projects", use their personal statistics from CURRENT USER FACTS`;
 }
 
 export interface ChatMessage {
@@ -188,12 +204,16 @@ export async function queryWithRag(options: RagQueryOptions): Promise<RagRespons
     };
   }
 
-  // Check if query is asking for aggregate/count information
+  // Fetch user context for personalized responses
+  const userContext = await getUserContext(organizationId, userId);
+
+  // Check if query is asking for aggregate/count information or personal info
   const isAggregateQuery = /how many|count|total|number of|statistics|stats|overview/i.test(query);
+  const isPersonalQuery = /\b(my|me|i|myself|who am i|do you know me)\b/i.test(query);
 
   // Always fetch organization overview for aggregate queries
   let orgOverview: SimilarDocument | null = null;
-  if (isAggregateQuery) {
+  if (isAggregateQuery || isPersonalQuery) {
     orgOverview = await getOrganizationOverview(organizationId);
   }
 
@@ -223,9 +243,9 @@ export async function queryWithRag(options: RagQueryOptions): Promise<RagRespons
   // Save user message to history
   await saveToHistory(organizationId, userId, sessionId, 'user', query);
 
-  // Build messages for LLM
+  // Build messages for LLM with user context
   const messages: BaseMessage[] = [
-    new SystemMessage(buildSystemPrompt(organizationName)),
+    new SystemMessage(buildSystemPrompt(organizationName, userContext)),
   ];
 
   // Add conversation history
@@ -246,7 +266,7 @@ ${context}
 
 USER QUESTION: ${query}
 
-Remember to only use information from the provided context. If the information is not available, say so.`;
+Remember to only use information from the provided context and the CURRENT USER FACTS in the system prompt. If the information is not available, say so.`;
 
   messages.push(new HumanMessage(contextualQuery));
 
