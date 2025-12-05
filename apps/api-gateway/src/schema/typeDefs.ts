@@ -872,6 +872,7 @@ export const typeDefs = gql`
     createClient(input: JSON!): Client!
     updateClient(id: ID!, input: JSON!): Client!
     deleteClient(id: ID!): DeleteResponse!
+    inviteClient(input: InviteClientInput!): Client!
     createProjectClient(input: JSON!): ProjectClient!
     updateProjectClient(id: ID!, input: JSON!): ProjectClient!
     deleteProjectClient(id: ID!): DeleteResponse!
@@ -1005,6 +1006,15 @@ export const typeDefs = gql`
     industry: String
     portalAccess: Boolean
     contactPersonId: ID
+    organizationId: ID!
+  }
+
+  input InviteClientInput {
+    email: String!
+    name: String!
+    company: String
+    phone: String
+    projectId: ID
     organizationId: ID!
   }
 

@@ -527,6 +527,14 @@ export const resolvers = {
       if (!organizationId) {
         throw new Error('Organization ID is required');
       }
+
+      // Get organization details for the email
+      let organization;
+      try {
+        organization = await authClient.getById('/organizations', organizationId);
+      } catch {
+        throw new Error('Organization not found');
+      }
       
       // Create user if doesn't exist, or get existing user
       let user;
@@ -559,8 +567,12 @@ export const resolvers = {
       }
       
       // If teamId provided, add user to team
+      let teamName;
       if (input.teamId) {
         try {
+          const team = await workforceClient.getById('/teams', input.teamId);
+          teamName = team?.name;
+          
           await workforceClient.post('/team-members', {
             teamId: input.teamId,
             userId: user.id,
@@ -569,6 +581,39 @@ export const resolvers = {
         } catch {
           // Team membership might already exist
         }
+      }
+      
+      // Send invitation email
+      try {
+        const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
+        const recipientName = `${input.firstName || ''} ${input.lastName || ''}`.trim() || undefined;
+        
+        // Generate invite token (user ID can be used as token for simplicity)
+        const inviteToken = user.id;
+        
+        if (input.teamId && teamName) {
+          // Send team invitation
+          await notificationClient.post('/emails/invite/team', {
+            email: input.email,
+            inviterName,
+            teamName,
+            organizationName: organization.name,
+            inviteToken,
+            recipientName,
+          });
+        } else {
+          // Send organization invitation
+          await notificationClient.post('/emails/invite/organization', {
+            email: input.email,
+            inviterName,
+            organizationName: organization.name,
+            inviteToken,
+            recipientName,
+          });
+        }
+      } catch (emailError) {
+        console.error('Failed to send invitation email:', emailError);
+        // Don't fail the entire operation if email fails
       }
       
       return enrichUserWithWorkforceData(user);
@@ -750,6 +795,90 @@ export const resolvers = {
     },
     updateClient: (_: any, { id, input }: { id: string; input: any }) => clientMgmtClient.put('/clients', id, input),
     deleteClient: (_: any, { id }: { id: string }) => clientMgmtClient.delete('/clients', id),
+    
+    inviteClient: async (_: any, { input }: { input: any }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      
+      const organizationId = input.organizationId || currentUser.organizationId;
+      if (!organizationId) {
+        throw new Error('Organization ID is required');
+      }
+
+      // Get organization details
+      let organization;
+      try {
+        organization = await authClient.getById('/organizations', organizationId);
+      } catch {
+        throw new Error('Organization not found');
+      }
+
+      // Check if client already exists by email
+      let client;
+      try {
+        const clients = await clientMgmtClient.get('/clients');
+        client = clients.find((c: any) => c.email === input.email);
+        
+        if (!client) {
+          // Create new client
+          client = await clientMgmtClient.post('/clients', {
+            name: input.name,
+            email: input.email,
+            company: input.company,
+            phone: input.phone,
+            organizationId,
+            portalAccess: true,
+            status: 'active',
+          });
+        } else {
+          // Enable portal access for existing client
+          if (!client.portalAccess) {
+            client = await clientMgmtClient.put('/clients', client.id, {
+              portalAccess: true,
+            });
+          }
+        }
+      } catch {
+        throw new Error('Failed to create or find client');
+      }
+
+      // If projectId provided, link client to project
+      let projectName;
+      if (input.projectId) {
+        try {
+          const project = await projectClient.getById('/projects', input.projectId);
+          projectName = project?.name;
+          
+          // Create project-client relationship
+          await clientMgmtClient.post('/project-clients', {
+            projectId: input.projectId,
+            clientId: client.id,
+          });
+        } catch {
+          // Relationship might already exist
+        }
+      }
+
+      // Send client portal invitation email
+      try {
+        const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
+        const inviteToken = client.id;
+
+        await notificationClient.post('/emails/invite/client', {
+          email: input.email,
+          inviterName,
+          organizationName: organization.name,
+          projectName,
+          inviteToken,
+          recipientName: input.name,
+        });
+      } catch (emailError) {
+        console.error('Failed to send client invitation email:', emailError);
+        // Don't fail if email fails
+      }
+
+      return client;
+    },
+    
     createProjectClient: (_: any, { input }: { input: any }) => clientMgmtClient.post('/project-clients', input),
     updateProjectClient: (_: any, { id, input }: { id: string; input: any }) => clientMgmtClient.put('/project-clients', id, input),
     deleteProjectClient: (_: any, { id }: { id: string }) => clientMgmtClient.delete('/project-clients', id),
