@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { sendEmail, emailTemplates } from '../lib/email';
-import prisma from '../lib/prisma';
 
 const router = Router();
 
@@ -38,20 +37,7 @@ router.post('/invite/organization', async (req, res) => {
     });
 
     if (sent) {
-      // Log the invitation
-      await prisma.notification.create({
-        data: {
-          type: 'INVITATION',
-          title: `Invitation sent to ${email}`,
-          message: `${inviterName} invited ${email} to join ${organizationName}`,
-          metadata: {
-            inviteType: 'organization',
-            email,
-            organizationName,
-          },
-        },
-      });
-
+      console.log(`Organization invitation email sent to ${email}`);
       res.json({ success: true, message: 'Invitation email sent successfully' });
     } else {
       res.status(500).json({ error: 'Failed to send invitation email' });
@@ -98,21 +84,7 @@ router.post('/invite/client', async (req, res) => {
     });
 
     if (sent) {
-      // Log the invitation
-      await prisma.notification.create({
-        data: {
-          type: 'INVITATION',
-          title: `Client invitation sent to ${email}`,
-          message: `${inviterName} invited ${email} to the client portal for ${organizationName}`,
-          metadata: {
-            inviteType: 'client',
-            email,
-            organizationName,
-            projectName,
-          },
-        },
-      });
-
+      console.log(`Client portal invitation email sent to ${email}`);
       res.json({ success: true, message: 'Client invitation email sent successfully' });
     } else {
       res.status(500).json({ error: 'Failed to send client invitation email' });
