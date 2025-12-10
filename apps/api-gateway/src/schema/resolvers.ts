@@ -27,7 +27,7 @@ async function validateAiRequest(
 ): Promise<void> {
   // Require authentication and organization membership
   const user = await requireOrganization(context, organizationId);
-  
+
   // If userId is provided, it must match the authenticated user
   if (userId && userId !== user.id) {
     throw new Error('Forbidden: userId must match the authenticated user');
@@ -88,16 +88,16 @@ const decimalScalar = new GraphQLScalarType({
 // Helper function to enrich user with workforce data
 async function enrichUserWithWorkforceData(user: any): Promise<any> {
   if (!user) return null;
-  
+
   try {
     // Get team membership for this user
     const teamMembers = await workforceClient.get(`/team-members?userId=${user.id}`);
     const teamMember = Array.isArray(teamMembers) ? teamMembers[0] : null;
-    
+
     // Get skills for this user
     const userSkills = await workforceClient.get(`/user-skills?userId=${user.id}`);
     const skills = Array.isArray(userSkills) ? userSkills.map((s: any) => s.skillName) : [];
-    
+
     return {
       ...user,
       role: teamMember?.role || null,
@@ -129,7 +129,7 @@ async function getEnrichedUser(userId: string): Promise<any> {
   if (userCache.has(userId)) {
     return userCache.get(userId);
   }
-  
+
   try {
     const user = await authClient.getById('/users', userId);
     const enrichedUser = await enrichUserWithWorkforceData(user);
@@ -161,7 +161,7 @@ export const resolvers = {
     users: async (_: any, { organizationId }: { organizationId?: string }) => {
       const users = await authClient.get('/users');
       let filteredUsers = users;
-      
+
       // If organizationId is provided, filter users by organization membership
       if (organizationId) {
         // Get organization members for this organization
@@ -169,7 +169,7 @@ export const resolvers = {
         const memberUserIds = new Set(members.map((m: any) => m.userId));
         filteredUsers = users.filter((user: any) => memberUserIds.has(user.id));
       }
-      
+
       return Promise.all(filteredUsers.map(enrichUserWithWorkforceData));
     },
     user: async (_: any, { id }: { id: string }) => {
@@ -343,7 +343,7 @@ export const resolvers = {
         // Get project members
         const projectMembers = await projectClient.get(`/project-members?projectId=${parent.id}`);
         if (!Array.isArray(projectMembers) || projectMembers.length === 0) return [];
-        
+
         // Get user details for each member
         const members = await Promise.all(
           projectMembers.map((pm: any) => getEnrichedUser(pm.userId))
@@ -509,19 +509,19 @@ export const resolvers = {
     createUser: async (_: any, { input }: { input: any }, context: Context) => {
       // Only Admins can create users
       const currentUser = await requireAdmin(context);
-      
+
       // Auto-assign organizationId from current user if not provided
       if (!input.organizationId && currentUser.organizationId) {
         input.organizationId = currentUser.organizationId;
       }
-      
+
       return authClient.post('/users', input);
     },
     updateUser: (_: any, { id, input }: { id: string; input: any }) => authClient.put('/users', id, input),
     deleteUser: (_: any, { id }: { id: string }) => authClient.delete('/users', id),
     inviteMember: async (_: any, { input }: { input: any }, context: Context) => {
       const currentUser = await requireAuth(context);
-      
+
       // Use organizationId from input or current user
       const organizationId = input.organizationId || currentUser.organizationId;
       if (!organizationId) {
@@ -535,14 +535,14 @@ export const resolvers = {
       } catch {
         throw new Error('Organization not found');
       }
-      
+
       // Create user if doesn't exist, or get existing user
       let user;
       try {
         // Try to find existing user by email
         const users = await authClient.get('/users');
         user = users.find((u: any) => u.email === input.email);
-        
+
         if (!user) {
           // Create new user
           user = await authClient.post('/users', {
@@ -554,7 +554,7 @@ export const resolvers = {
       } catch {
         throw new Error('Failed to create or find user');
       }
-      
+
       // Add user to organization as a member
       try {
         await authClient.post('/organization-members', {
@@ -565,14 +565,14 @@ export const resolvers = {
       } catch {
         // User might already be a member, continue
       }
-      
+
       // If teamId provided, add user to team
       let teamName;
       if (input.teamId) {
         try {
           const team = await workforceClient.getById('/teams', input.teamId);
           teamName = team?.name;
-          
+
           await workforceClient.post('/team-members', {
             teamId: input.teamId,
             userId: user.id,
@@ -582,15 +582,15 @@ export const resolvers = {
           // Team membership might already exist
         }
       }
-      
+
       // Send invitation email
       try {
         const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
         const recipientName = `${input.firstName || ''} ${input.lastName || ''}`.trim() || undefined;
-        
+
         // Generate invite token (user ID can be used as token for simplicity)
         const inviteToken = user.id;
-        
+
         if (input.teamId && teamName) {
           // Send team invitation
           await notificationClient.post('/emails/invite/team', {
@@ -615,7 +615,7 @@ export const resolvers = {
         console.error('Failed to send invitation email:', emailError);
         // Don't fail the entire operation if email fails
       }
-      
+
       return enrichUserWithWorkforceData(user);
     },
     createOrganization: (_: any, { input }: { input: any }) => authClient.post('/organizations', input),
@@ -638,12 +638,12 @@ export const resolvers = {
     // Teams (Workforce Service)
     createTeam: async (_: any, { input }: { input: any }, context: Context) => {
       const currentUser = await requireAuth(context);
-      
+
       // Auto-assign organizationId from current user if not provided
       if (!input.organizationId && currentUser.organizationId) {
         input.organizationId = currentUser.organizationId;
       }
-      
+
       return workforceClient.post('/teams', input);
     },
     updateTeam: (_: any, { id, input }: { id: string; input: any }) => workforceClient.put('/teams', id, input),
@@ -680,14 +680,14 @@ export const resolvers = {
     // Projects (Project Service)
     createProject: async (_: any, { input }: { input: any }, context: Context) => {
       const currentUser = await requireAuth(context);
-      
+
       // Auto-assign organizationId from current user if not provided
       const organizationId = input.organizationId || currentUser.organizationId;
-      
+
       if (!organizationId) {
         throw new Error('Organization ID is required');
       }
-      
+
       // Transform input to match Prisma schema
       const projectData: any = {
         organizationId,
@@ -730,7 +730,7 @@ export const resolvers = {
     updateProject: async (_: any, { id, input }: { id: string; input: any }) => {
       // Transform input to match Prisma schema
       const projectData: any = {};
-      
+
       if (input.name !== undefined) projectData.name = input.name;
       if (input.description !== undefined) projectData.description = input.description;
       if (input.status !== undefined) projectData.status = input.status;
@@ -742,14 +742,14 @@ export const resolvers = {
       if (input.progress !== undefined) projectData.progress = input.progress;
       if (input.budget !== undefined) projectData.budget = input.budget;
       if (input.spentBudget !== undefined) projectData.spentBudget = input.spentBudget;
-      
+
       // Handle metadata fields
-      if (input.type !== undefined || input.visibility !== undefined || 
-          input.notifyTeam !== undefined || input.notifyClient !== undefined) {
+      if (input.type !== undefined || input.visibility !== undefined ||
+        input.notifyTeam !== undefined || input.notifyClient !== undefined) {
         // First get existing project to preserve other metadata
         const existingProject = await projectClient.getById('/projects', id);
         const existingMetadata = existingProject?.metadata || {};
-        
+
         projectData.metadata = {
           ...existingMetadata,
           ...(input.type !== undefined && { type: input.type }),
@@ -785,20 +785,20 @@ export const resolvers = {
     // Clients (Client Management Service)
     createClient: async (_: any, { input }: { input: any }, context: Context) => {
       const currentUser = await requireAuth(context);
-      
+
       // Auto-assign organizationId from current user if not provided
       if (!input.organizationId && currentUser.organizationId) {
         input.organizationId = currentUser.organizationId;
       }
-      
+
       return clientMgmtClient.post('/clients', input);
     },
     updateClient: (_: any, { id, input }: { id: string; input: any }) => clientMgmtClient.put('/clients', id, input),
     deleteClient: (_: any, { id }: { id: string }) => clientMgmtClient.delete('/clients', id),
-    
+
     inviteClient: async (_: any, { input }: { input: any }, context: Context) => {
       const currentUser = await requireAuth(context);
-      
+
       const organizationId = input.organizationId || currentUser.organizationId;
       if (!organizationId) {
         throw new Error('Organization ID is required');
@@ -817,7 +817,7 @@ export const resolvers = {
       try {
         const clients = await clientMgmtClient.get('/clients');
         client = clients.find((c: any) => c.email === input.email);
-        
+
         if (!client) {
           // Create new client
           client = await clientMgmtClient.post('/clients', {
@@ -847,7 +847,7 @@ export const resolvers = {
         try {
           const project = await projectClient.getById('/projects', input.projectId);
           projectName = project?.name;
-          
+
           // Create project-client relationship
           await clientMgmtClient.post('/project-clients', {
             projectId: input.projectId,
@@ -878,7 +878,7 @@ export const resolvers = {
 
       return client;
     },
-    
+
     createProjectClient: (_: any, { input }: { input: any }) => clientMgmtClient.post('/project-clients', input),
     updateProjectClient: (_: any, { id, input }: { id: string; input: any }) => clientMgmtClient.put('/project-clients', id, input),
     deleteProjectClient: (_: any, { id }: { id: string }) => clientMgmtClient.delete('/project-clients', id),
@@ -961,7 +961,8 @@ export const resolvers = {
     // AI Engine
     aiChat: async (_: any, { input }: { input: any }, context: Context) => {
       await validateAiRequest(context, input.organizationId, input.userId);
-      return aiEngineClient.post('/api/chat', input);
+      // Use agent query endpoint for full agent capabilities (create/update/delete operations)
+      return aiEngineClient.post('/api/agent/query', input);
     },
     aiClearHistory: async (_: any, { sessionId }: { sessionId: string }, context: Context) => {
       await requireAuth(context);

@@ -631,7 +631,15 @@ export const typeDefs = gql`
     answer: String!
     sessionId: String!
     isOutOfScope: Boolean!
+    isActionResponse: Boolean
+    actionResult: AiActionResult
     sources: [AiSource!]!
+  }
+
+  type AiActionResult {
+    success: Boolean!
+    toolsUsed: [String!]!
+    iterations: Int!
   }
 
   type AiSource {
@@ -1108,9 +1116,14 @@ export const typeDefs = gql`
     organizationId: String!
     organizationName: String
     userId: String!
+    userName: String
     sessionId: String
     query: String!
     contentTypes: [String!]
+    # Enable agent mode for actions (create, update, delete)
+    enableAgent: Boolean
+    # Tool categories: projectManagement, clientManagement, workforceManagement, communication, notification, knowledgeHub
+    enabledToolCategories: [String!]
   }
 
   input AiIndexDocumentInput {
