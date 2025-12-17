@@ -811,6 +811,12 @@ export const typeDefs = gql`
     googleSignup(idToken: String!): AuthPayload!
     refreshToken(refreshToken: String!): TokenPayload!
     logout: Boolean!
+    
+    """
+    Permanently deletes the currently authenticated user and their associated data.
+    Returns true on success.
+    """
+    deleteMyAccount: Boolean!
 
     # Teams - Enhanced
     removeMember(teamId: ID!, memberId: ID!): RemoveMemberResponse!

@@ -143,6 +143,79 @@ async function getEnrichedUser(userId: string): Promise<any> {
 // Clear cache periodically (simple approach)
 setInterval(() => userCache.clear(), 60000); // Clear every minute
 
+/**
+ * Helper function to delete a user's data across all services.
+ * This is used for both individual user deletion and organization-wide cleanup.
+ */
+async function deleteUserCrossServiceData(userId: string): Promise<void> {
+  // Clean up workforce data (team memberships, skills, availability)
+  try {
+    const teamMembers = await workforceClient.get(`/team-members?userId=${userId}`);
+    if (Array.isArray(teamMembers)) {
+      for (const tm of teamMembers) {
+        await workforceClient.delete('/team-members', tm.id);
+      }
+    }
+    const userSkills = await workforceClient.get(`/user-skills?userId=${userId}`);
+    if (Array.isArray(userSkills)) {
+      for (const skill of userSkills) {
+        await workforceClient.delete('/user-skills', skill.id);
+      }
+    }
+    const availability = await workforceClient.get(`/user-availability?userId=${userId}`);
+    if (Array.isArray(availability)) {
+      for (const avail of availability) {
+        await workforceClient.delete('/user-availability', avail.id);
+      }
+    }
+  } catch (error) {
+    console.error(`[deleteUserCrossServiceData] Error cleaning workforce data for ${userId}:`, error);
+  }
+
+  // Clean up project memberships
+  try {
+    const projectMembers = await projectClient.get(`/project-members?userId=${userId}`);
+    if (Array.isArray(projectMembers)) {
+      for (const pm of projectMembers) {
+        await projectClient.delete('/project-members', pm.id);
+      }
+    }
+    // Unassign user from tasks
+    const tasks = await projectClient.get(`/tasks?assigneeId=${userId}`);
+    if (Array.isArray(tasks)) {
+      for (const task of tasks) {
+        await projectClient.put('/tasks', task.id, { assigneeId: null });
+      }
+    }
+  } catch (error) {
+    console.error(`[deleteUserCrossServiceData] Error cleaning project data for ${userId}:`, error);
+  }
+
+  // Clean up communication data
+  try {
+    const channelMembers = await communicationClient.get(`/channel-members?userId=${userId}`);
+    if (Array.isArray(channelMembers)) {
+      for (const cm of channelMembers) {
+        await communicationClient.delete('/channel-members', cm.id);
+      }
+    }
+  } catch (error) {
+    console.error(`[deleteUserCrossServiceData] Error cleaning communication data for ${userId}:`, error);
+  }
+
+  // Clean up notification preferences
+  try {
+    const notifPrefs = await notificationClient.get(`/notification-preferences?userId=${userId}`);
+    if (Array.isArray(notifPrefs)) {
+      for (const pref of notifPrefs) {
+        await notificationClient.delete('/notification-preferences', pref.id);
+      }
+    }
+  } catch (error) {
+    console.error(`[deleteUserCrossServiceData] Error cleaning notification data for ${userId}:`, error);
+  }
+}
+
 export const resolvers = {
   DateTime: dateTimeScalar,
   JSON: jsonScalar,
@@ -498,6 +571,195 @@ export const resolvers = {
         return true;
       }
       return authClient.postWithAuth('/auth/logout', {}, context.token);
+    },
+
+    /**
+     * Delete the currently authenticated user's account and all associated data.
+     * If the user is an Admin (organizer) of an organization, the entire organization
+     * and all its data (including other members) will be deleted.
+     */
+    deleteMyAccount: async (_: any, __: any, context: Context) => {
+      // Require authentication
+      const user = await requireAuth(context);
+      const userId = user.id;
+
+      console.log(`[deleteMyAccount] Starting account deletion for user: ${userId}`);
+
+      try {
+        // Check if user is an Admin/Owner of any organization
+        const userMemberships = await authClient.get(`/organization-members?userId=${userId}`);
+        const organizationsToDelete: string[] = [];
+        const organizationMemberIds: string[] = [];
+
+        if (Array.isArray(userMemberships)) {
+          for (const membership of userMemberships) {
+            // Get the role to check if user is Admin
+            if (membership.roleId) {
+              try {
+                const role = await authClient.getById('/roles', membership.roleId);
+                if (role && role.name === 'Admin' && role.isSystem === true) {
+                  // User is the Admin/Owner of this organization
+                  organizationsToDelete.push(membership.organizationId);
+                }
+              } catch (error) {
+                console.error('[deleteMyAccount] Error fetching role:', error);
+              }
+            }
+          }
+        }
+
+        // If user is an organization owner, delete all organization data first
+        for (const orgId of organizationsToDelete) {
+          console.log(`[deleteMyAccount] Deleting organization and all data: ${orgId}`);
+
+          // Get all members of this organization (to delete their cross-service data)
+          const orgMembers = await authClient.get(`/organization-members?organizationId=${orgId}`);
+          if (Array.isArray(orgMembers)) {
+            for (const member of orgMembers) {
+              if (member.userId !== userId) {
+                // Delete cross-service data for each member
+                await deleteUserCrossServiceData(member.userId);
+              }
+              organizationMemberIds.push(member.id);
+            }
+          }
+
+          // Delete all teams in the organization
+          try {
+            const teams = await workforceClient.get(`/teams?organizationId=${orgId}`);
+            if (Array.isArray(teams)) {
+              for (const team of teams) {
+                // Delete team members first
+                const teamMembers = await workforceClient.get(`/team-members?teamId=${team.id}`);
+                if (Array.isArray(teamMembers)) {
+                  for (const tm of teamMembers) {
+                    await workforceClient.delete('/team-members', tm.id);
+                  }
+                }
+                await workforceClient.delete('/teams', team.id);
+              }
+            }
+          } catch (error) {
+            console.error('[deleteMyAccount] Error deleting teams:', error);
+          }
+
+          // Delete all projects in the organization
+          try {
+            const projects = await projectClient.get(`/projects?organizationId=${orgId}`);
+            if (Array.isArray(projects)) {
+              for (const project of projects) {
+                // Delete project members
+                const projectMembers = await projectClient.get(`/project-members?projectId=${project.id}`);
+                if (Array.isArray(projectMembers)) {
+                  for (const pm of projectMembers) {
+                    await projectClient.delete('/project-members', pm.id);
+                  }
+                }
+                // Delete tasks
+                const tasks = await projectClient.get(`/tasks?projectId=${project.id}`);
+                if (Array.isArray(tasks)) {
+                  for (const task of tasks) {
+                    await projectClient.delete('/tasks', task.id);
+                  }
+                }
+                // Delete milestones
+                const milestones = await projectClient.get(`/milestones?projectId=${project.id}`);
+                if (Array.isArray(milestones)) {
+                  for (const milestone of milestones) {
+                    await projectClient.delete('/milestones', milestone.id);
+                  }
+                }
+                await projectClient.delete('/projects', project.id);
+              }
+            }
+          } catch (error) {
+            console.error('[deleteMyAccount] Error deleting projects:', error);
+          }
+
+          // Delete all clients in the organization
+          try {
+            const clients = await clientMgmtClient.get(`/clients?organizationId=${orgId}`);
+            if (Array.isArray(clients)) {
+              for (const client of clients) {
+                await clientMgmtClient.delete('/clients', client.id);
+              }
+            }
+          } catch (error) {
+            console.error('[deleteMyAccount] Error deleting clients:', error);
+          }
+
+          // Delete all documents in the organization
+          try {
+            const documents = await knowledgeClient.get(`/documents?organizationId=${orgId}`);
+            if (Array.isArray(documents)) {
+              for (const doc of documents) {
+                await knowledgeClient.delete('/documents', doc.id);
+              }
+            }
+            const folders = await knowledgeClient.get(`/document-folders?organizationId=${orgId}`);
+            if (Array.isArray(folders)) {
+              for (const folder of folders) {
+                await knowledgeClient.delete('/document-folders', folder.id);
+              }
+            }
+          } catch (error) {
+            console.error('[deleteMyAccount] Error deleting documents:', error);
+          }
+
+          // Delete organization members
+          for (const memberId of organizationMemberIds) {
+            try {
+              await authClient.delete('/organization-members', memberId);
+            } catch (error) {
+              console.error('[deleteMyAccount] Error deleting org member:', error);
+            }
+          }
+
+          // Delete organization roles
+          try {
+            const roles = await authClient.get(`/roles?organizationId=${orgId}`);
+            if (Array.isArray(roles)) {
+              for (const role of roles) {
+                await authClient.delete('/roles', role.id);
+              }
+            }
+          } catch (error) {
+            console.error('[deleteMyAccount] Error deleting roles:', error);
+          }
+
+          // Delete the organization itself
+          try {
+            await authClient.delete('/organizations', orgId);
+          } catch (error) {
+            console.error('[deleteMyAccount] Error deleting organization:', error);
+          }
+
+          // Delete other users in the organization (they are now orphaned)
+          if (Array.isArray(orgMembers)) {
+            for (const member of orgMembers) {
+              if (member.userId !== userId) {
+                try {
+                  await authClient.delete('/users', member.userId);
+                } catch (error) {
+                  console.error('[deleteMyAccount] Error deleting org member user:', error);
+                }
+              }
+            }
+          }
+        }
+
+        // Clean up current user's cross-service data
+        await deleteUserCrossServiceData(userId);
+
+        // Delete the requesting user from auth service
+        await authClient.delete('/users', userId);
+
+        console.log(`[deleteMyAccount] Successfully deleted user: ${userId}`);
+        return true;
+      } catch (error) {
+        console.error('[deleteMyAccount] Failed to delete user:', error);
+        throw new Error('Failed to delete account. Please try again or contact support.');
+      }
     },
 
     // Teams - Enhanced

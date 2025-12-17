@@ -6,8 +6,26 @@ const router = Router();
 // Create Milestone
 router.post('/', async (req, res) => {
   try {
+    const { name, title, description, dueDate, status, projectId, completed, completedAt } = req.body;
+
+    // Map 'name' to 'title' if 'title' is not provided (backwards compatibility)
+    const milestoneTitle = title || name;
+
+    if (!milestoneTitle) {
+      res.status(400).json({ error: 'Title or name is required for milestone' });
+      return;
+    }
+
     const milestone = await prisma.milestone.create({
-      data: req.body,
+      data: {
+        projectId,
+        title: milestoneTitle,
+        description,
+        dueDate: dueDate ? new Date(dueDate) : undefined,
+        status: status || 'pending',
+        completed: completed || false,
+        completedAt: completedAt ? new Date(completedAt) : undefined,
+      },
     });
     res.json(milestone);
   } catch (error) {

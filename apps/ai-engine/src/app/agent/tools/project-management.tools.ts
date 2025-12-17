@@ -101,19 +101,57 @@ export const updateProjectTool = new DynamicStructuredTool({
  */
 export const listProjectsTool = new DynamicStructuredTool({
   name: 'list_projects',
-  description: 'List all projects in an organization. Can filter by status or search by name.',
+  description: 'List all projects in an organization. First try without a search term to see all projects, then use search to filter. The search is case-insensitive and matches partial project names.',
   schema: z.object({
     organizationId: z.string().describe('The organization ID to list projects for'),
     status: z.enum(['planned', 'in_progress', 'on_hold', 'completed', 'cancelled']).optional().describe('Filter by project status'),
-    search: z.string().optional().describe('Search term to filter projects by name'),
+    search: z.string().optional().describe('Optional search term to filter projects by name (case-insensitive, partial match)'),
   }),
   func: async (input) => {
-    const result = await projectConnector.listProjects(input);
+    // First, get all projects for the organization
+    const result = await projectConnector.listProjects({
+      organizationId: input.organizationId,
+      status: input.status,
+      // Only pass search if explicitly provided
+      search: input.search,
+    });
+
     if (result.success) {
+      let projects = result.data || [];
+
+      // If search term provided but API returned empty, try fuzzy matching on all projects
+      if (input.search && projects.length === 0) {
+        // Get all projects without search filter
+        const allProjectsResult = await projectConnector.listProjects({
+          organizationId: input.organizationId,
+          status: input.status,
+        });
+
+        if (allProjectsResult.success && allProjectsResult.data) {
+          // Perform case-insensitive fuzzy matching
+          const searchLower = input.search.toLowerCase();
+          projects = allProjectsResult.data.filter((p: any) => {
+            const nameLower = (p.name || '').toLowerCase();
+            const descLower = (p.description || '').toLowerCase();
+            return nameLower.includes(searchLower) ||
+              descLower.includes(searchLower) ||
+              searchLower.split(' ').some((word: string) => nameLower.includes(word));
+          });
+        }
+      }
+
       return JSON.stringify({
         success: true,
-        count: result.data?.length || 0,
-        projects: result.data,
+        count: projects.length,
+        projects: projects.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          status: p.status,
+          progress: p.progress,
+          startDate: p.startDate,
+          endDate: p.endDate,
+        })),
       });
     }
     return JSON.stringify({
@@ -122,6 +160,7 @@ export const listProjectsTool = new DynamicStructuredTool({
     });
   },
 });
+
 
 /**
  * Tool to create a new task
