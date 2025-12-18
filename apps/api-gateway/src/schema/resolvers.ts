@@ -382,6 +382,220 @@ export const resolvers = {
       await requireOrganization(context, organizationId);
       return aiEngineClient.get(`/api/chat/stats/${organizationId}`);
     },
+
+    // Analytics & Dashboard
+    myProjects: async (_: any, __: any, context: Context) => {
+      const user = await requireAuth(context);
+      try {
+        // Get projects where the user is either:
+        // 1. A project member
+        // 2. A manager
+        // 3. Associated as client contact
+        const projectMembers = await projectClient.get(`/project-members?userId=${user.id}`);
+        const projectIds = new Set<string>();
+
+        if (Array.isArray(projectMembers)) {
+          projectMembers.forEach((pm: any) => projectIds.add(pm.projectId));
+        }
+
+        // Also get projects where user is manager
+        const managedProjects = await projectClient.get(`/projects?managerId=${user.id}`);
+        if (Array.isArray(managedProjects)) {
+          managedProjects.forEach((p: any) => projectIds.add(p.id));
+        }
+
+        // Fetch all unique projects
+        const projects = await Promise.all(
+          Array.from(projectIds).map((id) => projectClient.getById('/projects', id).catch(() => null))
+        );
+
+        return projects.filter(Boolean);
+      } catch {
+        return [];
+      }
+    },
+
+    analyticsOverview: async (_: any, { organizationId, dateRange }: { organizationId: string; dateRange: { startDate: string; endDate: string } }, context: Context) => {
+      await requireOrganization(context, organizationId);
+
+      try {
+        // Get all projects for the organization
+        const projects = await projectClient.get(`/projects?organizationId=${organizationId}`);
+        const projectArray = Array.isArray(projects) ? projects : [];
+
+        // Get all tasks for these projects
+        const allTasks: any[] = [];
+        for (const project of projectArray) {
+          try {
+            const tasks = await projectClient.get(`/tasks?projectId=${project.id}`);
+            if (Array.isArray(tasks)) allTasks.push(...tasks);
+          } catch { /* ignore */ }
+        }
+
+        // Get all milestones
+        const allMilestones: any[] = [];
+        for (const project of projectArray) {
+          try {
+            const milestones = await projectClient.get(`/milestones?projectId=${project.id}`);
+            if (Array.isArray(milestones)) allMilestones.push(...milestones);
+          } catch { /* ignore */ }
+        }
+
+        // Get risk registers
+        const allRisks: any[] = [];
+        for (const project of projectArray) {
+          try {
+            const risks = await projectClient.get(`/risk-registers?projectId=${project.id}`);
+            if (Array.isArray(risks)) allRisks.push(...risks);
+          } catch { /* ignore */ }
+        }
+
+        // Calculate stats
+        const totalProjects = projectArray.length;
+        const activeProjects = projectArray.filter((p: any) => p.status === 'Active' || p.status === 'In Progress').length;
+        const completedMilestones = allMilestones.filter((m: any) => m.completed || m.status === 'Completed').length;
+        const identifiedRisks = allRisks.length;
+
+        // Task distribution
+        const taskStatusCounts: Record<string, number> = {};
+        for (const task of allTasks) {
+          const status = task.status || 'To Do';
+          taskStatusCounts[status] = (taskStatusCounts[status] || 0) + 1;
+        }
+        const taskDistribution = Object.entries(taskStatusCounts).map(([status, count]) => ({ status, count }));
+
+        // Calculate average productivity (completed tasks / total tasks * 100)
+        const completedTasks = allTasks.filter((t: any) => t.status === 'Completed' || t.status === 'Done').length;
+        const avgProductivity = allTasks.length > 0 ? (completedTasks / allTasks.length) * 100 : 0;
+
+        return {
+          totalProjects,
+          activeProjects,
+          completedMilestones,
+          avgProductivity,
+          identifiedRisks,
+          expenseProfitData: [],
+          taskDistribution,
+          teamPerformance: [],
+          riskScores: [],
+        };
+      } catch (error) {
+        console.error('Error fetching analytics overview:', error);
+        return {
+          totalProjects: 0,
+          activeProjects: 0,
+          completedMilestones: 0,
+          avgProductivity: 0,
+          identifiedRisks: 0,
+          expenseProfitData: [],
+          taskDistribution: [],
+          teamPerformance: [],
+          riskScores: [],
+        };
+      }
+    },
+
+    dashboardStats: async (_: any, { organizationId }: { organizationId: string }, context: Context) => {
+      await requireOrganization(context, organizationId);
+
+      try {
+        // Get all projects for the organization
+        const projects = await projectClient.get(`/projects?organizationId=${organizationId}`);
+        const projectArray = Array.isArray(projects) ? projects : [];
+
+        const totalProjects = projectArray.length;
+        const activeProjects = projectArray.filter((p: any) => p.status === 'Active' || p.status === 'In Progress').length;
+
+        // Get all tasks
+        let totalTasks = 0;
+        let completedTasks = 0;
+        const allMilestones: any[] = [];
+
+        for (const project of projectArray) {
+          try {
+            const tasks = await projectClient.get(`/tasks?projectId=${project.id}`);
+            if (Array.isArray(tasks)) {
+              totalTasks += tasks.length;
+              completedTasks += tasks.filter((t: any) => t.status === 'Completed' || t.status === 'Done').length;
+            }
+            const milestones = await projectClient.get(`/milestones?projectId=${project.id}`);
+            if (Array.isArray(milestones)) {
+              allMilestones.push(...milestones.map((m: any) => ({
+                ...m,
+                projectId: project.id,
+                projectName: project.name,
+              })));
+            }
+          } catch { /* ignore */ }
+        }
+
+        // Get upcoming milestones (not completed, due in the future)
+        const now = new Date();
+        const upcomingMilestones = allMilestones
+          .filter((m: any) => !m.completed && m.status !== 'Completed' && new Date(m.dueDate) >= now)
+          .sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+          .slice(0, 5)
+          .map((m: any) => ({
+            id: m.id,
+            title: m.title || m.name,
+            projectId: m.projectId,
+            projectName: m.projectName,
+            dueDate: m.dueDate,
+          }));
+
+        // Get recent activity logs
+        let recentActivities: any[] = [];
+        try {
+          const activityLogs = await authClient.get('/activity-logs');
+          if (Array.isArray(activityLogs)) {
+            recentActivities = activityLogs
+              .slice(0, 10)
+              .map((log: any) => ({
+                id: log.id,
+                type: log.action,
+                description: `${log.action} on ${log.entityType}`,
+                timestamp: log.createdAt,
+                user: null,
+                project: null,
+              }));
+          }
+        } catch { /* ignore */ }
+
+        // Get teams for utilization
+        let teamUtilization: any[] = [];
+        try {
+          const teams = await workforceClient.get(`/teams?organizationId=${organizationId}`);
+          if (Array.isArray(teams)) {
+            teamUtilization = teams.slice(0, 5).map((team: any) => ({
+              teamId: team.id,
+              teamName: team.name,
+              utilization: Math.random() * 100, // Placeholder - would need actual tracking
+            }));
+          }
+        } catch { /* ignore */ }
+
+        return {
+          totalProjects,
+          activeProjects,
+          completedTasks,
+          totalTasks,
+          upcomingMilestones,
+          recentActivities,
+          teamUtilization,
+        };
+      } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+        return {
+          totalProjects: 0,
+          activeProjects: 0,
+          completedTasks: 0,
+          totalTasks: 0,
+          upcomingMilestones: [],
+          recentActivities: [],
+          teamUtilization: [],
+        };
+      }
+    },
   },
 
   Project: {
@@ -571,6 +785,12 @@ export const resolvers = {
         return true;
       }
       return authClient.postWithAuth('/auth/logout', {}, context.token);
+    },
+
+    // Accept invitation and complete onboarding
+    acceptInvite: async (_: any, { token, password, name }: { token: string; password: string; name: string }) => {
+      // Call auth service to accept the invitation
+      return authClient.post('/auth/accept-invite', { token, password, name });
     },
 
     /**
@@ -780,6 +1000,96 @@ export const resolvers = {
       return authClient.post('/users', input);
     },
     updateUser: (_: any, { id, input }: { id: string; input: any }) => authClient.put('/users', id, input),
+    updateUserRole: async (_: any, { userId, role }: { userId: string; role: string }, context: Context) => {
+      const currentUser = await requireAdmin(context);
+      const organizationId = currentUser.organizationId;
+
+      if (!organizationId) {
+        throw new Error('Organization ID is required');
+      }
+
+      // Find the user's organization membership
+      const memberships = await authClient.get(`/organization-members?userId=${userId}&organizationId=${organizationId}`);
+      if (!Array.isArray(memberships) || memberships.length === 0) {
+        throw new Error('User is not a member of this organization');
+      }
+      const membership = memberships[0];
+
+      // Find or create the role
+      const roles = await authClient.get(`/roles?organizationId=${organizationId}`);
+      let targetRole = Array.isArray(roles)
+        ? roles.find((r: any) => r.name.toLowerCase() === role.toLowerCase())
+        : null;
+
+      if (!targetRole) {
+        // Role doesn't exist - create it with predefined permissions
+        const rolePermissions: Record<string, Record<string, string[]>> = {
+          organizer: {
+            users: ['create', 'read', 'update', 'delete', 'invite'],
+            teams: ['create', 'read', 'update', 'delete'],
+            projects: ['create', 'read', 'update', 'delete'],
+            tasks: ['create', 'read', 'update', 'delete', 'assign'],
+            clients: ['create', 'read', 'update', 'delete'],
+            wiki: ['create', 'read', 'update', 'delete'],
+            channels: ['create', 'read', 'update', 'delete'],
+            settings: ['read', 'update'],
+            reports: ['read', 'export'],
+            notifications: ['read', 'update'],
+          },
+          manager: {
+            users: ['read'],
+            teams: ['read', 'update'],
+            projects: ['read', 'update'],
+            tasks: ['create', 'read', 'update', 'assign'],
+            clients: ['read'],
+            wiki: ['create', 'read', 'update'],
+            channels: ['create', 'read', 'update'],
+            settings: ['read'],
+            reports: ['read'],
+            notifications: ['read', 'update'],
+          },
+          contributor: {
+            users: ['read'],
+            teams: ['read'],
+            projects: ['read'],
+            tasks: ['read', 'update'],
+            clients: [],
+            wiki: ['read'],
+            channels: ['read', 'update'],
+            settings: [],
+            reports: ['read'],
+            notifications: ['read', 'update'],
+          },
+        };
+
+        const normalizedRoleName = role.toLowerCase();
+        const permissions = rolePermissions[normalizedRoleName];
+
+        if (permissions) {
+          const displayName = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
+          targetRole = await authClient.post('/roles', {
+            organizationId,
+            name: displayName,
+            permissions,
+            isSystem: true,
+          });
+        } else {
+          throw new Error(`Unknown role: ${role}`);
+        }
+      }
+
+      // Update the organization membership with the new role
+      await authClient.put('/organization-members', membership.id, {
+        roleId: targetRole.id,
+      });
+
+      // Return the updated user with the new role
+      const user = await authClient.getById('/users', userId);
+      return {
+        ...user,
+        role: targetRole.name,
+      };
+    },
     deleteUser: (_: any, { id }: { id: string }) => authClient.delete('/users', id),
     inviteMember: async (_: any, { input }: { input: any }, context: Context) => {
       const currentUser = await requireAuth(context);
@@ -817,12 +1127,92 @@ export const resolvers = {
         throw new Error('Failed to create or find user');
       }
 
-      // Add user to organization as a member
+      // Look up the role by name for this organization, or create it if needed
+      let roleId: string | null = null;
+      if (input.role) {
+        try {
+          const roles = await authClient.get(`/roles?organizationId=${organizationId}`);
+          const matchingRole = Array.isArray(roles)
+            ? roles.find((r: any) => r.name.toLowerCase() === input.role.toLowerCase())
+            : null;
+
+          if (matchingRole) {
+            roleId = matchingRole.id;
+          } else {
+            // Role doesn't exist - create it with predefined permissions
+            const rolePermissions: Record<string, Record<string, string[]>> = {
+              manager: {
+                users: ['read'],
+                teams: ['read', 'update'],
+                projects: ['read', 'update'],
+                tasks: ['create', 'read', 'update', 'assign'],
+                clients: ['read'],
+                wiki: ['create', 'read', 'update'],
+                channels: ['create', 'read', 'update'],
+                settings: ['read'],
+                reports: ['read'],
+                notifications: ['read', 'update'],
+              },
+              contributor: {
+                users: ['read'],
+                teams: ['read'],
+                projects: ['read'],
+                tasks: ['read', 'update'],
+                clients: [],
+                wiki: ['read'],
+                channels: ['read', 'update'],
+                settings: [],
+                reports: ['read'],
+                notifications: ['read', 'update'],
+              },
+              client: {
+                users: [],
+                teams: [],
+                projects: ['read'],
+                tasks: ['read'],
+                clients: [],
+                wiki: [],
+                channels: ['read', 'update'],
+                settings: [],
+                reports: ['read'],
+                notifications: ['read'],
+              },
+            };
+
+            const normalizedRoleName = input.role.toLowerCase();
+            const permissions = rolePermissions[normalizedRoleName];
+
+            if (permissions) {
+              // Create the role for this organization
+              const displayName = input.role.charAt(0).toUpperCase() + input.role.slice(1).toLowerCase();
+              try {
+                const newRole = await authClient.post('/roles', {
+                  organizationId,
+                  name: displayName,
+                  permissions,
+                  isSystem: true,
+                });
+                roleId = newRole.id;
+                console.log(`Created new role "${displayName}" for org ${organizationId}`);
+              } catch (createRoleError) {
+                console.error('Failed to create role:', createRoleError);
+              }
+            } else {
+              console.warn(`Unknown role "${input.role}" - no permissions defined, using null roleId`);
+            }
+          }
+        } catch (roleError) {
+          console.error('Error looking up role:', roleError);
+          // Continue with null roleId if role lookup fails
+        }
+      }
+
+      // Add user to organization as a member with the resolved roleId
       try {
         await authClient.post('/organization-members', {
           userId: user.id,
           organizationId,
-          roleId: null, // Default role
+          roleId, // Use the resolved roleId from input.role
         });
       } catch {
         // User might already be a member, continue
@@ -1219,6 +1609,34 @@ export const resolvers = {
     createNotification: (_: any, { input }: { input: any }) => notificationClient.post('/notifications', input),
     updateNotification: (_: any, { id, input }: { id: string; input: any }) => notificationClient.put('/notifications', id, input),
     deleteNotification: (_: any, { id }: { id: string }) => notificationClient.delete('/notifications', id),
+    markNotificationAsRead: async (_: any, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return notificationClient.put('/notifications', id, { isRead: true });
+    },
+    markAllNotificationsAsRead: async (_: any, { userId }: { userId: string }, context: Context) => {
+      const user = await requireAuth(context);
+      // Verify the user is marking their own notifications or is admin
+      if (user.id !== userId) {
+        throw new Error('Forbidden: Can only mark your own notifications as read');
+      }
+      try {
+        const notifications = await notificationClient.get(`/notifications?userId=${userId}`);
+        if (!Array.isArray(notifications)) {
+          return { count: 0, success: true };
+        }
+        let count = 0;
+        for (const notification of notifications) {
+          if (!notification.isRead) {
+            await notificationClient.put('/notifications', notification.id, { isRead: true });
+            count++;
+          }
+        }
+        return { count, success: true };
+      } catch (error) {
+        console.error('Error marking all notifications as read:', error);
+        return { count: 0, success: false };
+      }
+    },
 
     // AI Engine
     aiChat: async (_: any, { input }: { input: any }, context: Context) => {

@@ -798,6 +798,11 @@ export const typeDefs = gql`
     dashboardWidgets: [DashboardWidget!]!
     dashboardWidget(id: ID!): DashboardWidget
 
+    # Analytics & Dashboard
+    myProjects: [Project!]!
+    analyticsOverview(organizationId: ID!, dateRange: DateRangeInput!): AnalyticsOverview!
+    dashboardStats(organizationId: ID!): DashboardStats!
+
     # AI Engine
     aiChatStats(organizationId: String!): AiIndexingStats!
   }
@@ -807,6 +812,7 @@ export const typeDefs = gql`
     # Authentication
     login(email: String!, password: String!): AuthPayload!
     register(name: String!, email: String!, password: String!, organizationName: String): AuthPayload!
+    acceptInvite(token: String!, password: String!, name: String!): AuthPayload!
     googleLogin(idToken: String!): AuthPayload!
     googleSignup(idToken: String!): AuthPayload!
     refreshToken(refreshToken: String!): TokenPayload!
@@ -824,6 +830,7 @@ export const typeDefs = gql`
     # Users & Organizations
     createUser(input: JSON!): User!
     updateUser(id: ID!, input: JSON!): User!
+    updateUserRole(userId: ID!, role: String!): User!
     deleteUser(id: ID!): DeleteResponse!
     inviteMember(input: InviteMemberInput!): User!
     createOrganization(input: JSON!): Organization!
@@ -960,6 +967,8 @@ export const typeDefs = gql`
     createNotification(input: JSON!): Notification!
     updateNotification(id: ID!, input: JSON!): Notification!
     deleteNotification(id: ID!): DeleteResponse!
+    markNotificationAsRead(id: ID!): Notification!
+    markAllNotificationsAsRead(userId: ID!): MarkAllNotificationsResponse!
 
     # Dashboards
     createDashboard(input: JSON!): Dashboard!
@@ -984,6 +993,84 @@ export const typeDefs = gql`
 
   type RemoveMemberResponse {
     success: Boolean!
+  }
+
+  type MarkAllNotificationsResponse {
+    count: Int!
+    success: Boolean!
+  }
+
+  # Analytics Types
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
+  }
+
+  type AnalyticsOverview {
+    totalProjects: Int!
+    activeProjects: Int!
+    completedMilestones: Int!
+    avgProductivity: Float
+    identifiedRisks: Int!
+    expenseProfitData: [ExpenseProfitData!]
+    taskDistribution: [TaskDistribution!]
+    teamPerformance: [TeamPerformanceData!]
+    riskScores: [RiskScore!]
+  }
+
+  type ExpenseProfitData {
+    month: String!
+    expenses: Float!
+    profit: Float!
+  }
+
+  type TaskDistribution {
+    status: String!
+    count: Int!
+  }
+
+  type TeamPerformanceData {
+    teamId: ID!
+    teamName: String!
+    contributionPercentage: Float!
+  }
+
+  type RiskScore {
+    category: String!
+    score: Float!
+  }
+
+  type DashboardStats {
+    totalProjects: Int!
+    activeProjects: Int!
+    completedTasks: Int!
+    totalTasks: Int!
+    upcomingMilestones: [UpcomingMilestone!]
+    recentActivities: [ActivityItem!]
+    teamUtilization: [TeamUtilization!]
+  }
+
+  type UpcomingMilestone {
+    id: ID!
+    title: String!
+    projectId: ID!
+    projectName: String!
+    dueDate: DateTime!
+  }
+
+  type ActivityItem {
+    id: ID!
+    type: String!
+    description: String!
+    timestamp: DateTime!
+    user: User
+    project: Project
+  }
+
+  type TeamUtilization {
+    teamId: ID!
+    teamName: String!
+    utilization: Float!
   }
 
   # Input Types

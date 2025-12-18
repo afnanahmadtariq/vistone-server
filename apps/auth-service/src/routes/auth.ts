@@ -464,6 +464,78 @@ router.post('/logout', async (req: Request, res: Response) => {
   }
 });
 
+// Accept Invite - Complete registration for invited users
+router.post('/accept-invite', async (req: Request, res: Response) => {
+  try {
+    const { token, password, name } = req.body;
+
+    if (!token || !password || !name) {
+      res.status(400).json({ error: 'Token, password, and name are required' });
+      return;
+    }
+
+    // The token is the user ID (as set in inviteMember resolver)
+    const user = await prisma.user.findUnique({
+      where: { id: token },
+    });
+
+    if (!user) {
+      res.status(404).json({ error: 'Invalid invitation token' });
+      return;
+    }
+
+    // Check if user already has a password (invite already accepted)
+    if (user.password) {
+      res.status(400).json({ error: 'Invitation has already been accepted. Please log in.' });
+      return;
+    }
+
+    // Parse name into firstName and lastName
+    const nameParts = name.trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    // Update user with password and name
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashPassword(password),
+        firstName,
+        lastName,
+      },
+    });
+
+    // Get user's organization and role
+    const membership = await prisma.organizationMember.findFirst({
+      where: { userId: user.id },
+      include: { organization: true, role: true },
+    });
+
+    // Generate tokens
+    const accessToken = generateToken();
+    const refreshToken = generateToken();
+
+    // Store tokens
+    const accessTokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    tokenStore.set(accessToken, { userId: updatedUser.id, expiresAt: accessTokenExpiry });
+    refreshTokenStore.set(refreshToken, { userId: updatedUser.id, expiresAt: refreshTokenExpiry });
+
+    // Get team membership
+    const teamMember = await getTeamMembershipWithRole(updatedUser.id);
+
+    res.json({
+      accessToken,
+      refreshToken,
+      user: formatAuthUser(updatedUser, teamMember, membership?.organization, membership?.role),
+    });
+  } catch (error) {
+    console.error('Accept invite error:', error);
+    res.status(500).json({ error: 'Failed to accept invitation' });
+  }
+});
+
 // Get current user (me)
 router.post('/me', async (req: Request, res: Response) => {
   try {
