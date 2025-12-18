@@ -467,7 +467,7 @@ router.post('/logout', async (req: Request, res: Response) => {
 // Accept Invite - Complete registration for invited users
 router.post('/accept-invite', async (req: Request, res: Response) => {
   try {
-    const { token, password, name } = req.body;
+    const { token, password, name, role } = req.body;
 
     if (!token || !password || !name) {
       res.status(400).json({ error: 'Token, password, and name are required' });
@@ -505,11 +505,77 @@ router.post('/accept-invite', async (req: Request, res: Response) => {
       },
     });
 
-    // Get user's organization and role
+    // Get user's organization membership
     const membership = await prisma.organizationMember.findFirst({
       where: { userId: user.id },
       include: { organization: true, role: true },
     });
+
+    // If role is specified and different from current, update the role
+    let finalRole = membership?.role;
+    if (role && membership) {
+      // Find the role in the organization
+      let roleRecord = await prisma.role.findFirst({
+        where: {
+          organizationId: membership.organizationId,
+          name: { equals: role, mode: 'insensitive' },
+        },
+      });
+
+      // Create role if doesn't exist
+      if (!roleRecord && membership.organizationId) {
+        const rolePermissionsLookup: Record<string, Record<string, string[]>> = {
+          organizer: ORGANIZER_PERMISSIONS as Record<string, string[]>,
+          manager: {
+            users: ['read'],
+            teams: ['read', 'update'],
+            projects: ['read', 'update'],
+            tasks: ['create', 'read', 'update', 'assign'],
+            clients: ['read'],
+            wiki: ['create', 'read', 'update'],
+            channels: ['create', 'read', 'update'],
+            settings: ['read'],
+            reports: ['read'],
+            notifications: ['read', 'update'],
+          },
+          contributor: {
+            users: ['read'],
+            teams: ['read'],
+            projects: ['read'],
+            tasks: ['read', 'update'],
+            clients: [],
+            wiki: ['read'],
+            channels: ['read', 'update'],
+            settings: [],
+            reports: ['read'],
+            notifications: ['read', 'update'],
+          },
+        };
+
+        const normalizedRole = role.toLowerCase();
+        const permissions = rolePermissionsLookup[normalizedRole];
+
+        if (permissions) {
+          roleRecord = await prisma.role.create({
+            data: {
+              organizationId: membership.organizationId,
+              name: role.charAt(0).toUpperCase() + role.slice(1).toLowerCase(),
+              permissions,
+              isSystem: true,
+            },
+          });
+        }
+      }
+
+      // Update membership with new role
+      if (roleRecord) {
+        await prisma.organizationMember.update({
+          where: { id: membership.id },
+          data: { roleId: roleRecord.id },
+        });
+        finalRole = roleRecord;
+      }
+    }
 
     // Generate tokens
     const accessToken = generateToken();
@@ -528,7 +594,7 @@ router.post('/accept-invite', async (req: Request, res: Response) => {
     res.json({
       accessToken,
       refreshToken,
-      user: formatAuthUser(updatedUser, teamMember, membership?.organization, membership?.role),
+      user: formatAuthUser(updatedUser, teamMember, membership?.organization, finalRole),
     });
   } catch (error) {
     console.error('Accept invite error:', error);

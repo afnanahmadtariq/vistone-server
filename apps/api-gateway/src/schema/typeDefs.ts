@@ -227,6 +227,31 @@ export const typeDefs = gql`
     manager: User
     members: [User!]
     teams: [Team!]
+    activities: [ProjectActivity!]
+    documents: [ProjectDocument!]
+    risks: [RiskRegister!]
+  }
+
+  type ProjectActivity {
+    id: ID!
+    type: String!
+    description: String!
+    timestamp: DateTime!
+    userId: ID
+    user: User
+    projectId: ID!
+  }
+
+  type ProjectDocument {
+    id: ID!
+    name: String!
+    url: String!
+    size: Int
+    fileType: String
+    uploadedAt: DateTime!
+    uploadedById: ID
+    uploadedBy: User
+    projectId: ID!
   }
 
   type ProjectMember {
@@ -812,7 +837,7 @@ export const typeDefs = gql`
     # Authentication
     login(email: String!, password: String!): AuthPayload!
     register(name: String!, email: String!, password: String!, organizationName: String): AuthPayload!
-    acceptInvite(token: String!, password: String!, name: String!): AuthPayload!
+    acceptInvite(token: String!, password: String!, name: String!, role: String): AuthPayload!
     googleLogin(idToken: String!): AuthPayload!
     googleSignup(idToken: String!): AuthPayload!
     refreshToken(refreshToken: String!): TokenPayload!
@@ -968,7 +993,7 @@ export const typeDefs = gql`
     updateNotification(id: ID!, input: JSON!): Notification!
     deleteNotification(id: ID!): DeleteResponse!
     markNotificationAsRead(id: ID!): Notification!
-    markAllNotificationsAsRead(userId: ID!): MarkAllNotificationsResponse!
+    markAllNotificationsAsRead: MarkAllNotificationsResponse!
 
     # Dashboards
     createDashboard(input: JSON!): Dashboard!

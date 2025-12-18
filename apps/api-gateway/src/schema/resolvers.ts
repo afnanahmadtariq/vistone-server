@@ -659,6 +659,78 @@ export const resolvers = {
         return [];
       }
     },
+    activities: async (parent: any) => {
+      try {
+        // Get activity logs related to this project
+        const activityLogs = await authClient.get(`/activity-logs?entityType=project&entityId=${parent.id}`);
+        if (!Array.isArray(activityLogs)) return [];
+
+        // Transform activity logs to ProjectActivity format
+        const activities = await Promise.all(
+          activityLogs.slice(0, 20).map(async (log: any) => {
+            let user = null;
+            if (log.userId) {
+              try {
+                user = await getEnrichedUser(log.userId);
+              } catch { /* ignore */ }
+            }
+            return {
+              id: log.id,
+              type: log.action || 'update',
+              description: log.description || `${log.action} on project`,
+              timestamp: log.createdAt,
+              userId: log.userId,
+              user,
+              projectId: parent.id,
+            };
+          })
+        );
+        return activities;
+      } catch {
+        // If no activity logs available, return empty array
+        return [];
+      }
+    },
+    documents: async (parent: any) => {
+      try {
+        // Get documents linked to this project from knowledge hub
+        const documents = await knowledgeClient.get(`/documents?projectId=${parent.id}`);
+        if (!Array.isArray(documents)) return [];
+
+        // Transform to ProjectDocument format
+        const projectDocuments = await Promise.all(
+          documents.map(async (doc: any) => {
+            let uploadedBy = null;
+            if (doc.createdById || doc.uploadedById) {
+              try {
+                uploadedBy = await getEnrichedUser(doc.createdById || doc.uploadedById);
+              } catch { /* ignore */ }
+            }
+            return {
+              id: doc.id,
+              name: doc.title || doc.name,
+              url: doc.url || doc.filePath || `/api/documents/${doc.id}`,
+              size: doc.size || doc.fileSize || null,
+              fileType: doc.fileType || doc.mimeType || 'unknown',
+              uploadedAt: doc.createdAt || doc.uploadedAt,
+              uploadedById: doc.createdById || doc.uploadedById,
+              uploadedBy,
+              projectId: parent.id,
+            };
+          })
+        );
+        return projectDocuments;
+      } catch {
+        return [];
+      }
+    },
+    risks: async (parent: any) => {
+      try {
+        return await projectClient.get(`/risk-registers?projectId=${parent.id}`);
+      } catch {
+        return [];
+      }
+    },
   },
 
   Task: {
@@ -788,9 +860,9 @@ export const resolvers = {
     },
 
     // Accept invitation and complete onboarding
-    acceptInvite: async (_: any, { token, password, name }: { token: string; password: string; name: string }) => {
+    acceptInvite: async (_: any, { token, password, name, role }: { token: string; password: string; name: string; role?: string }) => {
       // Call auth service to accept the invitation
-      return authClient.post('/auth/accept-invite', { token, password, name });
+      return authClient.post('/auth/accept-invite', { token, password, name, role });
     },
 
     /**
@@ -1613,12 +1685,9 @@ export const resolvers = {
       await requireAuth(context);
       return notificationClient.put('/notifications', id, { isRead: true });
     },
-    markAllNotificationsAsRead: async (_: any, { userId }: { userId: string }, context: Context) => {
+    markAllNotificationsAsRead: async (_: any, __: unknown, context: Context) => {
       const user = await requireAuth(context);
-      // Verify the user is marking their own notifications or is admin
-      if (user.id !== userId) {
-        throw new Error('Forbidden: Can only mark your own notifications as read');
-      }
+      const userId = user.id;
       try {
         const notifications = await notificationClient.get(`/notifications?userId=${userId}`);
         if (!Array.isArray(notifications)) {
