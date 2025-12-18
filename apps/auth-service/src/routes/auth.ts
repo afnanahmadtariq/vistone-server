@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import * as crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
+import { ROLE_NAMES, ORGANIZER_PERMISSIONS } from '../lib/roles';
 
 const router = Router();
 
@@ -32,14 +33,8 @@ const generateSlug = (name: string): string => {
 const tokenStore = new Map<string, { userId: string; expiresAt: Date }>();
 const refreshTokenStore = new Map<string, { userId: string; expiresAt: Date }>();
 
-// Default admin permissions
-const ADMIN_PERMISSIONS = {
-  users: ['create', 'read', 'update', 'delete'],
-  teams: ['create', 'read', 'update', 'delete'],
-  projects: ['create', 'read', 'update', 'delete'],
-  clients: ['create', 'read', 'update', 'delete'],
-  settings: ['read', 'update'],
-};
+// Use centralized role permissions from roles.ts
+// ORGANIZER_PERMISSIONS is imported from '../lib/roles'
 
 // Types for organization-related data
 interface OrganizationData {
@@ -96,17 +91,17 @@ async function createOrganizationForUser(userId: string, organizationName: strin
     },
   });
 
-  // Create Admin role for this organization
+  // Create Organizer role for this organization (as per BACKEND_IMPLEMENTATION_PLAN.md)
   const role = await prisma.role.create({
     data: {
       organizationId: organization.id,
-      name: 'Admin',
-      permissions: ADMIN_PERMISSIONS,
+      name: ROLE_NAMES.ORGANIZER,
+      permissions: ORGANIZER_PERMISSIONS,
       isSystem: true,
     },
   });
 
-  // Add user as organization member with Admin role
+  // Add user as organization member with Organizer role
   const membership = await prisma.organizationMember.create({
     data: {
       organizationId: organization.id,
