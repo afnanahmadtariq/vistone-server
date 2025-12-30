@@ -11,6 +11,7 @@ import {
   aiEngineClient,
 } from '../services/backendClient';
 import { requireAuth, requireAdmin, requireOrganization, AuthContext } from '../lib/auth';
+import { verifyTurnstileToken } from '../lib/turnstile';
 
 interface Context extends AuthContext {
   headers: Record<string, string | string[] | undefined>;
@@ -837,10 +838,28 @@ export const resolvers = {
 
   Mutation: {
     // Authentication
-    login: async (_: any, { email, password }: { email: string; password: string }) => {
+    login: async (_: any, { email, password, turnstileToken }: { email: string; password: string; turnstileToken: string }, context: Context) => {
+      const ip = (Array.isArray(context.headers['x-forwarded-for'])
+        ? context.headers['x-forwarded-for'][0]
+        : context.headers['x-forwarded-for']) || '';
+
+      const isValid = await verifyTurnstileToken(turnstileToken, ip);
+      if (!isValid) {
+        throw new Error('Invalid CAPTCHA');
+      }
+
       return authClient.post('/auth/login', { email, password });
     },
-    register: async (_: any, { name, email, password, organizationName }: { name: string; email: string; password: string; organizationName?: string }) => {
+    register: async (_: any, { name, email, password, organizationName, turnstileToken }: { name: string; email: string; password: string; organizationName?: string; turnstileToken: string }, context: Context) => {
+      const ip = (Array.isArray(context.headers['x-forwarded-for'])
+        ? context.headers['x-forwarded-for'][0]
+        : context.headers['x-forwarded-for']) || '';
+
+      const isValid = await verifyTurnstileToken(turnstileToken, ip);
+      if (!isValid) {
+        throw new Error('Invalid CAPTCHA');
+      }
+
       return authClient.post('/auth/register', { name, email, password, organizationName });
     },
     googleLogin: async (_: any, { idToken }: { idToken: string }) => {

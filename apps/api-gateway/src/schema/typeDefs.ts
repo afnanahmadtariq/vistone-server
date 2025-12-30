@@ -835,8 +835,8 @@ export const typeDefs = gql`
   # Mutation Type
   type Mutation {
     # Authentication
-    login(email: String!, password: String!): AuthPayload!
-    register(name: String!, email: String!, password: String!, organizationName: String): AuthPayload!
+    login(email: String!, password: String!, turnstileToken: String!): AuthPayload!
+    register(name: String!, email: String!, password: String!, organizationName: String, turnstileToken: String!): AuthPayload!
     acceptInvite(token: String!, password: String!, name: String!, role: String): AuthPayload!
     googleLogin(idToken: String!): AuthPayload!
     googleSignup(idToken: String!): AuthPayload!
