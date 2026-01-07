@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.userAvailability.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'User availability deleted' });
+    res.json({ success: true, message: 'User availability deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete user availability' });

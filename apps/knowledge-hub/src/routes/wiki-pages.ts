@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.wikiPage.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Wiki page deleted' });
+    res.json({ success: true, message: 'Wiki page deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete wiki page' });

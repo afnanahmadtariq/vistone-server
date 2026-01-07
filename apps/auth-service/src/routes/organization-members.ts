@@ -21,17 +21,17 @@ router.get('/', async (req, res) => {
   try {
     const { organizationId, userId } = req.query;
     const where: any = {};
-    
+
     // Filter by organizationId if provided
     if (organizationId) {
       where.organizationId = organizationId as string;
     }
-    
+
     // Filter by userId if provided
     if (userId) {
       where.userId = userId as string;
     }
-    
+
     const members = await prisma.organizationMember.findMany({ where });
     res.json(members);
   } catch (error) {
@@ -77,7 +77,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.organizationMember.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Organization member deleted' });
+    res.json({ success: true, message: 'Organization member deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete organization member' });

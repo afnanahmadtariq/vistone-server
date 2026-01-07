@@ -200,7 +200,7 @@ router.delete('/:id', async (req, res) => {
       where: { id: req.params.id },
     });
 
-    res.json({ message: 'Role deleted' });
+    res.json({ success: true, message: 'Role deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete role' });

@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.notificationTemplate.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Notification template deleted' });
+    res.json({ success: true, message: 'Notification template deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete notification template' });

@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.taskDependency.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Task dependency deleted' });
+    res.json({ success: true, message: 'Task dependency deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete task dependency' });

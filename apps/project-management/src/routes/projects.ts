@@ -51,16 +51,16 @@ router.get('/', async (req, res) => {
   try {
     const { status, search, organizationId } = req.query;
     const where: any = {};
-    
+
     // Filter by organizationId if provided
     if (organizationId) {
       where.organizationId = organizationId as string;
     }
-    
+
     if (status) {
       where.status = status as string;
     }
-    
+
     if (search) {
       where.OR = [
         { name: { contains: search as string, mode: 'insensitive' } },
@@ -113,7 +113,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.project.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Project deleted' });
+    res.json({ success: true, message: 'Project deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete project' });

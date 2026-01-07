@@ -87,7 +87,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.milestone.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Milestone deleted' });
+    res.json({ success: true, message: 'Milestone deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete milestone' });

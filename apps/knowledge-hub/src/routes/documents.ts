@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.document.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Document deleted' });
+    res.json({ success: true, message: 'Document deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete document' });

@@ -1013,6 +1013,7 @@ export const typeDefs = gql`
   }
 
   type DeleteResponse {
+    success: Boolean!
     message: String!
   }
 

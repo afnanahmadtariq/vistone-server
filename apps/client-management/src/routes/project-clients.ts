@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.projectClient.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Project client deleted' });
+    res.json({ success: true, message: 'Project client deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete project client' });

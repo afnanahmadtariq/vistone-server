@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.dashboardWidget.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Dashboard widget deleted' });
+    res.json({ success: true, message: 'Dashboard widget deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete dashboard widget' });

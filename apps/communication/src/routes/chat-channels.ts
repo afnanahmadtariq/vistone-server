@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.chatChannel.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Chat channel deleted' });
+    res.json({ success: true, message: 'Chat channel deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete chat channel' });

@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.kycData.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'KYC data deleted' });
+    res.json({ success: true, message: 'KYC data deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete KYC data' });
