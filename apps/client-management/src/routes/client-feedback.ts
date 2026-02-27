@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.clientFeedback.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Client feedback deleted' });
+    res.json({ success: true, message: 'Client feedback deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete client feedback' });

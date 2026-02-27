@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package vistone.notification;
+
+import "common.proto";
+
+// Notification Service
+service NotificationService {
+  // Notifications
+  rpc SendNotification(SendNotificationRequest) returns (NotificationResponse);
+  rpc GetNotification(vistone.common.IdRequest) returns (NotificationResponse);
+  rpc ListNotifications(ListNotificationsRequest) returns (NotificationListResponse);
+  rpc MarkAsRead(MarkAsReadRequest) returns (vistone.common.ApiResponse);
+  rpc MarkAllAsRead(MarkAllAsReadRequest) returns (vistone.common.ApiResponse);
+  rpc DeleteNotification(vistone.common.IdRequest) returns (vistone.common.ApiResponse);
+  
+  // Notification Preferences
+  rpc GetPreferences(vistone.common.IdRequest) returns (PreferencesResponse);
+  rpc UpdatePreferences(UpdatePreferencesRequest) returns (PreferencesResponse);
+  
+  // Bulk Notifications
+  rpc SendBulkNotification(SendBulkNotificationRequest) returns (BulkNotificationResponse);
+}
+
+// Notification Messages
+message Notification {
+  string id = 1;
+  string userId = 2;
+  string type = 3;
+  string title = 4;
+  string message = 5;
+  string priority = 6;
+  bool isRead = 7;
+  string actionUrl = 8;
+  map<string, string> metadata = 9;
+  string createdAt = 10;
+  string readAt = 11;
+}
+
+message SendNotificationRequest {
+  string userId = 1;
+  string type = 2;
+  string title = 3;
+  string message = 4;
+  string priority = 5;
+  string actionUrl = 6;
+  map<string, string> metadata = 7;
+}
+
+message ListNotificationsRequest {
+  string userId = 1;
+  optional string type = 2;
+  optional bool unreadOnly = 3;
+  vistone.common.PaginationRequest pagination = 4;
+}
+
+message MarkAsReadRequest {
+  string notificationId = 1;
+  string userId = 2;
+}
+
+message MarkAllAsReadRequest {
+  string userId = 1;
+  optional string type = 2;
+}
+
+message NotificationResponse {
+  bool success = 1;
+  Notification notification = 2;
+  string error = 3;
+}
+
+message NotificationListResponse {
+  bool success = 1;
+  repeated Notification notifications = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  int32 unreadCount = 4;
+  string error = 5;
+}
+
+// Preferences Messages
+message NotificationPreferences {
+  string userId = 1;
+  bool emailEnabled = 2;
+  bool pushEnabled = 3;
+  bool inAppEnabled = 4;
+  repeated string mutedTypes = 5;
+  string quietHoursStart = 6;
+  string quietHoursEnd = 7;
+  string updatedAt = 8;
+}
+
+message UpdatePreferencesRequest {
+  string userId = 1;
+  optional bool emailEnabled = 2;
+  optional bool pushEnabled = 3;
+  optional bool inAppEnabled = 4;
+  repeated string mutedTypes = 5;
+  optional string quietHoursStart = 6;
+  optional string quietHoursEnd = 7;
+}
+
+message PreferencesResponse {
+  bool success = 1;
+  NotificationPreferences preferences = 2;
+  string error = 3;
+}
+
+// Bulk Notification Messages
+message SendBulkNotificationRequest {
+  repeated string userIds = 1;
+  string type = 2;
+  string title = 3;
+  string message = 4;
+  string priority = 5;
+  string actionUrl = 6;
+  map<string, string> metadata = 7;
+}
+
+message BulkNotificationResponse {
+  bool success = 1;
+  int32 sentCount = 2;
+  int32 failedCount = 3;
+  repeated string failedUserIds = 4;
+  string error = 5;
+}

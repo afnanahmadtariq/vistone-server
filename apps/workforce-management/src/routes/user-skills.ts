@@ -21,9 +21,9 @@ router.get('/', async (req, res) => {
   try {
     const { userId } = req.query;
     const where: any = {};
-    
+
     if (userId) where.userId = userId as string;
-    
+
     const userSkills = await prisma.userSkill.findMany({ where });
     res.json(userSkills);
   } catch (error) {
@@ -69,7 +69,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.userSkill.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'User skill deleted' });
+    res.json({ success: true, message: 'User skill deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete user skill' });

@@ -69,7 +69,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.task.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Task deleted' });
+    res.json({ success: true, message: 'Task deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete task' });

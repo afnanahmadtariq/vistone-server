@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.documentFolder.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Document folder deleted' });
+    res.json({ success: true, message: 'Document folder deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete document folder' });

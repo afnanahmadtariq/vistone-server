@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package vistone.common;
+
+// Common response wrapper
+message ApiResponse {
+  bool success = 1;
+  string message = 2;
+  string error = 3;
+}
+
+// Pagination request
+message PaginationRequest {
+  int32 page = 1;
+  int32 limit = 2;
+}
+
+// Pagination info
+message PaginationInfo {
+  int32 total = 1;
+  int32 page = 2;
+  int32 limit = 3;
+  int32 totalPages = 4;
+}
+
+// Date range filter
+message DateRange {
+  string startDate = 1;
+  string endDate = 2;
+}
+
+// Common ID request
+message IdRequest {
+  string id = 1;
+}
+
+// Organization context
+message OrganizationContext {
+  string organizationId = 1;
+  string userId = 2;
+}

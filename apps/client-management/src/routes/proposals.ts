@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.proposal.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Proposal deleted' });
+    res.json({ success: true, message: 'Proposal deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete proposal' });

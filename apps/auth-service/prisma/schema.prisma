@@ -54,7 +54,7 @@ model OrganizationMember {
   roleId         String?
   
   organization   Organization @relation(fields: [organizationId], references: [id])
-  user           User         @relation(fields: [userId], references: [id])
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   role           Role?        @relation(fields: [roleId], references: [id])
   
   createdAt      DateTime     @default(now())
@@ -88,7 +88,7 @@ model KycData {
   documents   Json?
   verifiedAt  DateTime?
   
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -104,7 +104,7 @@ model MfaSetting {
   secret      String?
   backupCodes String[]
   
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -123,7 +123,7 @@ model ActivityLog {
   ipAddress   String?
   userAgent   String?
   
-  user        User?    @relation(fields: [userId], references: [id])
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   
   createdAt   DateTime @default(now())
 

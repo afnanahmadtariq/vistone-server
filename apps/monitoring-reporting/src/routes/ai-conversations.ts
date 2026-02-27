@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.aiConversation.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'AI conversation deleted' });
+    res.json({ success: true, message: 'AI conversation deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete AI conversation' });

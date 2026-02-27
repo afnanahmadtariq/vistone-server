@@ -1,0 +1,174 @@
+syntax = "proto3";
+
+package vistone.communication;
+
+import "common.proto";
+
+// Communication Service
+service CommunicationService {
+  // Messages
+  rpc SendMessage(SendMessageRequest) returns (MessageResponse);
+  rpc GetMessage(vistone.common.IdRequest) returns (MessageResponse);
+  rpc ListMessages(ListMessagesRequest) returns (MessageListResponse);
+  rpc MarkAsRead(MarkAsReadRequest) returns (vistone.common.ApiResponse);
+  
+  // Channels
+  rpc CreateChannel(CreateChannelRequest) returns (ChannelResponse);
+  rpc GetChannel(vistone.common.IdRequest) returns (ChannelResponse);
+  rpc ListChannels(ListChannelsRequest) returns (ChannelListResponse);
+  rpc AddChannelMember(AddChannelMemberRequest) returns (vistone.common.ApiResponse);
+  rpc RemoveChannelMember(RemoveChannelMemberRequest) returns (vistone.common.ApiResponse);
+  
+  // Announcements
+  rpc CreateAnnouncement(CreateAnnouncementRequest) returns (AnnouncementResponse);
+  rpc ListAnnouncements(ListAnnouncementsRequest) returns (AnnouncementListResponse);
+}
+
+// Message Messages (heh)
+message Message {
+  string id = 1;
+  string channelId = 2;
+  string senderId = 3;
+  string content = 4;
+  string messageType = 5;
+  repeated string attachments = 6;
+  bool isRead = 7;
+  string createdAt = 8;
+  string updatedAt = 9;
+  User sender = 10;
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  string firstName = 3;
+  string lastName = 4;
+}
+
+message SendMessageRequest {
+  string channelId = 1;
+  string senderId = 2;
+  string content = 3;
+  string messageType = 4;
+  repeated string attachments = 5;
+}
+
+message ListMessagesRequest {
+  string channelId = 1;
+  optional string beforeId = 2;
+  vistone.common.PaginationRequest pagination = 3;
+}
+
+message MarkAsReadRequest {
+  string messageId = 1;
+  string userId = 2;
+}
+
+message MessageResponse {
+  bool success = 1;
+  Message message = 2;
+  string error = 3;
+}
+
+message MessageListResponse {
+  bool success = 1;
+  repeated Message messages = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}
+
+// Channel Messages
+message Channel {
+  string id = 1;
+  string organizationId = 2;
+  string name = 3;
+  string description = 4;
+  string channelType = 5;
+  bool isPrivate = 6;
+  repeated string memberIds = 7;
+  string createdById = 8;
+  string createdAt = 9;
+  string updatedAt = 10;
+}
+
+message CreateChannelRequest {
+  string organizationId = 1;
+  string name = 2;
+  string description = 3;
+  string channelType = 4;
+  bool isPrivate = 5;
+  repeated string memberIds = 6;
+  string createdById = 7;
+}
+
+message ListChannelsRequest {
+  string organizationId = 1;
+  optional string userId = 2;
+  optional string channelType = 3;
+  vistone.common.PaginationRequest pagination = 4;
+}
+
+message AddChannelMemberRequest {
+  string channelId = 1;
+  string userId = 2;
+}
+
+message RemoveChannelMemberRequest {
+  string channelId = 1;
+  string userId = 2;
+}
+
+message ChannelResponse {
+  bool success = 1;
+  Channel channel = 2;
+  string error = 3;
+}
+
+message ChannelListResponse {
+  bool success = 1;
+  repeated Channel channels = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}
+
+// Announcement Messages
+message Announcement {
+  string id = 1;
+  string organizationId = 2;
+  string title = 3;
+  string content = 4;
+  string priority = 5;
+  string createdById = 6;
+  string expiresAt = 7;
+  string createdAt = 8;
+  User createdBy = 9;
+}
+
+message CreateAnnouncementRequest {
+  string organizationId = 1;
+  string title = 2;
+  string content = 3;
+  string priority = 4;
+  string createdById = 5;
+  string expiresAt = 6;
+}
+
+message ListAnnouncementsRequest {
+  string organizationId = 1;
+  optional string priority = 2;
+  bool activeOnly = 3;
+  vistone.common.PaginationRequest pagination = 4;
+}
+
+message AnnouncementResponse {
+  bool success = 1;
+  Announcement announcement = 2;
+  string error = 3;
+}
+
+message AnnouncementListResponse {
+  bool success = 1;
+  repeated Announcement announcements = 2;
+  vistone.common.PaginationInfo pagination = 3;
+  string error = 4;
+}

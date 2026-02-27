@@ -35,7 +35,8 @@ jobs:
 
       # Prepend any command with "nx-cloud record --" to record its logs to Nx Cloud
       # - run: npx nx-cloud record -- echo Hello World
-      - run: npx nx run-many -t lint test build typecheck
+      # Note: prisma:generate runs automatically as a dependency of ai-engine:test
+      - run: npx nx run-many -t lint test build typecheck --skip-nx-cache
       # Nx Cloud recommends fixes for failures to help you get CI green faster. Learn more: https://nx.dev/ci/features/self-healing-ci
       - run: npx nx fix-ci
         if: always()
@@ -88,7 +89,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ai-engine
-          path: .
+          path: ./deploy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Create package.json for Azure
+        working-directory: ./deploy
+        run: |
+          echo '{"name":"ai-engine","version":"1.0.0","scripts":{"start":"node main.js"},"engines":{"node":">=20.0.0"}}' > package.json
+
+      - name: Install external dependencies (Prisma)
+        working-directory: ./deploy
+        run: npm install @prisma/client @prisma/adapter-pg pg --omit=dev
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -102,7 +117,7 @@ jobs:
         with:
           app-name: 'ai-service'
           slot-name: 'Production'
-          package: .
+          package: ./deploy
 
   deploy-auth-service:
     runs-on: ubuntu-latest
@@ -117,7 +132,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: auth-service
-          path: .
+          path: ./deploy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Create package.json for Azure
+        working-directory: ./deploy
+        run: |
+          echo '{"name":"auth-service","version":"1.0.0","scripts":{"start":"node main.js"},"engines":{"node":">=20.0.0"}}' > package.json
+
+      - name: Install external dependencies (Prisma)
+        working-directory: ./deploy
+        run: npm install @prisma/client @prisma/adapter-pg pg --omit=dev
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -131,7 +160,7 @@ jobs:
         with:
           app-name: 'vistone-auth-service'
           slot-name: 'Production'
-          package: .
+          package: ./deploy
 
   deploy-project-management:
     runs-on: ubuntu-latest
@@ -146,7 +175,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: project-management
-          path: .
+          path: ./deploy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Create package.json for Azure
+        working-directory: ./deploy
+        run: |
+          echo '{"name":"project-management","version":"1.0.0","scripts":{"start":"node main.js"},"engines":{"node":">=20.0.0"}}' > package.json
+
+      - name: Install external dependencies (Prisma)
+        working-directory: ./deploy
+        run: npm install @prisma/client @prisma/adapter-pg pg --omit=dev
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -160,7 +203,7 @@ jobs:
         with:
           app-name: 'vistone-project'
           slot-name: 'Production'
-          package: .
+          package: ./deploy
 
   deploy-workforce-management:
     runs-on: ubuntu-latest
@@ -175,7 +218,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: workforce-management
-          path: .
+          path: ./deploy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Create package.json for Azure
+        working-directory: ./deploy
+        run: |
+          echo '{"name":"workforce-management","version":"1.0.0","scripts":{"start":"node main.js"},"engines":{"node":">=20.0.0"}}' > package.json
+
+      - name: Install external dependencies (Prisma)
+        working-directory: ./deploy
+        run: npm install @prisma/client @prisma/adapter-pg pg --omit=dev
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -189,7 +246,7 @@ jobs:
         with:
           app-name: 'workforce'
           slot-name: 'Production'
-          package: .
+          package: ./deploy
 
   deploy-api-gateway:
     runs-on: ubuntu-latest
@@ -204,7 +261,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: api-gateway
-          path: .
+          path: ./deploy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Create package.json for Azure
+        working-directory: ./deploy
+        run: |
+          echo '{"name":"api-gateway","version":"1.0.0","scripts":{"start":"node main.js"},"engines":{"node":">=20.0.0"}}' > package.json
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -218,4 +285,4 @@ jobs:
         with:
           app-name: 'vistone-api-gateway'
           slot-name: 'Production'
-          package: .
+          package: ./deploy

@@ -15,6 +15,18 @@ describe('GET /', () => {
       url: '/',
     });
 
-    expect(response.json()).toEqual({ message: 'Hello API' });
+    expect(response.json()).toEqual({
+      message: 'Vistone AI Engine API',
+      version: '1.0.0',
+      endpoints: {
+        chat: 'POST /api/chat',
+        clearHistory: 'DELETE /api/chat/history/:sessionId',
+        indexDocument: 'POST /api/index/document',
+        removeDocument: 'DELETE /api/index/document',
+        stats: 'GET /api/chat/stats/:organizationId',
+        syncAll: 'POST /api/sync/all',
+        syncType: 'POST /api/sync/:type',
+      },
+    });
   });
 });

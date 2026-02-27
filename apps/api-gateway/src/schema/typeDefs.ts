@@ -68,6 +68,9 @@ export const typeDefs = gql`
     createdAt: DateTime!
     updatedAt: DateTime!
     deletedAt: DateTime
+
+    # Relations
+    team: Team
   }
 
   type OrganizationMember {
@@ -210,6 +213,7 @@ export const typeDefs = gql`
     progress: Int!
     clientId: ID
     managerId: ID
+    memberIds: [ID!]
     teamIds: [String!]
     metadata: JSON
     createdAt: DateTime!
@@ -221,6 +225,33 @@ export const typeDefs = gql`
     milestones: [Milestone]
     client: Client
     manager: User
+    members: [User!]
+    teams: [Team!]
+    activities: [ProjectActivity!]
+    documents: [ProjectDocument!]
+    risks: [RiskRegister!]
+  }
+
+  type ProjectActivity {
+    id: ID!
+    type: String!
+    description: String!
+    timestamp: DateTime!
+    userId: ID
+    user: User
+    projectId: ID!
+  }
+
+  type ProjectDocument {
+    id: ID!
+    name: String!
+    url: String!
+    size: Int
+    fileType: String
+    uploadedAt: DateTime!
+    uploadedById: ID
+    uploadedBy: User
+    projectId: ID!
   }
 
   type ProjectMember {
@@ -240,11 +271,19 @@ export const typeDefs = gql`
     title: String!
     description: String
     status: String!
-    priority: String
+    priority: String!
     dueDate: DateTime
+    startDate: DateTime
+    estimatedHours: Float
+    actualHours: Float
+    creatorId: String
     aiSuggestions: JSON
     createdAt: DateTime!
     updatedAt: DateTime!
+
+    # Relations
+    assignees: [User!]
+    creator: User
   }
 
   type TaskChecklist {
@@ -269,9 +308,12 @@ export const typeDefs = gql`
     id: ID!
     projectId: String!
     title: String!
+    name: String
     description: String
-    dueDate: DateTime
+    dueDate: DateTime!
     status: String!
+    completed: Boolean!
+    completedAt: DateTime
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -294,10 +336,40 @@ export const typeDefs = gql`
     id: ID!
     organizationId: String
     name: String!
+    email: String
+    company: String
+    phone: String
+    address: String
+    industry: String
+    status: String
     contactInfo: JSON
     portalAccess: Boolean!
+    contactPersonId: String
     createdAt: DateTime!
     updatedAt: DateTime!
+
+    # Relations
+    rating: ClientRating
+    projects: [Project!]
+    contracts: [Contract!]
+    contactPerson: User
+  }
+
+  type ClientRating {
+    budget: Float
+    communication: Float
+    schedule: Float
+    overall: Float
+  }
+
+  type Contract {
+    id: ID!
+    title: String!
+    status: String!
+    startDate: DateTime
+    endDate: DateTime
+    amount: Float
+    clientId: ID!
   }
 
   type ProjectClient {
@@ -572,6 +644,64 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
+  # 11. AI Engine Types
+
+  type AiChatResponse {
+    success: Boolean!
+    data: AiChatData
+    error: String
+  }
+
+  type AiChatData {
+    answer: String!
+    sessionId: String!
+    isOutOfScope: Boolean!
+    isActionResponse: Boolean
+    actionResult: AiActionResult
+    sources: [AiSource!]!
+  }
+
+  type AiActionResult {
+    success: Boolean!
+    toolsUsed: [String!]!
+    iterations: Int!
+  }
+
+  type AiSource {
+    contentType: String!
+    title: String!
+    sourceId: String!
+  }
+
+  type AiIndexingStats {
+    success: Boolean!
+    data: AiStatsData
+    error: String
+  }
+
+  type AiStatsData {
+    totalDocuments: Int!
+    byContentType: JSON
+  }
+
+  type AiSyncResponse {
+    success: Boolean!
+    data: AiSyncData
+    error: String
+  }
+
+  type AiSyncData {
+    totalSynced: Int!
+    totalErrors: Int!
+    details: JSON
+  }
+
+  type AiIndexResponse {
+    success: Boolean!
+    data: JSON
+    error: String
+  }
+
   # Query Type
   type Query {
     # Authentication
@@ -620,7 +750,7 @@ export const typeDefs = gql`
     riskRegister(id: ID!): RiskRegister
 
     # Clients
-    clients(organizationId: ID): [Client!]!
+    clients(search: String, status: String, industry: String, organizationId: ID): [Client!]!
     client(id: ID!): Client
     projectClients: [ProjectClient!]!
     projectClient(id: ID!): ProjectClient
@@ -692,17 +822,32 @@ export const typeDefs = gql`
     dashboard(id: ID!): Dashboard
     dashboardWidgets: [DashboardWidget!]!
     dashboardWidget(id: ID!): DashboardWidget
+
+    # Analytics & Dashboard
+    myProjects: [Project!]!
+    analyticsOverview(organizationId: ID!, dateRange: DateRangeInput!): AnalyticsOverview!
+    dashboardStats(organizationId: ID!): DashboardStats!
+
+    # AI Engine
+    aiChatStats(organizationId: String!): AiIndexingStats!
   }
 
   # Mutation Type
   type Mutation {
     # Authentication
-    login(email: String!, password: String!): AuthPayload!
-    register(name: String!, email: String!, password: String!, organizationName: String): AuthPayload!
+    login(email: String!, password: String!, turnstileToken: String!): AuthPayload!
+    register(name: String!, email: String!, password: String!, organizationName: String, turnstileToken: String!): AuthPayload!
+    acceptInvite(token: String!, password: String!, name: String!, role: String): AuthPayload!
     googleLogin(idToken: String!): AuthPayload!
     googleSignup(idToken: String!): AuthPayload!
     refreshToken(refreshToken: String!): TokenPayload!
     logout: Boolean!
+    
+    """
+    Permanently deletes the currently authenticated user and their associated data.
+    Returns true on success.
+    """
+    deleteMyAccount: Boolean!
 
     # Teams - Enhanced
     removeMember(teamId: ID!, memberId: ID!): RemoveMemberResponse!
@@ -710,7 +855,9 @@ export const typeDefs = gql`
     # Users & Organizations
     createUser(input: JSON!): User!
     updateUser(id: ID!, input: JSON!): User!
+    updateUserRole(userId: ID!, role: String!): User!
     deleteUser(id: ID!): DeleteResponse!
+    inviteMember(input: InviteMemberInput!): User!
     createOrganization(input: JSON!): Organization!
     updateOrganization(id: ID!, input: JSON!): Organization!
     deleteOrganization(id: ID!): DeleteResponse!
@@ -732,6 +879,8 @@ export const typeDefs = gql`
     createTeam(input: JSON!): Team!
     updateTeam(id: ID!, input: JSON!): Team!
     deleteTeam(id: ID!): DeleteResponse!
+    addTeamMember(teamId: ID!, userId: ID!): Team!
+    removeTeamMember(teamId: ID!, userId: ID!): Team!
     createTeamMember(input: JSON!): TeamMember!
     updateTeamMember(id: ID!, input: JSON!): TeamMember!
     deleteTeamMember(id: ID!): DeleteResponse!
@@ -769,6 +918,7 @@ export const typeDefs = gql`
     createClient(input: JSON!): Client!
     updateClient(id: ID!, input: JSON!): Client!
     deleteClient(id: ID!): DeleteResponse!
+    inviteClient(input: InviteClientInput!): Client!
     createProjectClient(input: JSON!): ProjectClient!
     updateProjectClient(id: ID!, input: JSON!): ProjectClient!
     deleteProjectClient(id: ID!): DeleteResponse!
@@ -842,6 +992,8 @@ export const typeDefs = gql`
     createNotification(input: JSON!): Notification!
     updateNotification(id: ID!, input: JSON!): Notification!
     deleteNotification(id: ID!): DeleteResponse!
+    markNotificationAsRead(id: ID!): Notification!
+    markAllNotificationsAsRead: MarkAllNotificationsResponse!
 
     # Dashboards
     createDashboard(input: JSON!): Dashboard!
@@ -850,9 +1002,18 @@ export const typeDefs = gql`
     createDashboardWidget(input: JSON!): DashboardWidget!
     updateDashboardWidget(id: ID!, input: JSON!): DashboardWidget!
     deleteDashboardWidget(id: ID!): DeleteResponse!
+
+    # AI Engine
+    aiChat(input: AiChatInput!): AiChatResponse!
+    aiClearHistory(sessionId: String!): DeleteResponse!
+    aiSyncAll(organizationId: String!): AiSyncResponse!
+    aiSyncType(organizationId: String!, type: String!): AiSyncResponse!
+    aiIndexDocument(input: AiIndexDocumentInput!): AiIndexResponse!
+    aiRemoveDocument(sourceSchema: String!, sourceTable: String!, sourceId: String!): AiIndexResponse!
   }
 
   type DeleteResponse {
+    success: Boolean!
     message: String!
   }
 
@@ -860,7 +1021,179 @@ export const typeDefs = gql`
     success: Boolean!
   }
 
+  type MarkAllNotificationsResponse {
+    count: Int!
+    success: Boolean!
+  }
+
+  # Analytics Types
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
+  }
+
+  type AnalyticsOverview {
+    totalProjects: Int!
+    activeProjects: Int!
+    completedMilestones: Int!
+    avgProductivity: Float
+    identifiedRisks: Int!
+    expenseProfitData: [ExpenseProfitData!]
+    taskDistribution: [TaskDistribution!]
+    teamPerformance: [TeamPerformanceData!]
+    riskScores: [RiskScore!]
+  }
+
+  type ExpenseProfitData {
+    month: String!
+    expenses: Float!
+    profit: Float!
+  }
+
+  type TaskDistribution {
+    status: String!
+    count: Int!
+  }
+
+  type TeamPerformanceData {
+    teamId: ID!
+    teamName: String!
+    contributionPercentage: Float!
+  }
+
+  type RiskScore {
+    category: String!
+    score: Float!
+  }
+
+  type DashboardStats {
+    totalProjects: Int!
+    activeProjects: Int!
+    completedTasks: Int!
+    totalTasks: Int!
+    upcomingMilestones: [UpcomingMilestone!]
+    recentActivities: [ActivityItem!]
+    teamUtilization: [TeamUtilization!]
+  }
+
+  type UpcomingMilestone {
+    id: ID!
+    title: String!
+    projectId: ID!
+    projectName: String!
+    dueDate: DateTime!
+  }
+
+  type ActivityItem {
+    id: ID!
+    type: String!
+    description: String!
+    timestamp: DateTime!
+    user: User
+    project: Project
+  }
+
+  type TeamUtilization {
+    teamId: ID!
+    teamName: String!
+    utilization: Float!
+  }
+
   # Input Types
+
+  input InviteMemberInput {
+    email: String!
+    firstName: String
+    lastName: String
+    role: String
+    teamId: ID
+    organizationId: ID!
+  }
+
+  input CreateTeamInput {
+    name: String!
+    description: String
+    managerId: ID
+    memberIds: [ID!]
+    organizationId: ID!
+  }
+
+  input UpdateTeamInput {
+    name: String
+    description: String
+    managerId: ID
+  }
+
+  input CreateClientInput {
+    name: String!
+    email: String
+    company: String
+    phone: String
+    address: String
+    industry: String
+    portalAccess: Boolean
+    contactPersonId: ID
+    organizationId: ID!
+  }
+
+  input InviteClientInput {
+    email: String!
+    name: String!
+    company: String
+    phone: String
+    projectId: ID
+    organizationId: ID!
+  }
+
+  input UpdateClientInput {
+    name: String
+    email: String
+    company: String
+    phone: String
+    address: String
+    industry: String
+    status: String
+    portalAccess: Boolean
+    contactPersonId: ID
+  }
+
+  input CreateTaskInput {
+    title: String!
+    description: String
+    status: String
+    priority: String
+    projectId: ID!
+    assigneeId: ID
+    dueDate: DateTime
+    startDate: DateTime
+    estimatedHours: Float
+  }
+
+  input UpdateTaskInput {
+    title: String
+    description: String
+    status: String
+    priority: String
+    assigneeId: ID
+    dueDate: DateTime
+    startDate: DateTime
+    estimatedHours: Float
+    actualHours: Float
+  }
+
+  input CreateMilestoneInput {
+    title: String!
+    description: String
+    projectId: ID!
+    dueDate: DateTime!
+  }
+
+  input UpdateMilestoneInput {
+    title: String
+    description: String
+    dueDate: DateTime
+    completed: Boolean
+  }
 
   input CreateProjectInput {
     name: String!
@@ -896,5 +1229,30 @@ export const typeDefs = gql`
     progress: Int
     budget: Decimal
     spentBudget: Decimal
+  }
+
+  input AiChatInput {
+    organizationId: String!
+    organizationName: String
+    userId: String!
+    userName: String
+    sessionId: String
+    query: String!
+    contentTypes: [String!]
+    # Enable agent mode for actions (create, update, delete)
+    enableAgent: Boolean
+    # Tool categories: projectManagement, clientManagement, workforceManagement, communication, notification, knowledgeHub
+    enabledToolCategories: [String!]
+  }
+
+  input AiIndexDocumentInput {
+    organizationId: String!
+    sourceSchema: String!
+    sourceTable: String!
+    sourceId: String!
+    title: String!
+    content: String!
+    contentType: String!
+    metadata: JSON
   }
 `;

@@ -77,12 +77,12 @@ router.get('/', async (req, res) => {
   try {
     const { organizationId } = req.query;
     const where: any = {};
-    
+
     // Filter by organizationId if provided
     if (organizationId) {
       where.organizationId = organizationId as string;
     }
-    
+
     const teams = await prisma.team.findMany({
       where,
       include: {
@@ -148,7 +148,7 @@ router.get('/:id', async (req, res) => {
 
     // Fetch projects and filter by team
     const allProjects = await fetchProjects();
-    
+
     const ongoingProjects = allProjects
       .filter((p: ProjectData) => p.status !== 'completed' && p.status !== 'Completed')
       .slice(0, 5)
@@ -207,7 +207,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.team.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Team deleted' });
+    res.json({ success: true, message: 'Team deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete team' });

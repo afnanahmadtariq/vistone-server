@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.reportTemplate.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Report template deleted' });
+    res.json({ success: true, message: 'Report template deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete report template' });

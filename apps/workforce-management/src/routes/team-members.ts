@@ -21,10 +21,10 @@ router.get('/', async (req, res) => {
   try {
     const { userId, teamId } = req.query;
     const where: any = {};
-    
+
     if (userId) where.userId = userId as string;
     if (teamId) where.teamId = teamId as string;
-    
+
     const teamMembers = await prisma.teamMember.findMany({ where });
     res.json(teamMembers);
   } catch (error) {
@@ -70,7 +70,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.teamMember.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Team member deleted' });
+    res.json({ success: true, message: 'Team member deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete team member' });

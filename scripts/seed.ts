@@ -50,12 +50,106 @@ async function seedAuthService() {
     console.log(`  ✅ Created organization: ${org.name}`);
   }
 
-  // Create Roles
+  // Create Roles (as per BACKEND_IMPLEMENTATION_PLAN.md)
+  // Internal roles: Organizer, Manager, Contributor
+  // External role: Client (handled separately in client-management service)
   const roles = [
-    { organizationId: ids.organizations[0], name: 'Admin', permissions: { all: true }, isSystem: true },
-    { organizationId: ids.organizations[0], name: 'Developer', permissions: { projects: true, tasks: true } },
-    { organizationId: ids.organizations[0], name: 'Viewer', permissions: { read: true } },
-    { organizationId: ids.organizations[1], name: 'Admin', permissions: { all: true }, isSystem: true },
+    // Organization 1 (Acme Corporation) roles
+    {
+      organizationId: ids.organizations[0],
+      name: 'Organizer',
+      permissions: {
+        users: ['create', 'read', 'update', 'delete', 'assign'],
+        teams: ['create', 'read', 'update', 'delete', 'assign'],
+        projects: ['create', 'read', 'update', 'delete', 'assign'],
+        tasks: ['create', 'read', 'update', 'delete', 'assign'],
+        clients: ['create', 'read', 'update', 'delete'],
+        wiki: ['create', 'read', 'update', 'delete'],
+        channels: ['create', 'read', 'update', 'delete'],
+        settings: ['read', 'update'],
+        reports: ['create', 'read', 'update', 'delete'],
+        notifications: ['create', 'read', 'update', 'delete'],
+      },
+      isSystem: true
+    },
+    {
+      organizationId: ids.organizations[0],
+      name: 'Manager',
+      permissions: {
+        users: ['read'],
+        teams: ['read', 'update'],
+        projects: ['read', 'update'],
+        tasks: ['create', 'read', 'update', 'assign'],
+        clients: ['read'],
+        wiki: ['create', 'read', 'update'],
+        channels: ['create', 'read', 'update'],
+        settings: ['read'],
+        reports: ['read'],
+        notifications: ['read', 'update'],
+      }
+    },
+    {
+      organizationId: ids.organizations[0],
+      name: 'Contributor',
+      permissions: {
+        users: ['read'],
+        teams: ['read'],
+        projects: ['read'],
+        tasks: ['read', 'update'],
+        wiki: ['read'],
+        channels: ['read', 'update'],
+        reports: ['read'],
+        notifications: ['read', 'update'],
+      }
+    },
+    // Organization 2 (TechStart Inc) roles
+    {
+      organizationId: ids.organizations[1],
+      name: 'Organizer',
+      permissions: {
+        users: ['create', 'read', 'update', 'delete', 'assign'],
+        teams: ['create', 'read', 'update', 'delete', 'assign'],
+        projects: ['create', 'read', 'update', 'delete', 'assign'],
+        tasks: ['create', 'read', 'update', 'delete', 'assign'],
+        clients: ['create', 'read', 'update', 'delete'],
+        wiki: ['create', 'read', 'update', 'delete'],
+        channels: ['create', 'read', 'update', 'delete'],
+        settings: ['read', 'update'],
+        reports: ['create', 'read', 'update', 'delete'],
+        notifications: ['create', 'read', 'update', 'delete'],
+      },
+      isSystem: true
+    },
+    {
+      organizationId: ids.organizations[1],
+      name: 'Manager',
+      permissions: {
+        users: ['read'],
+        teams: ['read', 'update'],
+        projects: ['read', 'update'],
+        tasks: ['create', 'read', 'update', 'assign'],
+        clients: ['read'],
+        wiki: ['create', 'read', 'update'],
+        channels: ['create', 'read', 'update'],
+        settings: ['read'],
+        reports: ['read'],
+        notifications: ['read', 'update'],
+      }
+    },
+    {
+      organizationId: ids.organizations[1],
+      name: 'Contributor',
+      permissions: {
+        users: ['read'],
+        teams: ['read'],
+        projects: ['read'],
+        tasks: ['read', 'update'],
+        wiki: ['read'],
+        channels: ['read', 'update'],
+        reports: ['read'],
+        notifications: ['read', 'update'],
+      }
+    },
   ];
 
   for (const role of roles) {
@@ -64,13 +158,17 @@ async function seedAuthService() {
     console.log(`  ✅ Created role: ${role.name}`);
   }
 
-  // Create Users
+  // Create Users with clear role assignments
+  // john.admin -> Organizer (full access)
+  // bob.manager -> Manager (team management)
+  // jane.dev, alice.designer -> Contributors (team members)
+  // charlie.qa -> Contributor (different org)
   const users = [
-    { email: 'john.admin@acme.com', firstName: 'John', lastName: 'Smith', password: 'hashed_password_123' },
-    { email: 'jane.dev@acme.com', firstName: 'Jane', lastName: 'Doe', password: 'hashed_password_123' },
+    { email: 'john.organizer@acme.com', firstName: 'John', lastName: 'Smith', password: 'hashed_password_123' },
     { email: 'bob.manager@acme.com', firstName: 'Bob', lastName: 'Wilson', password: 'hashed_password_123' },
-    { email: 'alice.designer@acme.com', firstName: 'Alice', lastName: 'Johnson', password: 'hashed_password_123' },
-    { email: 'charlie.qa@techstart.com', firstName: 'Charlie', lastName: 'Brown', password: 'hashed_password_123' },
+    { email: 'jane.contributor@acme.com', firstName: 'Jane', lastName: 'Doe', password: 'hashed_password_123' },
+    { email: 'alice.contributor@acme.com', firstName: 'Alice', lastName: 'Johnson', password: 'hashed_password_123' },
+    { email: 'charlie.contributor@techstart.com', firstName: 'Charlie', lastName: 'Brown', password: 'hashed_password_123' },
   ];
 
   for (const user of users) {
@@ -79,13 +177,19 @@ async function seedAuthService() {
     console.log(`  ✅ Created user: ${user.email}`);
   }
 
-  // Create Organization Members
+  // Create Organization Members with proper role assignments
+  // ids.roles[0] = Acme Organizer
+  // ids.roles[1] = Acme Manager
+  // ids.roles[2] = Acme Contributor
+  // ids.roles[3] = TechStart Organizer
+  // ids.roles[4] = TechStart Manager
+  // ids.roles[5] = TechStart Contributor
   const members = [
-    { organizationId: ids.organizations[0], userId: ids.users[0], roleId: ids.roles[0] },
-    { organizationId: ids.organizations[0], userId: ids.users[1], roleId: ids.roles[1] },
-    { organizationId: ids.organizations[0], userId: ids.users[2], roleId: ids.roles[1] },
-    { organizationId: ids.organizations[0], userId: ids.users[3], roleId: ids.roles[2] },
-    { organizationId: ids.organizations[1], userId: ids.users[4], roleId: ids.roles[3] },
+    { organizationId: ids.organizations[0], userId: ids.users[0], roleId: ids.roles[0] }, // John -> Organizer
+    { organizationId: ids.organizations[0], userId: ids.users[1], roleId: ids.roles[1] }, // Bob -> Manager
+    { organizationId: ids.organizations[0], userId: ids.users[2], roleId: ids.roles[2] }, // Jane -> Contributor
+    { organizationId: ids.organizations[0], userId: ids.users[3], roleId: ids.roles[2] }, // Alice -> Contributor
+    { organizationId: ids.organizations[1], userId: ids.users[4], roleId: ids.roles[5] }, // Charlie -> Contributor (TechStart)
   ];
 
   for (const member of members) {
@@ -555,7 +659,7 @@ async function seedMonitoringService() {
   // Create AI Conversation (matching schema: userId, context, tokensUsed)
   await post(SERVICES.monitoring, '/ai-conversations', {
     userId: ids.users[0],
-    context: { 
+    context: {
       projectId: ids.projects[0],
       messages: [
         { role: 'user', content: 'What is the status of the E-Commerce project?' },
@@ -665,7 +769,7 @@ async function main() {
   console.log('  - Monitoring (3007)');
   console.log('  - Notification (3008)');
   console.log('\nWaiting 2 seconds before starting...\n');
-  
+
   await new Promise(resolve => setTimeout(resolve, 2000));
 
   try {

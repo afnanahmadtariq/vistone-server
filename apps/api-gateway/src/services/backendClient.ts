@@ -130,5 +130,10 @@ export const notificationClient = new ServiceClient(
   'Notification Service'
 );
 
+export const aiEngineClient = new ServiceClient(
+  process.env.AI_ENGINE_URL || 'http://localhost:3009',
+  'AI Engine Service'
+);
+
 // Legacy export for backward compatibility (deprecated)
 export default authClient;

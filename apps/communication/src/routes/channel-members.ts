@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.channelMember.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Channel member deleted' });
+    res.json({ success: true, message: 'Channel member deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete channel member' });

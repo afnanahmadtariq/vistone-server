@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.taskChecklist.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Task checklist deleted' });
+    res.json({ success: true, message: 'Task checklist deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete task checklist' });

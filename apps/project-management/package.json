@@ -16,9 +16,10 @@
           "format": [
             "cjs"
           ],
-          "bundle": false,
+          "bundle": true,
           "main": "apps/project-management/src/main.ts",
           "tsConfig": "apps/project-management/tsconfig.app.json",
+          "external": ["@prisma/client", "@prisma/adapter-pg", "pg"],
           "assets": [
             "apps/project-management/src/assets"
           ],

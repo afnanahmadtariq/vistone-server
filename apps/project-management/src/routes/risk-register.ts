@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.riskRegister.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Risk register deleted' });
+    res.json({ success: true, message: 'Risk register deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete risk register' });

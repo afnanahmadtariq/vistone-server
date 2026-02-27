@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.notification.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Notification deleted' });
+    res.json({ success: true, message: 'Notification deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete notification' });
@@ -89,7 +89,7 @@ router.get('/user/:userId', async (req, res) => {
 router.put('/user/:userId/read-all', async (req, res) => {
   try {
     await prisma.notification.updateMany({
-      where: { 
+      where: {
         userId: req.params.userId,
         isRead: false,
       },

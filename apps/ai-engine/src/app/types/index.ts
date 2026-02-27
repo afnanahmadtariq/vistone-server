@@ -83,7 +83,7 @@ export class AIEngineError extends Error {
   constructor(
     message: string,
     public code: string,
-    public statusCode: number = 500
+    public statusCode = 500
   ) {
     super(message);
     this.name = 'AIEngineError';
@@ -91,21 +91,21 @@ export class AIEngineError extends Error {
 }
 
 export class OutOfScopeError extends AIEngineError {
-  constructor(message: string = 'Query is outside the allowed scope') {
+  constructor(message = 'Query is outside the allowed scope') {
     super(message, 'OUT_OF_SCOPE', 400);
     this.name = 'OutOfScopeError';
   }
 }
 
 export class EmbeddingError extends AIEngineError {
-  constructor(message: string = 'Failed to generate embeddings') {
+  constructor(message = 'Failed to generate embeddings') {
     super(message, 'EMBEDDING_ERROR', 500);
     this.name = 'EmbeddingError';
   }
 }
 
 export class VectorSearchError extends AIEngineError {
-  constructor(message: string = 'Vector search failed') {
+  constructor(message = 'Vector search failed') {
     super(message, 'VECTOR_SEARCH_ERROR', 500);
     this.name = 'VectorSearchError';
   }

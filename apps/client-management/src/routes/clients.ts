@@ -21,12 +21,12 @@ router.get('/', async (req, res) => {
   try {
     const { organizationId } = req.query;
     const where: any = {};
-    
+
     // Filter by organizationId if provided
     if (organizationId) {
       where.organizationId = organizationId as string;
     }
-    
+
     const clients = await prisma.client.findMany({ where });
     res.json(clients);
   } catch (error) {
@@ -72,7 +72,7 @@ router.delete('/:id', async (req, res) => {
     await prisma.client.delete({
       where: { id: req.params.id },
     });
-    res.json({ message: 'Client deleted' });
+    res.json({ success: true, message: 'Client deleted' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete client' });
