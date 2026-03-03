@@ -197,7 +197,7 @@ export async function loginHandler(req: Request, res: Response) {
     });
 
     // Log login activity
-    logActivity({ userId: user.id, action: 'LOGIN', details: { method: 'email' } });
+    logActivity({ userId: user.id, action: 'LOGIN', entityType: 'USER', entityId: user.id, details: { method: 'email' } });
 
     res.json({
       accessToken,
@@ -305,7 +305,7 @@ export async function registerHandler(req: Request, res: Response) {
     const teamMember = await getTeamMembershipWithRole(user.id);
 
     // Log register activity
-    logActivity({ userId: user.id, action: 'REGISTER', details: { method: 'email', isNewUser } });
+    logActivity({ userId: user.id, action: 'REGISTER', entityType: 'USER', entityId: user.id, details: { method: 'email', isNewUser } });
 
     res.json({
       accessToken,
@@ -426,7 +426,7 @@ export async function googleOauthHandler(req: Request, res: Response) {
     const teamMember = await getTeamMembershipWithRole(user.id);
 
     // Log Google OAuth activity
-    logActivity({ userId: user.id, action: isNewUser ? 'REGISTER' : 'LOGIN', details: { method: 'google' } });
+    logActivity({ userId: user.id, action: isNewUser ? 'REGISTER' : 'LOGIN', entityType: 'USER', entityId: user.id, details: { method: 'google' } });
 
     res.json({
       accessToken,
@@ -499,7 +499,7 @@ export async function logoutHandler(req: Request, res: Response) {
       // Log logout before deleting token
       const tokenData = tokenStore.get(token);
       if (tokenData) {
-        logActivity({ userId: tokenData.userId, action: 'LOGOUT' });
+        logActivity({ userId: tokenData.userId, action: 'LOGOUT', entityType: 'USER', entityId: tokenData.userId });
       }
       tokenStore.delete(token);
     }

@@ -7,11 +7,22 @@ import prisma from "../../lib/prisma";
 export async function logActivity(data: {
   userId: string;
   action: string;
+  entityType: string;
+  entityId?: string;
   details?: unknown;
   ipAddress?: string;
 }) {
   try {
-    return await prisma.activityLog.create({ data });
+    return await prisma.activityLog.create({
+      data: {
+        userId: data.userId,
+        action: data.action,
+        entityType: data.entityType,
+        entityId: data.entityId,
+        metadata: data.details ?? undefined,
+        ipAddress: data.ipAddress,
+      },
+    });
   } catch (error) {
     console.error('Failed to log activity:', error);
     return null;
