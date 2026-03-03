@@ -1,9 +1,9 @@
 import express from 'express';
 import cors from 'cors';
-import teamRoutes from './routes/teams';
-import teamMemberRoutes from './routes/team-members';
-import userSkillRoutes from './routes/user-skills';
-import userAvailabilityRoutes from './routes/user-availability';
+import teamRoutes from './modules/teams/teams.routes';
+import teamMemberRoutes from './modules/team-members/team-members.routes';
+import userSkillRoutes from './modules/user-skills/user-skills.routes';
+import userAvailabilityRoutes from './modules/user-availability/user-availability.routes';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3002;

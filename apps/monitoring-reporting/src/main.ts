@@ -1,15 +1,15 @@
 import express from 'express';
 import cors from 'cors';
-import kpiDefinitionsRouter from './routes/kpi-definitions';
-import kpiMeasurementsRouter from './routes/kpi-measurements';
-import reportTemplatesRouter from './routes/report-templates';
-import generatedReportsRouter from './routes/generated-reports';
-import memberPerformanceRouter from './routes/member-performance';
-import aiConversationsRouter from './routes/ai-conversations';
-import automationRulesRouter from './routes/automation-rules';
-import automationLogsRouter from './routes/automation-logs';
-import dashboardsRouter from './routes/dashboards';
-import dashboardWidgetsRouter from './routes/dashboard-widgets';
+import kpiDefinitionsRouter from './modules/kpi-definitions/kpi-definitions.routes';
+import kpiMeasurementsRouter from './modules/kpi-measurements/kpi-measurements.routes';
+import reportTemplatesRouter from './modules/report-templates/report-templates.routes';
+import generatedReportsRouter from './modules/generated-reports/generated-reports.routes';
+import memberPerformanceRouter from './modules/member-performance/member-performance.routes';
+import aiConversationsRouter from './modules/ai-conversations/ai-conversations.routes';
+import automationRulesRouter from './modules/automation-rules/automation-rules.routes';
+import automationLogsRouter from './modules/automation-logs/automation-logs.routes';
+import dashboardsRouter from './modules/dashboards/dashboards.routes';
+import dashboardWidgetsRouter from './modules/dashboard-widgets/dashboard-widgets.routes';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3007;
