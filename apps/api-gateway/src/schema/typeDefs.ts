@@ -644,6 +644,22 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
+  type ReportSchedule {
+    id: ID!
+    organizationId: String!
+    templateId: String
+    name: String!
+    cronExpression: String!
+    recipients: JSON!
+    format: String!
+    filters: JSON
+    isActive: Boolean!
+    lastRunAt: DateTime
+    nextRunAt: DateTime
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
   # 11. AI Engine Types
 
   type AiChatResponse {
@@ -822,6 +838,10 @@ export const typeDefs = gql`
     dashboard(id: ID!): Dashboard
     dashboardWidgets: [DashboardWidget!]!
     dashboardWidget(id: ID!): DashboardWidget
+
+    # Report Schedules
+    reportSchedules(organizationId: ID): [ReportSchedule!]!
+    reportSchedule(id: ID!): ReportSchedule
 
     # Analytics & Dashboard
     myProjects: [Project!]!
@@ -1002,6 +1022,11 @@ export const typeDefs = gql`
     createDashboardWidget(input: JSON!): DashboardWidget!
     updateDashboardWidget(id: ID!, input: JSON!): DashboardWidget!
     deleteDashboardWidget(id: ID!): DeleteResponse!
+
+    # Report Schedules
+    createReportSchedule(input: JSON!): ReportSchedule!
+    updateReportSchedule(id: ID!, input: JSON!): ReportSchedule!
+    deleteReportSchedule(id: ID!): DeleteResponse!
 
     # AI Engine
     aiChat(input: AiChatInput!): AiChatResponse!

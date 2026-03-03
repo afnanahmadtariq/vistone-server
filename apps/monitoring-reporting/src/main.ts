@@ -10,6 +10,7 @@ import automationRulesRouter from './modules/automation-rules/automation-rules.r
 import automationLogsRouter from './modules/automation-logs/automation-logs.routes';
 import dashboardsRouter from './modules/dashboards/dashboards.routes';
 import dashboardWidgetsRouter from './modules/dashboard-widgets/dashboard-widgets.routes';
+import reportSchedulesRouter from './modules/report-schedules/report-schedules.routes';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3007;
@@ -34,6 +35,7 @@ app.use('/automation-rules', automationRulesRouter);
 app.use('/automation-logs', automationLogsRouter);
 app.use('/dashboards', dashboardsRouter);
 app.use('/dashboard-widgets', dashboardWidgetsRouter);
+app.use('/report-schedules', reportSchedulesRouter);
 
 app.listen(port, host, () => {
   console.log(`[ ready ] Monitoring & Reporting Service running at http://${host}:${port}`);

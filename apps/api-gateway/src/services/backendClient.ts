@@ -1,5 +1,9 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
+/** Generic record type representing data from REST microservices */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ServiceRecord = Record<string, any>;
+
 class ServiceClient {
   private client: AxiosInstance;
   private serviceName: string;
@@ -22,7 +26,8 @@ class ServiceClient {
         throw new Error(`${this.serviceName} is not available. Please ensure the service is running.`);
       }
       if (axiosError.response) {
-        const message = (axiosError.response.data as any)?.error || axiosError.message;
+        const data = axiosError.response.data as ServiceRecord | undefined;
+        const message = data?.error || axiosError.message;
         throw new Error(`${this.serviceName} ${operation} failed: ${message}`);
       }
       throw new Error(`${this.serviceName} ${operation} failed: ${axiosError.message}`);
@@ -30,7 +35,7 @@ class ServiceClient {
     throw error;
   }
 
-  async get(endpoint: string) {
+  async get(endpoint: string): Promise<ServiceRecord[]> {
     try {
       const response = await this.client.get(endpoint);
       return response.data;
@@ -39,7 +44,7 @@ class ServiceClient {
     }
   }
 
-  async getById(endpoint: string, id: string) {
+  async getById(endpoint: string, id: string): Promise<ServiceRecord> {
     try {
       const response = await this.client.get(`${endpoint}/${id}`);
       return response.data;
@@ -48,7 +53,7 @@ class ServiceClient {
     }
   }
 
-  async post(endpoint: string, data: any) {
+  async post(endpoint: string, data: ServiceRecord): Promise<ServiceRecord> {
     try {
       const response = await this.client.post(endpoint, data);
       return response.data;
@@ -57,7 +62,7 @@ class ServiceClient {
     }
   }
 
-  async postWithAuth(endpoint: string, data: any, token: string) {
+  async postWithAuth(endpoint: string, data: ServiceRecord, token: string): Promise<ServiceRecord> {
     try {
       const response = await this.client.post(endpoint, data, {
         headers: {
@@ -70,7 +75,7 @@ class ServiceClient {
     }
   }
 
-  async put(endpoint: string, id: string, data: any) {
+  async put(endpoint: string, id: string, data: ServiceRecord): Promise<ServiceRecord> {
     try {
       const response = await this.client.put(`${endpoint}/${id}`, data);
       return response.data;
@@ -79,7 +84,7 @@ class ServiceClient {
     }
   }
 
-  async delete(endpoint: string, id: string) {
+  async delete(endpoint: string, id: string): Promise<ServiceRecord> {
     try {
       const response = await this.client.delete(`${endpoint}/${id}`);
       return response.data;

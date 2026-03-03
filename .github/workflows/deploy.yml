@@ -1,0 +1,55 @@
+name: Build and Push to GHCR
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - api-gateway
+          - auth-service
+          - workforce-management
+          - project-management
+          - client-management
+          - knowledge-hub
+          - communication
+          - monitoring-reporting
+          - notification
+          - ai-engine
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build image
+        run: docker build -t ghcr.io/${{ github.repository_owner }}/vistone-${{ matrix.app }}:${{ github.sha }} -t ghcr.io/${{ github.repository_owner }}/vistone-${{ matrix.app }}:latest -f apps/${{ matrix.app }}/Dockerfile .
+
+      - name: Push image
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/vistone-${{ matrix.app }}:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository_owner }}/vistone-${{ matrix.app }}:latest
+
+      # Login to Azure
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Deploy to Container App
+      - name: Deploy to Azure Container Apps
+        run: |
+          az containerapp update \
+            --name vistone-${{ matrix.app }} \
+            --resource-group vistone-server \
+            --image ghcr.io/${{ github.repository_owner }}/vistone-${{ matrix.app }}:${{ github.sha }}
