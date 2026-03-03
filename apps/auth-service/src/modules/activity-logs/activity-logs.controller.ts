@@ -1,30 +1,54 @@
 import { Request, Response } from "express";
 import prisma from "../../lib/prisma";
 
-export async function updateActivityLogIsnTTypicallySupportedButAddingJustInCaseCreateActivityLogHandler(req: Request, res: Response) {
-    try {
+/**
+ * Log an activity event. Used internally by auth handlers and externally via API.
+ */
+export async function logActivity(data: {
+  userId: string;
+  action: string;
+  details?: unknown;
+  ipAddress?: string;
+}) {
+  try {
+    return await prisma.activityLog.create({ data });
+  } catch (error) {
+    console.error('Failed to log activity:', error);
+    return null;
+  }
+}
+
+export async function createActivityLogHandler(req: Request, res: Response) {
+  try {
     const activityLog = await prisma.activityLog.create({
       data: req.body,
     });
     res.json(activityLog);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to create activity log' });
-    }
+  }
 }
 
 export async function getAllActivityLogsHandler(req: Request, res: Response) {
-    try {
-    const activityLogs = await prisma.activityLog.findMany();
+  try {
+    const { userId, action } = req.query;
+    const where: Record<string, unknown> = {};
+    if (userId) where.userId = userId as string;
+    if (action) where.action = action as string;
+    const activityLogs = await prisma.activityLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
     res.json(activityLogs);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch activity logs' });
-    }
+  }
 }
 
 export async function getActivityLogByIdHandler(req: Request, res: Response) {
-    try {
+  try {
     const activityLog = await prisma.activityLog.findUnique({
       where: { id: req.params.id },
     });
@@ -33,8 +57,8 @@ export async function getActivityLogByIdHandler(req: Request, res: Response) {
       return;
     }
     res.json(activityLog);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch activity log' });
-    }
+  }
 }

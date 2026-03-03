@@ -370,6 +370,14 @@ export const resolvers = {
     dashboardWidgets: () => monitoringClient.get('/dashboard-widgets'),
     dashboardWidget: (_: any, { id }: { id: string }) => monitoringClient.getById('/dashboard-widgets', id),
 
+    // Report Schedules (Monitoring Service)
+    reportSchedules: (_: any, { organizationId }: { organizationId?: string }) => {
+      const params = new URLSearchParams();
+      if (organizationId) params.append('organizationId', organizationId);
+      return monitoringClient.get(`/report-schedules?${params.toString()}`);
+    },
+    reportSchedule: (_: any, { id }: { id: string }) => monitoringClient.getById('/report-schedules', id),
+
     // Notifications (Notification Service)
     notificationTemplates: () => notificationClient.get('/notification-templates'),
     notificationTemplate: (_: any, { id }: { id: string }) => notificationClient.getById('/notification-templates', id),
@@ -1689,6 +1697,11 @@ export const resolvers = {
     createDashboardWidget: (_: any, { input }: { input: any }) => monitoringClient.post('/dashboard-widgets', input),
     updateDashboardWidget: (_: any, { id, input }: { id: string; input: any }) => monitoringClient.put('/dashboard-widgets', id, input),
     deleteDashboardWidget: (_: any, { id }: { id: string }) => monitoringClient.delete('/dashboard-widgets', id),
+
+    // Report Schedules (Monitoring Service)
+    createReportSchedule: (_: any, { input }: { input: any }) => monitoringClient.post('/report-schedules', input),
+    updateReportSchedule: (_: any, { id, input }: { id: string; input: any }) => monitoringClient.put('/report-schedules', id, input),
+    deleteReportSchedule: (_: any, { id }: { id: string }) => monitoringClient.delete('/report-schedules', id),
 
     // Notifications (Notification Service)
     createNotificationTemplate: (_: any, { input }: { input: any }) => notificationClient.post('/notification-templates', input),

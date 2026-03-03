@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import prisma from "../../lib/prisma";
 import * as crypto from "crypto";
+import { logActivity } from "../activity-logs/activity-logs.controller";
 import { OAuth2Client } from "google-auth-library";
 import { ROLE_NAMES, ORGANIZER_PERMISSIONS } from "../../lib/roles";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
@@ -143,6 +144,7 @@ function formatAuthUser(
     permissions: role?.permissions || null,
   };
 }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function getTeamMembershipWithRole(_userId: string): Promise<TeamMemberData | null> {
   // In a real implementation, this would call the workforce service
   // For now, return null (user has no team)
@@ -193,6 +195,9 @@ export async function loginHandler(req: Request, res: Response) {
       where: { userId: user.id },
       include: { organization: true, role: true },
     });
+
+    // Log login activity
+    logActivity({ userId: user.id, action: 'LOGIN', details: { method: 'email' } });
 
     res.json({
       accessToken,
@@ -299,6 +304,9 @@ export async function registerHandler(req: Request, res: Response) {
     // Get team membership if exists (might have been added during invite)
     const teamMember = await getTeamMembershipWithRole(user.id);
 
+    // Log register activity
+    logActivity({ userId: user.id, action: 'REGISTER', details: { method: 'email', isNewUser } });
+
     res.json({
       accessToken,
       refreshToken,
@@ -311,7 +319,7 @@ export async function registerHandler(req: Request, res: Response) {
   }
 }
 
-export async function googleOauthHandlesBothLoginAndSignupHandler(req: Request, res: Response) {
+export async function googleOauthHandler(req: Request, res: Response) {
   try {
     const { idToken } = req.body;
 
@@ -417,6 +425,9 @@ export async function googleOauthHandlesBothLoginAndSignupHandler(req: Request, 
     // Get user's team membership
     const teamMember = await getTeamMembershipWithRole(user.id);
 
+    // Log Google OAuth activity
+    logActivity({ userId: user.id, action: isNewUser ? 'REGISTER' : 'LOGIN', details: { method: 'google' } });
+
     res.json({
       accessToken,
       refreshToken,
@@ -485,6 +496,11 @@ export async function logoutHandler(req: Request, res: Response) {
     const token = authHeader?.replace('Bearer ', '');
 
     if (token) {
+      // Log logout before deleting token
+      const tokenData = tokenStore.get(token);
+      if (tokenData) {
+        logActivity({ userId: tokenData.userId, action: 'LOGOUT' });
+      }
       tokenStore.delete(token);
     }
 
@@ -495,7 +511,7 @@ export async function logoutHandler(req: Request, res: Response) {
   }
 }
 
-export async function acceptInviteCompleteRegistrationForInvitedUsersHandler(req: Request, res: Response) {
+export async function acceptInviteHandler(req: Request, res: Response) {
   try {
     const { token, password, name, role } = req.body;
 

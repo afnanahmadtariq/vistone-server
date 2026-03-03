@@ -48,23 +48,22 @@ async function fetchProjects(): Promise<ProjectData[]> {
 }
 
 export async function createTeamHandler(req: Request, res: Response) {
-    try {
+  try {
     const team = await prisma.team.create({
       data: req.body,
     });
     res.json(team);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to create team' });
-    }
+  }
 }
 
 export async function getAllTeamsHandler(req: Request, res: Response) {
-    try {
+  try {
     const { organizationId } = req.query;
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
-    // Filter by organizationId if provided
     if (organizationId) {
       where.organizationId = organizationId as string;
     }
@@ -76,21 +75,20 @@ export async function getAllTeamsHandler(req: Request, res: Response) {
       },
     }) as TeamWithMembers[];
 
-    // Enhance teams with member count
     const enhancedTeams = teams.map((team: TeamWithMembers) => ({
       ...team,
       memberCount: team.members.length,
     }));
 
     res.json(enhancedTeams);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch teams' });
-    }
+  }
 }
 
-export async function getTeamByIdWithFullDetailsForTeamdetailsComponentHandler(req: Request, res: Response) {
-    try {
+export async function getTeamByIdHandler(req: Request, res: Response) {
+  try {
     const team = await prisma.team.findUnique({
       where: { id: req.params.id },
       include: {
@@ -166,39 +164,39 @@ export async function getTeamByIdWithFullDetailsForTeamdetailsComponentHandler(r
     };
 
     res.json(enhancedTeam);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch team' });
-    }
+  }
 }
 
 export async function updateTeamHandler(req: Request, res: Response) {
-    try {
+  try {
     const team = await prisma.team.update({
       where: { id: req.params.id },
       data: req.body,
     });
     res.json(team);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to update team' });
-    }
+  }
 }
 
 export async function deleteTeamHandler(req: Request, res: Response) {
-    try {
+  try {
     await prisma.team.delete({
       where: { id: req.params.id },
     });
     res.json({ success: true, message: 'Team deleted' });
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete team' });
-    }
+  }
 }
 
 export async function removeMemberFromTeamHandler(req: Request, res: Response) {
-    try {
+  try {
     const { teamId, memberId } = req.body;
 
     if (!teamId || !memberId) {
@@ -225,8 +223,8 @@ export async function removeMemberFromTeamHandler(req: Request, res: Response) {
     });
 
     res.json({ success: true });
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to remove team member' });
-    }
+  }
 }
