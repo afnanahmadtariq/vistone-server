@@ -1,13 +1,13 @@
 import express from 'express';
 import cors from 'cors';
-import projectRoutes from './routes/projects';
-import projectMemberRoutes from './routes/project-members';
-import taskRoutes from './routes/tasks';
-import taskChecklistRoutes from './routes/task-checklists';
-import taskDependencyRoutes from './routes/task-dependencies';
-import milestoneRoutes from './routes/milestones';
-import riskRegisterRoutes from './routes/risk-register';
-import aiInsightRoutes from './routes/ai-insights';
+import projectRoutes from './modules/projects/projects.routes';
+import projectMemberRoutes from './modules/project-members/project-members.routes';
+import taskRoutes from './modules/tasks/tasks.routes';
+import taskChecklistRoutes from './modules/task-checklists/task-checklists.routes';
+import taskDependencyRoutes from './modules/task-dependencies/task-dependencies.routes';
+import milestoneRoutes from './modules/milestones/milestones.routes';
+import riskRegisterRoutes from './modules/risk-register/risk-register.routes';
+import aiInsightRoutes from './modules/ai-insights/ai-insights.routes';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3003;

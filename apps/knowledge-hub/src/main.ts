@@ -1,11 +1,11 @@
 import express from 'express';
 import cors from 'cors';
-import wikiPageRoutes from './routes/wiki-pages';
-import wikiPageVersionRoutes from './routes/wiki-page-versions';
-import documentFolderRoutes from './routes/document-folders';
-import documentRoutes from './routes/documents';
-import documentPermissionRoutes from './routes/document-permissions';
-import documentLinkRoutes from './routes/document-links';
+import wikiPageRoutes from './modules/wiki-pages/wiki-pages.routes';
+import wikiPageVersionRoutes from './modules/wiki-page-versions/wiki-page-versions.routes';
+import documentFolderRoutes from './modules/document-folders/document-folders.routes';
+import documentRoutes from './modules/documents/documents.routes';
+import documentPermissionRoutes from './modules/document-permissions/document-permissions.routes';
+import documentLinkRoutes from './modules/document-links/document-links.routes';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3005;

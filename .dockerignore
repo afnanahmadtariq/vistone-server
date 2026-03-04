@@ -1,0 +1,16 @@
+node_modules
+*/node_modules
+*/dist
+.git
+.gitignore
+*.md
+!README.md
+.env
+.env.*
+.nx
+.vscode
+.idea
+coverage
+tmp
+*-e2e
+apps/*-e2e

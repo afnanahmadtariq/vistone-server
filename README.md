@@ -1,98 +1,98 @@
-# VistoneServer
+# Vistone Server
 
-<a alt="Nx logo" href="https://nx.dev" target="_blank" rel="noreferrer"><img src="https://raw.githubusercontent.com/nrwl/nx/master/images/nx-logo.png" width="45"></a>
+An AI-powered project management platform built as a microservices monorepo using **Nx**, **Express**, **Fastify**, **Prisma**, and **PostgreSQL**.
 
-✨ Your new, shiny [Nx workspace](https://nx.dev) is almost ready ✨.
+---
 
-[Learn more about this workspace setup and its capabilities](https://nx.dev/nx-api/node?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects) or run `npx nx graph` to visually explore what was created. Now, let's get you up to speed!
+## Architecture Overview
 
-## Finish your CI setup
-
-[Click here to finish setting up your workspace!](https://cloud.nx.app/connect/IkQdPjV0iY)
-
-
-## Run tasks
-
-To run the dev server for your app, use:
-
-```sh
-npx nx serve vistone-server
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      API Gateway (:4000)                    │
+│                  Apollo GraphQL + Express                   │
+└──────────┬──────────┬──────────┬──────────┬────────────────┘
+           │          │          │          │
+     ┌─────▼──┐ ┌────▼───┐ ┌───▼────┐ ┌───▼──────────┐
+     │  Auth  │ │Project │ │ Client │ │  Workforce   │
+     │:3001   │ │ Mgmt   │ │  Mgmt  │ │    Mgmt      │
+     │        │ │:3003   │ │:3004   │ │  :3002       │
+     └────────┘ └────────┘ └────────┘ └──────────────┘
+     ┌────────┐ ┌────────┐ ┌────────┐ ┌──────────────┐
+     │Knowled.│ │ Comms  │ │Monitor.│ │ Notification │
+     │  Hub   │ │:3006   │ │& Report│ │   :3008      │
+     │:3005   │ │        │ │:3007   │ │              │
+     └────────┘ └────────┘ └────────┘ └──────────────┘
+     ┌────────────────────┐
+     │    AI Engine       │
+     │  Fastify + RAG     │
+     │     :3009          │
+     └────────────────────┘
 ```
 
-To create a production bundle:
+## Microservices
 
-```sh
-npx nx build vistone-server
+| Service                                                         | Port   | Framework | DB Schema       | Description                              |
+| --------------------------------------------------------------- | ------ | --------- | --------------- | ---------------------------------------- |
+| [API Gateway](./apps/api-gateway/README.md)                     | `4000` | Express   | —               | GraphQL gateway aggregating all services |
+| [Auth Service](./apps/auth-service/README.md)                   | `3001` | Express   | `auth`          | Authentication, users, orgs, roles       |
+| [Workforce Management](./apps/workforce-management/README.md)   | `3002` | Express   | `workforce`     | Teams, members, skills, availability     |
+| [Project Management](./apps/project-management/README.md)       | `3003` | Express   | `project`       | Projects, tasks, milestones, risks       |
+| [Client Management](./apps/client-management/README.md)         | `3004` | Express   | `client`        | Clients, feedback, proposals             |
+| [Knowledge Hub](./apps/knowledge-hub/README.md)                 | `3005` | Express   | `knowledge`     | Wiki, documents, folders, permissions    |
+| [Communication](./apps/communication/README.md)                 | `3006` | Express   | `communication` | Chat channels, messages, mentions        |
+| [Monitoring & Reporting](./apps/monitoring-reporting/README.md) | `3007` | Express   | `monitoring`    | KPIs, reports, dashboards, automation    |
+| [Notification](./apps/notification/README.md)                   | `3008` | Express   | `notification`  | Notifications, templates, emails         |
+| [AI Engine](./apps/ai-engine/README.md)                         | `3009` | Fastify   | `ai_engine`     | RAG pipeline, chat, agent, data sync     |
+
+---
+
+## Tech Stack
+
+| Layer        | Technology                                        |
+| ------------ | ------------------------------------------------- |
+| Monorepo     | Nx 22                                             |
+| Runtime      | Node.js + TypeScript 5.9                          |
+| HTTP         | Express 5 (most services), Fastify 5 (AI Engine)  |
+| API          | Apollo GraphQL (gateway), REST (microservices)    |
+| Database     | PostgreSQL with Prisma ORM + `@prisma/adapter-pg` |
+| Validation   | Zod 4                                             |
+| AI / LLM     | LangChain + Mistral AI                            |
+| Vector Store | pgvector (PostgreSQL extension)                   |
+| Auth         | Google OAuth + token-based sessions               |
+| Email        | Nodemailer                                        |
+| Testing      | Jest 30 + Axios (E2E)                             |
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js ≥ 18
+- PostgreSQL with `vector` extension enabled
+- Google OAuth Client ID (for Google sign-in)
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/afnanahmadtariq/vistone-server.git
+cd vistone-server
+npm install
 ```
 
-To see all available targets to run for a project, run:
+### 2. Configure Environment
 
-```sh
-npx nx show project vistone-server
+```bash
+cp .env.example .env
 ```
 
-These targets are either [inferred automatically](https://nx.dev/concepts/inferred-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) or defined in the `project.json` or `package.json` files.
+Edit `.env` with your PostgreSQL connection string and other credentials.
 
-[More about running tasks in the docs &raquo;](https://nx.dev/features/run-tasks?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
+### 3. Initialize Database Schemas
 
-## Add new projects
+Run the following SQL against your PostgreSQL instance:
 
-While you could add new projects to your workspace manually, you might want to leverage [Nx plugins](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) and their [code generation](https://nx.dev/features/generate-code?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) feature.
-
-Use the plugin's generator to create new projects.
-
-To generate a new application, use:
-
-```sh
-npx nx g @nx/node:app demo
-```
-
-To generate a new library, use:
-
-```sh
-npx nx g @nx/node:lib mylib
-```
-
-You can use `npx nx list` to get a list of installed plugins. Then, run `npx nx list <plugin-name>` to learn about more specific capabilities of a particular plugin. Alternatively, [install Nx Console](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) to browse plugins and generators in your IDE.
-
-[Learn more about Nx plugins &raquo;](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects) | [Browse the plugin registry &raquo;](https://nx.dev/plugin-registry?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-
-[Learn more about Nx on CI](https://nx.dev/ci/intro/ci-with-nx#ready-get-started-with-your-provider?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Install Nx Console
-
-Nx Console is an editor extension that enriches your developer experience. It lets you run tasks, generate code, and improves code autocompletion in your IDE. It is available for VSCode and IntelliJ.
-
-[Install Nx Console &raquo;](https://nx.dev/getting-started/editor-setup?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-## Useful links
-
-Learn more:
-
-- [Learn more about this workspace setup](https://nx.dev/nx-api/node?utm_source=nx_project&amp;utm_medium=readme&amp;utm_campaign=nx_projects)
-- [Learn about Nx on CI](https://nx.dev/ci/intro/ci-with-nx?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [Releasing Packages with Nx release](https://nx.dev/features/manage-releases?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-- [What are Nx plugins?](https://nx.dev/concepts/nx-plugins?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-And join the Nx community:
-- [Discord](https://go.nx.dev/community)
-- [Follow us on X](https://twitter.com/nxdevtools) or [LinkedIn](https://www.linkedin.com/company/nrwl)
-- [Our Youtube channel](https://www.youtube.com/@nxdevtools)
-- [Our blog](https://nx.dev/blog?utm_source=nx_project&utm_medium=readme&utm_campaign=nx_projects)
-
-
-Steps to Seed Data
-1. Create .env file
-Copy the example and configure your database:
-
-Copy-Item .env.example .env
-
-Then edit .env with your actual PostgreSQL credentials.
-
-2. Create PostgreSQL schemas
-Run the SQL in init-schemas.sql against your database:
-
+```sql
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS workforce;
 CREATE SCHEMA IF NOT EXISTS project;
@@ -101,62 +101,107 @@ CREATE SCHEMA IF NOT EXISTS knowledge;
 CREATE SCHEMA IF NOT EXISTS communication;
 CREATE SCHEMA IF NOT EXISTS monitoring;
 CREATE SCHEMA IF NOT EXISTS notification;
-
-
-3. Push Prisma schemas and generate clients
-
-```sh
-npm run db:sync
+CREATE SCHEMA IF NOT EXISTS ai_engine;
 ```
 
-4. Start all microservices (Development)
+### 4. Sync Database & Start Development
 
-```sh
+```bash
 npm run dev
 ```
 
-5. Run the seed script
+This command automatically:
 
-```sh
+- Pushes all Prisma schemas to the database
+- Generates all Prisma clients
+- Starts all 10 microservices in parallel
+
+### 5. Seed Data (optional)
+
+```bash
 npm run seed
 ```
 
-## Database & Prisma Commands
+---
 
-### Development Mode
-When running in development, the `npm run dev` command automatically:
-- Pushes all Prisma schemas to the database
-- Generates all Prisma clients
-- Starts all microservices in development mode
+## Available Commands
 
-### Available Commands
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Sync database + start all services (development) |
-| `npm run prod` | Generate clients + start all services (production) |
-| `npm run db:sync` | Push schemas to DB + generate clients |
-| `npm run db:push` | Push schemas to database only |
-| `npm run prisma:generate` | Generate all Prisma clients |
-| `npm run prisma:validate` | Validate all Prisma schemas |
-| `npm run seed` | Run seed script |
+| Command                   | Description                                        |
+| ------------------------- | -------------------------------------------------- |
+| `npm run dev`             | Sync DB + start all services (development)         |
+| `npm run prod`            | Generate clients + start all services (production) |
+| `npm run db:sync`         | Push schemas to DB + generate clients              |
+| `npm run db:push`         | Push schemas to database only                      |
+| `npm run prisma:generate` | Generate all Prisma clients                        |
+| `npm run prisma:validate` | Validate all Prisma schemas                        |
+| `npm run seed`            | Run seed script                                    |
+| `npm run start:all`       | Start all services (no DB sync)                    |
 
 ### Individual Service Commands
 
-```sh
-# Run prisma generate for a specific service
-nx run @vistone-server/auth-service:prisma:generate
-
-# Push schema for a specific service
-nx run @vistone-server/auth-service:prisma:push
-
+```bash
 # Serve a specific service
-nx run @vistone-server/auth-service:serve
+npx nx serve auth-service
+
+# Run tests for a service
+npx nx test project-management
+
+# Run E2E tests
+npx nx e2e project-management-e2e
+
+# Generate Prisma client for a service
+npx nx run @vistone-server/auth-service:prisma:generate
 ```
 
-### Production Notes
-- In production, `db:push` is disabled to prevent accidental schema changes
-- Use proper migrations for production database changes
-- The `npm run prod` command only generates clients, it doesn't modify the database
+---
 
-Would you like me to help you run these steps? What's your PostgreSQL connection string?
+## Database Schemas Overview
+
+Each microservice owns its own PostgreSQL schema to ensure data isolation:
+
+```mermaid
+graph LR
+    A[auth] --- B[workforce]
+    A --- C[project]
+    A --- D[client]
+    A --- E[knowledge]
+    A --- F[communication]
+    A --- G[monitoring]
+    A --- H[notification]
+    A --- I[ai_engine]
+```
+
+For detailed schema documentation, see the individual service READMEs linked in the [Microservices](#microservices) table above.
+
+---
+
+## Project Structure
+
+```
+vistone-server/
+├── apps/
+│   ├── api-gateway/          # GraphQL API Gateway
+│   ├── auth-service/         # Authentication & Users
+│   ├── workforce-management/ # Teams & Workforce
+│   ├── project-management/   # Projects & Tasks
+│   ├── client-management/    # Client CRM
+│   ├── knowledge-hub/        # Wiki & Documents
+│   ├── communication/        # Chat & Messaging
+│   ├── monitoring-reporting/  # KPIs & Dashboards
+│   ├── notification/         # Notifications & Email
+│   ├── ai-engine/            # AI/RAG Engine
+│   └── *-e2e/                # E2E test projects
+├── scripts/                  # DB sync & seed scripts
+├── .env                      # Environment variables
+├── nx.json                   # Nx workspace configuration
+├── package.json              # Root dependencies & scripts
+└── tsconfig.base.json        # Shared TypeScript config
+```
+
+---
+
+## Production Notes
+
+- **Database:** `db:push` is disabled in production — use proper migrations.
+- **`npm run prod`** only generates Prisma clients, does **not** modify the database.
+- Each service can be deployed independently as a container.
