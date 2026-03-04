@@ -257,6 +257,7 @@ export const resolvers = {
     organizationMember: (_: unknown, { id }: { id: string }) => authClient.getById('/organization-members', id),
     roles: () => authClient.get('/roles'),
     role: (_: unknown, { id }: { id: string }) => authClient.getById('/roles', id),
+    roleDefinitions: () => authClient.get('/roles/definitions'),
     kycData: () => authClient.get('/kyc-data'),
     kycDataById: (_: unknown, { id }: { id: string }) => authClient.getById('/kyc-data', id),
     mfaSettings: () => authClient.get('/mfa-settings'),
@@ -456,7 +457,7 @@ export const resolvers = {
         const allRisks: ServiceRecord[] = [];
         for (const project of projectArray) {
           try {
-            const risks = await projectClient.get(`/risk-registers?projectId=${project.id}`);
+            const risks = await projectClient.get(`/risk-register?projectId=${project.id}`);
             if (Array.isArray(risks)) allRisks.push(...risks);
           } catch { /* ignore */ }
         }
@@ -1380,6 +1381,7 @@ export const resolvers = {
     createRole: (_: unknown, { input }: { input: ServiceRecord }) => authClient.post('/roles', input),
     updateRole: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => authClient.put('/roles', id, input),
     deleteRole: (_: unknown, { id }: { id: string }) => authClient.delete('/roles', id),
+    initializeRoles: (_: unknown, { organizationId }: { organizationId: string }) => authClient.post(`/roles/initialize/${organizationId}`, {}),
     createKycData: (_: unknown, { input }: { input: ServiceRecord }) => authClient.post('/kyc-data', input),
     updateKycData: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => authClient.put('/kyc-data', id, input),
     deleteKycData: (_: unknown, { id }: { id: string }) => authClient.delete('/kyc-data', id),
@@ -1534,6 +1536,8 @@ export const resolvers = {
     updateRiskRegister: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => projectClient.put('/risk-register', id, input),
     deleteRiskRegister: (_: unknown, { id }: { id: string }) => projectClient.delete('/risk-register', id),
     createAiInsight: (_: unknown, { input }: { input: ServiceRecord }) => projectClient.post('/ai-insights', input),
+    updateAiInsight: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => projectClient.put('/ai-insights', id, input),
+    deleteAiInsight: (_: unknown, { id }: { id: string }) => projectClient.delete('/ai-insights', id),
 
     // Clients (Client Management Service)
     createClient: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
@@ -1766,6 +1770,7 @@ export const resolvers = {
     },
     aiRemoveDocument: async (_: unknown, { sourceSchema, sourceTable, sourceId }: { sourceSchema: string; sourceTable: string; sourceId: string }, context: Context) => {
       await requireAuth(context);
+      // AI Engine uses DELETE /api/index/document with body params
       return aiEngineClient.post('/api/index/document/remove', { sourceSchema, sourceTable, sourceId });
     },
   },

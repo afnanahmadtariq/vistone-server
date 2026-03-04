@@ -310,7 +310,7 @@ export const typeDefs = gql`
     title: String!
     name: String
     description: String
-    dueDate: DateTime!
+    dueDate: DateTime
     status: String!
     completed: Boolean!
     completedAt: DateTime
@@ -732,6 +732,7 @@ export const typeDefs = gql`
     organizationMember(id: ID!): OrganizationMember
     roles: [Role!]!
     role(id: ID!): Role
+    roleDefinitions: JSON!
     kycData: [KycData!]!
     kycDataById(id: ID!): KycData
     mfaSettings: [MfaSetting!]!
@@ -887,6 +888,7 @@ export const typeDefs = gql`
     createRole(input: JSON!): Role!
     updateRole(id: ID!, input: JSON!): Role!
     deleteRole(id: ID!): DeleteResponse!
+    initializeRoles(organizationId: ID!): [Role!]!
     createKycData(input: JSON!): KycData!
     updateKycData(id: ID!, input: JSON!): KycData!
     deleteKycData(id: ID!): DeleteResponse!
@@ -986,6 +988,8 @@ export const typeDefs = gql`
     updateAiConversation(id: ID!, input: JSON!): AiConversation!
     deleteAiConversation(id: ID!): DeleteResponse!
     createAiInsight(input: JSON!): AiInsight!
+    updateAiInsight(id: ID!, input: JSON!): AiInsight!
+    deleteAiInsight(id: ID!): DeleteResponse!
     createAutomationRule(input: JSON!): AutomationRule!
     updateAutomationRule(id: ID!, input: JSON!): AutomationRule!
     deleteAutomationRule(id: ID!): DeleteResponse!
