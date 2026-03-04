@@ -1,9 +1,9 @@
 import express from 'express';
 import cors from 'cors';
-import notificationTemplatesRouter from './routes/notification-templates';
-import notificationPreferencesRouter from './routes/notification-preferences';
-import notificationsRouter from './routes/notifications';
-import emailsRouter from './routes/emails';
+import notificationTemplatesRouter from './modules/notification-templates/notification-templates.routes';
+import notificationPreferencesRouter from './modules/notification-preferences/notification-preferences.routes';
+import notificationsRouter from './modules/notifications/notifications.routes';
+import emailsRouter from './modules/emails/emails.routes';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3008;

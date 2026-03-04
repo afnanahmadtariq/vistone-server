@@ -1,11 +1,11 @@
 import express from 'express';
 import cors from 'cors';
-import chatChannelRoutes from './routes/chat-channels';
-import channelMemberRoutes from './routes/channel-members';
-import chatMessageRoutes from './routes/chat-messages';
-import messageMentionRoutes from './routes/message-mentions';
-import messageAttachmentRoutes from './routes/message-attachments';
-import communicationLogRoutes from './routes/communication-logs';
+import chatChannelRoutes from './modules/chat-channels/chat-channels.routes';
+import channelMemberRoutes from './modules/channel-members/channel-members.routes';
+import chatMessageRoutes from './modules/chat-messages/chat-messages.routes';
+import messageMentionRoutes from './modules/message-mentions/message-mentions.routes';
+import messageAttachmentRoutes from './modules/message-attachments/message-attachments.routes';
+import communicationLogRoutes from './modules/communication-logs/communication-logs.routes';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3006;

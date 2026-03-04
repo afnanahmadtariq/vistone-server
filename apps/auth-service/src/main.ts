@@ -1,13 +1,13 @@
 import express from 'express';
 import cors from 'cors';
-import authRoutes from './routes/auth';
-import userRoutes from './routes/users';
-import organizationRoutes from './routes/organizations';
-import organizationMemberRoutes from './routes/organization-members';
-import roleRoutes from './routes/roles';
-import kycDataRoutes from './routes/kyc-data';
-import mfaSettingRoutes from './routes/mfa-settings';
-import activityLogRoutes from './routes/activity-logs';
+import authRoutes from './modules/auth/auth.routes';
+import userRoutes from './modules/users/users.routes';
+import organizationRoutes from './modules/organizations/organizations.routes';
+import organizationMemberRoutes from './modules/organization-members/organization-members.routes';
+import roleRoutes from './modules/roles/roles.routes';
+import kycDataRoutes from './modules/kyc-data/kyc-data.routes';
+import mfaSettingRoutes from './modules/mfa-settings/mfa-settings.routes';
+import activityLogRoutes from './modules/activity-logs/activity-logs.routes';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3001;
