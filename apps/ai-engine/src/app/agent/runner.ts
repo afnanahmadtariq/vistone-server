@@ -10,12 +10,16 @@ import { getAllToolDefs, type ToolDef } from './tools';
 
 // ── Lazy LangChain imports ─────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let DynamicStructuredTool: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ChatMistralAI: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let HumanMessage: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let SystemMessage: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ToolMessage: any = null;
-let AIMessage: any = null;
 
 async function loadLangChain() {
     if (DynamicStructuredTool) return;
@@ -31,11 +35,11 @@ async function loadLangChain() {
     HumanMessage = coreMessages.HumanMessage;
     SystemMessage = coreMessages.SystemMessage;
     ToolMessage = coreMessages.ToolMessage;
-    AIMessage = coreMessages.AIMessage;
 }
 
 // ── LLM singleton (created lazily) ──────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _llm: any = null;
 
 function getLLM() {
@@ -91,6 +95,7 @@ export async function runAgent(
     const llm = getLLM();
     const llmWithTools = llm.bindTools(tools);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages: any[] = [
         new SystemMessage(systemPrompt),
         new HumanMessage(query),
@@ -120,6 +125,7 @@ export async function runAgent(
 
         // Execute each tool call
         for (const toolCall of toolCalls) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const tool = tools.find((t: any) => t.name === toolCall.name);
             if (!tool) {
                 messages.push(
@@ -137,11 +143,12 @@ export async function runAgent(
                 messages.push(
                     new ToolMessage({ toolCallId: toolCall.id, content: result })
                 );
-            } catch (err: any) {
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : 'Tool execution failed';
                 messages.push(
                     new ToolMessage({
                         toolCallId: toolCall.id,
-                        content: JSON.stringify({ error: err.message }),
+                        content: JSON.stringify({ error: message }),
                     })
                 );
             }

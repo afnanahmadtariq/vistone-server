@@ -5,11 +5,12 @@
  */
 import { config } from '../config';
 import { query, getPrisma } from '../db';
-import type { AuthenticatedUser, ContentType, SourceReference } from '../types';
+import type { AuthenticatedUser, SourceReference } from '../types';
 import { getReadableContentTypes } from './rbac.service';
 
 // ── Lazy LangChain singletons ───────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let embeddingsInstance: any = null;
 
 async function getEmbeddings() {
@@ -53,7 +54,7 @@ export interface SimilarDocument {
   sourceId: string;
   sourceSchema: string;
   sourceTable: string;
-  metadata: any;
+  metadata: Record<string, unknown>;
 }
 
 /**
@@ -167,7 +168,7 @@ export async function saveToHistory(
   sessionId: string,
   role: 'user' | 'assistant',
   content: string,
-  metadata?: any
+  metadata?: Record<string, unknown>
 ): Promise<void> {
   const prisma = await getPrisma();
   await prisma.conversationHistory.create({

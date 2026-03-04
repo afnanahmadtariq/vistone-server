@@ -18,8 +18,11 @@ import { v4 as uuidv4 } from 'uuid';
 
 // ── Lazy LLM (loaded only on first chat) ────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _ChatMistralAI: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _HumanMessage: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _SystemMessage: any = null;
 
 async function loadChatModules() {
@@ -33,6 +36,7 @@ async function loadChatModules() {
     _SystemMessage = messages.SystemMessage;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _chatLLM: any = null;
 
 async function getChatLLM() {
@@ -146,6 +150,7 @@ async function handleInfoQuery(
 
     const systemPrompt = buildSystemPrompt(user, context);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages: any[] = [new _SystemMessage(systemPrompt)];
 
     // Add conversation history
@@ -182,7 +187,7 @@ async function handleAction(
     sources: ChatResponse['sources']
 ): Promise<ChatResponse> {
     // Lazy import the agent runner
-    const { runAgent } = await import('../agent/runner');
+    const { runAgent } = await import('../agent/runner.js');
 
     const systemPrompt = buildSystemPrompt(user, context) + `
 

@@ -27,13 +27,18 @@ export function getPool(): Pool {
 // ── Lazy Prisma Client ──────────────────────────────────────────
 // Only initialized when first requested. Uses the shared pool.
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let prismaClient: any = null;
 
 export async function getPrisma() {
     if (!prismaClient) {
         // Dynamic import to avoid loading Prisma at startup
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore - dynamic Prisma client import
         const { PrismaPg } = await import('@prisma/adapter-pg');
-        const { PrismaClient } = await import('../../node_modules/.prisma/ai-engine-client');
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore - dynamic import into node_modules
+        const { PrismaClient } = await import('../../node_modules/.prisma/ai-engine-client/index.js');
         const adapter = new PrismaPg(getPool());
         prismaClient = new PrismaClient({ adapter });
     }

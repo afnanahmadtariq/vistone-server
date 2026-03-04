@@ -53,11 +53,12 @@ export async function safeCall<T>(
     try {
         const res = await fn();
         return { success: true, data: res.data };
-    } catch (err: any) {
+    } catch (err: unknown) {
+        const axiosErr = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
         const message =
-            err.response?.data?.error ||
-            err.response?.data?.message ||
-            err.message ||
+            axiosErr.response?.data?.error ||
+            axiosErr.response?.data?.message ||
+            axiosErr.message ||
             'Service call failed';
         return { success: false, error: message };
     }

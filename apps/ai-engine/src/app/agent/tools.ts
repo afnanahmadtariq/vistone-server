@@ -23,7 +23,9 @@ import {
 export interface ToolDef {
     name: string;
     description: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     schema: z.ZodObject<any>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     func: (input: any) => Promise<string>;
 }
 

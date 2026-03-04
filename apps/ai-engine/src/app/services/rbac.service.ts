@@ -3,7 +3,7 @@
  * Enforces permission checks for RAG content filtering and agent tool access.
  * Uses the user's actual DB permissions (loaded by auth plugin via auth-service).
  */
-import type { AuthenticatedUser, ContentType, UserPermissions } from '../types';
+import type { AuthenticatedUser, ContentType } from '../types';
 import { CONTENT_TYPE_TO_RESOURCE, TOOL_PERMISSIONS } from '../types';
 
 // ── Permission Checks ───────────────────────────────────────────
