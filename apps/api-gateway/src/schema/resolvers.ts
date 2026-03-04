@@ -1409,16 +1409,17 @@ export const resolvers = {
         // Role doesn't exist - create it with predefined permissions
         const rolePermissions: Record<string, Record<string, string[]>> = {
           organizer: {
-            users: ['create', 'read', 'update', 'delete', 'invite'],
-            teams: ['create', 'read', 'update', 'delete'],
-            projects: ['create', 'read', 'update', 'delete'],
+            users: ['create', 'read', 'update', 'delete', 'assign'],
+            teams: ['create', 'read', 'update', 'delete', 'assign'],
+            projects: ['create', 'read', 'update', 'delete', 'assign'],
             tasks: ['create', 'read', 'update', 'delete', 'assign'],
             clients: ['create', 'read', 'update', 'delete'],
             wiki: ['create', 'read', 'update', 'delete'],
             channels: ['create', 'read', 'update', 'delete'],
             settings: ['read', 'update'],
-            reports: ['read', 'export'],
-            notifications: ['read', 'update'],
+            reports: ['create', 'read', 'update', 'delete'],
+            notifications: ['create', 'read', 'update', 'delete'],
+            _meta: ['manage_permissions', 'pause_contributors'],
           },
           manager: {
             users: ['read'],
@@ -1431,6 +1432,7 @@ export const resolvers = {
             settings: ['read'],
             reports: ['read'],
             notifications: ['read', 'update'],
+            _meta: [],
           },
           contributor: {
             users: ['read'],
@@ -1443,6 +1445,7 @@ export const resolvers = {
             settings: [],
             reports: ['read'],
             notifications: ['read', 'update'],
+            _meta: [],
           },
         };
 
@@ -1670,15 +1673,15 @@ export const resolvers = {
       return authClient.delete('/organizations', id);
     },
     createOrganizationMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'users', 'create');
+      await requireOrganizer(context);
       return authClient.post('/organization-members', input);
     },
     updateOrganizationMember: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'users', 'update');
+      await requireOrganizer(context);
       return authClient.put('/organization-members', id, input);
     },
     deleteOrganizationMember: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'users', 'delete');
+      await requireOrganizer(context);
       return authClient.delete('/organization-members', id);
     },
     createRole: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {

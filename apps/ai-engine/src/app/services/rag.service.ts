@@ -1,307 +1,182 @@
-import { ChatMistralAI } from '@langchain/mistralai';
-import { HumanMessage, SystemMessage, AIMessage, type BaseMessage } from '@langchain/core/messages';
-import { ragConfig } from '../config';
-import { searchSimilarDocuments, buildContextFromDocuments, getOrganizationOverview, type SimilarDocument } from './vector-store.service';
-import { getUserContext, formatUserContextForPrompt, type UserContext } from './user-context.service';
-import { getPrismaClient } from '../lib/prisma';
-import { v4 as uuidv4 } from 'uuid';
-
-let chatModelInstance: ChatMistralAI | null = null;
-
 /**
- * Get the Mistral chat model instance (singleton)
+ * AI Engine — RAG Service (Lean)
+ * Vector search, embedding, and context building.
+ * ALL LangChain imports are lazy-loaded via dynamic import().
  */
-function getChatModel(): ChatMistralAI {
-  if (!chatModelInstance) {
-    if (!ragConfig.mistral.apiKey) {
-      throw new Error('MISTRAL_API_KEY environment variable is required');
-    }
+import { config } from '../config';
+import { query, getPrisma } from '../db';
+import type { AuthenticatedUser, ContentType, SourceReference } from '../types';
+import { getReadableContentTypes } from './rbac.service';
 
-    chatModelInstance = new ChatMistralAI({
-      apiKey: ragConfig.mistral.apiKey,
-      model: ragConfig.mistral.chatModel,
-      temperature: ragConfig.mistral.temperature,
-      maxTokens: ragConfig.mistral.maxTokens,
+// ── Lazy LangChain singletons ───────────────────────────────────
+
+let embeddingsInstance: any = null;
+
+async function getEmbeddings() {
+  if (!embeddingsInstance) {
+    const { MistralAIEmbeddings } = await import('@langchain/mistralai');
+    embeddingsInstance = new MistralAIEmbeddings({
+      apiKey: config.mistral.apiKey,
+      model: config.mistral.embedModel,
     });
   }
-  return chatModelInstance;
+  return embeddingsInstance;
 }
 
-/**
- * Build the system prompt that restricts AI behavior
- */
-function buildSystemPrompt(organizationName?: string, userContext?: UserContext | null): string {
-  const allowedDomains = ragConfig.systemPrompt.allowedDomains.join(', ');
-  const blockedTopics = ragConfig.systemPrompt.blockedTopics.join(', ');
+// ── Embed a query ───────────────────────────────────────────────
 
-  // Build user context section if available
-  let userContextSection = '';
-  if (userContext) {
-    userContextSection = `
+export async function embedText(text: string): Promise<number[]> {
+  const embeddings = await getEmbeddings();
+  return embeddings.embedQuery(text);
+}
 
-${formatUserContextForPrompt(userContext)}
-
-IMPORTANT: When the user asks about themselves (e.g., "who am I?", "do you know me?", "what are my tasks?", "how many clients do I have?"), 
-use the CURRENT USER FACTS above to provide accurate, personalized responses. These are verified facts about the current user.
-`;
+export async function embedTexts(texts: string[]): Promise<number[][]> {
+  const embeddings = await getEmbeddings();
+  const results: number[][] = [];
+  const batchSize = config.embedding.batchSize;
+  for (let i = 0; i < texts.length; i += batchSize) {
+    const batch = texts.slice(i, i + batchSize);
+    const batchResults = await embeddings.embedDocuments(batch);
+    results.push(...batchResults);
   }
-
-  return `You are an AI assistant for Vistone, a project management and workforce management platform.
-${organizationName ? `You are currently helping a member of the organization: "${organizationName}".` : ''}
-${userContextSection}
-You have access to the full context of the organization including:
-- Organization overview with statistics (projects count, tasks, members, teams, clients)
-- All projects with their details (status, progress, deadlines, budgets)
-- All tasks with their priorities, due dates, and assignments
-- Team members and their roles
-- Milestones and their status
-- Risk registers for projects
-- Clients and proposals
-- Documents and wiki pages
-
-IMPORTANT RULES:
-1. You MUST only answer questions related to: ${allowedDomains}.
-2. You MUST NOT discuss topics like: ${blockedTopics}.
-3. You can ONLY use information from the provided context to answer questions about the organization's data.
-4. If the user asks about data not in the context, politely say you don't have that information available.
-5. If the user asks about topics outside your allowed domains, politely redirect them to ask about their projects, tasks, or organization data.
-6. Always cite which source you're using when referencing specific data.
-7. Be helpful, concise, and professional.
-8. If you're unsure about something, say so rather than making up information.
-9. When the user asks personal questions about themselves, ALWAYS refer to the CURRENT USER FACTS section for accurate information.
-
-When answering:
-- Reference specific projects, tasks, or documents by name when available
-- Provide actionable insights when possible
-- Format responses clearly with bullet points or numbered lists when appropriate
-- When asked about organization statistics, refer to the organization overview data
-- When asked about deadlines, prioritize upcoming and overdue items
-- When discussing risks, mention probability and impact levels
-- Include relevant metadata like status, priority, and dates when referencing items
-- When the user asks "how many clients do I have?", refer to their personal client count in CURRENT USER FACTS
-- When the user asks about "my tasks" or "my projects", use their personal statistics from CURRENT USER FACTS`;
+  return results;
 }
 
-export interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
+// ── Vector Search (RBAC-filtered) ───────────────────────────────
 
-export interface RagQueryOptions {
-  organizationId: string;
-  organizationName?: string;
-  userId: string;
-  sessionId?: string;
-  query: string;
-  contentTypes?: string[];
-  includeHistory?: boolean;
-  maxHistoryMessages?: number;
-}
-
-export interface RagResponse {
-  answer: string;
-  sources: SimilarDocument[];
-  sessionId: string;
-  isOutOfScope: boolean;
+export interface SimilarDocument {
+  documentId: string;
+  chunkText: string;
+  similarity: number;
+  title: string;
+  contentType: string;
+  sourceId: string;
+  sourceSchema: string;
+  sourceTable: string;
+  metadata: any;
 }
 
 /**
- * Check if query is within allowed scope
+ * Search for similar documents, filtered by user's readable content types.
  */
-function isQueryInScope(query: string): boolean {
-  const lowerQuery = query.toLowerCase();
-  
-  // Check for blocked topics
-  const blockedPatterns = [
-    /politic/i,
-    /religion/i,
-    /medical advice/i,
-    /legal advice/i,
-    /investment advice/i,
-    /stock/i,
-    /crypto/i,
+export async function searchSimilar(
+  user: AuthenticatedUser,
+  queryText: string,
+  topK?: number
+): Promise<SimilarDocument[]> {
+  const allowedTypes = getReadableContentTypes(user);
+  if (allowedTypes.length === 0) return [];
+
+  const queryEmbedding = await embedText(queryText);
+  const k = topK || config.vectorSearch.topK;
+  const threshold = config.vectorSearch.similarityThreshold;
+
+  // Build parameterized content type placeholders
+  const typePlaceholders = allowedTypes.map((_, i) => `$${i + 4}`).join(', ');
+
+  const sql = `
+    SELECT
+      d.id AS "documentId",
+      e."chunkText",
+      1 - (e.embedding <=> $1::vector) AS similarity,
+      d.title,
+      d."contentType",
+      d."sourceId",
+      d."sourceSchema",
+      d."sourceTable",
+      d.metadata
+    FROM ai_engine.rag_embeddings e
+    JOIN ai_engine.rag_documents d ON d.id = e."documentId"
+    WHERE d."organizationId" = $2
+      AND d."contentType" IN (${typePlaceholders})
+      AND 1 - (e.embedding <=> $1::vector) > $3
+    ORDER BY similarity DESC
+    LIMIT ${k}
+  `;
+
+  const params = [
+    `[${queryEmbedding.join(',')}]`,
+    user.organizationId,
+    threshold,
+    ...allowedTypes,
   ];
 
-  for (const pattern of blockedPatterns) {
-    if (pattern.test(lowerQuery)) {
-      return false;
-    }
-  }
-
-  return true;
+  const result = await query(sql, params);
+  return result.rows as SimilarDocument[];
 }
 
 /**
- * Get conversation history for a session
+ * Build context string from search results for the LLM prompt.
  */
-async function getConversationHistory(
+export function buildContext(docs: SimilarDocument[], maxLen?: number): string {
+  const max = maxLen || config.rag.maxContextLength;
+  let context = '';
+
+  for (const doc of docs) {
+    const entry = `[${doc.contentType}] ${doc.title}:\n${doc.chunkText}\n\n`;
+    if (context.length + entry.length > max) break;
+    context += entry;
+  }
+
+  return context;
+}
+
+/**
+ * Extract unique source references from search results.
+ */
+export function extractSources(docs: SimilarDocument[]): SourceReference[] {
+  const seen = new Set<string>();
+  const sources: SourceReference[] = [];
+
+  for (const doc of docs) {
+    const key = `${doc.sourceSchema}:${doc.sourceTable}:${doc.sourceId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    sources.push({
+      contentType: doc.contentType,
+      title: doc.title,
+      sourceId: doc.sourceId,
+    });
+  }
+
+  return sources;
+}
+
+// ── Conversation History ────────────────────────────────────────
+
+export async function getConversationHistory(
   sessionId: string,
-  maxMessages = 10
-): Promise<ChatMessage[]> {
-  const prisma = getPrismaClient();
-  
+  limit?: number
+): Promise<{ role: string; content: string }[]> {
+  const prisma = await getPrisma();
+  const max = limit || config.rag.maxConversationHistory;
+
   const history = await prisma.conversationHistory.findMany({
     where: { sessionId },
     orderBy: { createdAt: 'desc' },
-    take: maxMessages,
-    select: {
-      role: true,
-      content: true,
-    },
+    take: max,
+    select: { role: true, content: true },
   });
 
-  return history.reverse() as ChatMessage[];
+  return history.reverse();
 }
 
-/**
- * Save message to conversation history
- */
-async function saveToHistory(
+export async function saveToHistory(
   organizationId: string,
   userId: string,
   sessionId: string,
   role: 'user' | 'assistant',
   content: string,
-  metadata?: Record<string, unknown>
+  metadata?: any
 ): Promise<void> {
-  const prisma = getPrismaClient();
-  
+  const prisma = await getPrisma();
   await prisma.conversationHistory.create({
-    data: {
-      organizationId,
-      userId,
-      sessionId,
-      role,
-      content,
-      metadata: metadata ?? undefined,
-    },
+    data: { organizationId, userId, sessionId, role, content, metadata },
   });
 }
 
-/**
- * Main RAG query function
- */
-export async function queryWithRag(options: RagQueryOptions): Promise<RagResponse> {
-  const {
-    organizationId,
-    organizationName,
-    userId,
-    query,
-    contentTypes,
-    includeHistory = true,
-    maxHistoryMessages = 6,
-  } = options;
-
-  const sessionId = options.sessionId || uuidv4();
-
-  // Check if query is in scope
-  if (!isQueryInScope(query)) {
-    return {
-      answer: "I'm sorry, but I can only help with questions related to your projects, tasks, team, and organization data. Is there anything about your work I can help you with?",
-      sources: [],
-      sessionId,
-      isOutOfScope: true,
-    };
-  }
-
-  // Fetch user context for personalized responses
-  const userContext = await getUserContext(organizationId, userId);
-
-  // Check if query is asking for aggregate/count information or personal info
-  const isAggregateQuery = /how many|count|total|number of|statistics|stats|overview/i.test(query);
-  const isPersonalQuery = /\b(my|me|i|myself|who am i|do you know me)\b/i.test(query);
-
-  // Always fetch organization overview for aggregate queries
-  let orgOverview: SimilarDocument | null = null;
-  if (isAggregateQuery || isPersonalQuery) {
-    orgOverview = await getOrganizationOverview(organizationId);
-  }
-
-  // Search for relevant documents
-  const similarDocs = await searchSimilarDocuments({
-    organizationId,
-    query,
-    contentTypes,
-    topK: ragConfig.vectorSearch.topK,
-  });
-
-  // Combine organization overview with similar docs (avoid duplicates)
-  let allDocs = [...similarDocs];
-  if (orgOverview && !similarDocs.some(d => d.sourceId === orgOverview?.sourceId)) {
-    allDocs = [orgOverview, ...similarDocs];
-  }
-
-  // Build context from documents
-  const context = buildContextFromDocuments(allDocs);
-
-  // Get conversation history if enabled
-  let history: ChatMessage[] = [];
-  if (includeHistory) {
-    history = await getConversationHistory(sessionId, maxHistoryMessages);
-  }
-
-  // Save user message to history
-  await saveToHistory(organizationId, userId, sessionId, 'user', query);
-
-  // Build messages for LLM with user context
-  const messages: BaseMessage[] = [
-    new SystemMessage(buildSystemPrompt(organizationName, userContext)),
-  ];
-
-  // Add conversation history
-  for (const msg of history) {
-    if (msg.role === 'user') {
-      messages.push(new HumanMessage(msg.content));
-    } else {
-      messages.push(new AIMessage(msg.content));
-    }
-  }
-
-  // Add context and current query
-  const contextualQuery = `
-Based on the following context from the organization's data, please answer the user's question.
-
-CONTEXT:
-${context}
-
-USER QUESTION: ${query}
-
-Remember to only use information from the provided context and the CURRENT USER FACTS in the system prompt. If the information is not available, say so.`;
-
-  messages.push(new HumanMessage(contextualQuery));
-
-  // Get response from LLM
-  const chatModel = getChatModel();
-  const response = await chatModel.invoke(messages);
-
-  const answer = typeof response.content === 'string' 
-    ? response.content 
-    : JSON.stringify(response.content);
-
-  // Save assistant response to history
-  await saveToHistory(
-    organizationId,
-    userId,
-    sessionId,
-    'assistant',
-    answer,
-    { sources: allDocs.map(d => ({ id: d.sourceId, type: d.contentType })) }
-  );
-
-  return {
-    answer,
-    sources: allDocs,
-    sessionId,
-    isOutOfScope: false,
-  };
-}
-
-/**
- * Clear conversation history for a session
- */
-export async function clearConversationHistory(sessionId: string): Promise<void> {
-  const prisma = getPrismaClient();
-  
+export async function clearHistory(sessionId: string): Promise<void> {
+  const prisma = await getPrisma();
   await prisma.conversationHistory.deleteMany({
     where: { sessionId },
   });

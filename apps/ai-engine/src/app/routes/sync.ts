@@ -1,232 +1,140 @@
-import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+/**
+ * AI Engine — Sync Routes
+ * Data synchronization endpoints. Only accessible to users with settings:update permission.
+ */
+import { FastifyInstance } from 'fastify';
+import { hasPermission } from '../services/rbac.service';
 import {
   syncAllData,
-  syncOrganizationOverview,
-  syncOrganizationMembers,
   syncProjects,
   syncTasks,
+  syncTeams,
+  syncMembers,
+  syncClients,
   syncMilestones,
   syncRisks,
   syncWikiPages,
   syncDocuments,
-  syncTeams,
-  syncClients,
   syncProposals,
-} from '../services/data-sync.service';
-import { indexDocument, removeDocument, type DocumentToIndex } from '../services/indexing.service';
+  getIndexingStats,
+  indexDocument,
+  type DocumentToIndex,
+} from '../services/sync.service';
 
-interface SyncRequestBody {
-  organizationId: string;
-}
+type SyncType =
+  | 'projects' | 'tasks' | 'teams' | 'members'
+  | 'clients' | 'milestones' | 'risks'
+  | 'wiki' | 'documents' | 'proposals';
 
-interface SyncTypeParams {
-  type: string;
-}
-
-type IndexDocumentBody = DocumentToIndex;
-
-interface RemoveDocumentBody {
-  sourceSchema: string;
-  sourceTable: string;
-  sourceId: string;
-}
+const syncFunctions: Record<SyncType, (orgId: string) => Promise<{ synced: number; errors: string[] }>> = {
+  projects: syncProjects,
+  tasks: syncTasks,
+  teams: syncTeams,
+  members: syncMembers,
+  clients: syncClients,
+  milestones: syncMilestones,
+  risks: syncRisks,
+  wiki: syncWikiPages,
+  documents: syncDocuments,
+  proposals: syncProposals,
+};
 
 export default async function syncRoutes(fastify: FastifyInstance) {
-  /**
-   * POST /api/sync/all
-   * Sync all data for an organization
-   */
-  fastify.post<{ Body: SyncRequestBody }>(
-    '/api/sync/all',
-    {
-      schema: {
-        body: {
-          type: 'object',
-          required: ['organizationId'],
-          properties: {
-            organizationId: { type: 'string' },
-          },
-        },
-      },
-    },
-    async (request: FastifyRequest<{ Body: SyncRequestBody }>, reply: FastifyReply) => {
-      try {
-        const { organizationId } = request.body;
-        
-        fastify.log.info({ organizationId }, 'Starting full data sync');
-        
-        const result = await syncAllData(organizationId);
-        
-        fastify.log.info({ 
-          organizationId, 
-          totalSynced: result.totalSynced,
-          totalErrors: result.totalErrors 
-        }, 'Data sync completed');
-
-        return reply.send({
-          success: true,
-          data: result,
-        });
-      } catch (error) {
-        fastify.log.error(error);
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to sync data',
-        });
-      }
+  // ── POST /api/sync/all ────────────────────────────────────────
+  fastify.post<{
+    Body: { organizationId?: string };
+  }>('/api/sync/all', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: 'Authentication required' });
     }
-  );
 
-  /**
-   * POST /api/sync/:type
-   * Sync specific data type for an organization
-   */
-  fastify.post<{ Params: SyncTypeParams; Body: SyncRequestBody }>(
-    '/api/sync/:type',
-    {
-      schema: {
-        params: {
-          type: 'object',
-          required: ['type'],
-          properties: {
-            type: { 
-              type: 'string',
-              enum: ['organization', 'members', 'projects', 'tasks', 'milestones', 'risks', 'wiki', 'documents', 'teams', 'clients', 'proposals']
-            },
-          },
-        },
-        body: {
-          type: 'object',
-          required: ['organizationId'],
-          properties: {
-            organizationId: { type: 'string' },
-          },
-        },
-      },
-    },
-    async (request: FastifyRequest<{ Params: SyncTypeParams; Body: SyncRequestBody }>, reply: FastifyReply) => {
-      try {
-        const { type } = request.params;
-        const { organizationId } = request.body;
-
-        const syncFunctions: Record<string, (orgId: string) => Promise<{ synced: number; errors: string[] }>> = {
-          organization: syncOrganizationOverview,
-          members: syncOrganizationMembers,
-          projects: syncProjects,
-          tasks: syncTasks,
-          milestones: syncMilestones,
-          risks: syncRisks,
-          wiki: syncWikiPages,
-          documents: syncDocuments,
-          teams: syncTeams,
-          clients: syncClients,
-          proposals: syncProposals,
-        };
-
-        const syncFn = syncFunctions[type];
-        if (!syncFn) {
-          return reply.status(400).send({
-            success: false,
-            error: `Unknown sync type: ${type}`,
-          });
-        }
-
-        const result = await syncFn(organizationId);
-
-        return reply.send({
-          success: true,
-          data: {
-            type,
-            ...result,
-          },
-        });
-      } catch (error) {
-        fastify.log.error(error);
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to sync data',
-        });
-      }
+    // Only users with settings:update can trigger sync
+    if (!hasPermission(request.user, 'settings', 'update')) {
+      return reply.status(403).send({ error: 'Forbidden: settings:update permission required' });
     }
-  );
 
-  /**
-   * POST /api/index/document
-   * Index a single document (for real-time updates)
-   */
-  fastify.post<{ Body: IndexDocumentBody }>(
-    '/api/index/document',
-    {
-      schema: {
-        body: {
-          type: 'object',
-          required: ['organizationId', 'sourceSchema', 'sourceTable', 'sourceId', 'title', 'content', 'contentType'],
-          properties: {
-            organizationId: { type: 'string' },
-            sourceSchema: { type: 'string' },
-            sourceTable: { type: 'string' },
-            sourceId: { type: 'string' },
-            title: { type: 'string' },
-            content: { type: 'string' },
-            contentType: { type: 'string' },
-            metadata: { type: 'object' },
-          },
-        },
-      },
-    },
-    async (request: FastifyRequest<{ Body: IndexDocumentBody }>, reply: FastifyReply) => {
-      try {
-        const result = await indexDocument(request.body);
+    const orgId = request.body.organizationId || request.user.organizationId;
 
-        return reply.send({
-          success: true,
-          data: result,
-        });
-      } catch (error) {
-        fastify.log.error(error);
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to index document',
-        });
-      }
+    try {
+      const result = await syncAllData(orgId);
+      return reply.send(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Sync failed';
+      request.log.error(err, 'Sync all error');
+      return reply.status(500).send({ error: message });
     }
-  );
+  });
 
-  /**
-   * DELETE /api/index/document
-   * Remove a document from the index
-   */
-  fastify.delete<{ Body: RemoveDocumentBody }>(
-    '/api/index/document',
-    {
-      schema: {
-        body: {
-          type: 'object',
-          required: ['sourceSchema', 'sourceTable', 'sourceId'],
-          properties: {
-            sourceSchema: { type: 'string' },
-            sourceTable: { type: 'string' },
-            sourceId: { type: 'string' },
-          },
-        },
-      },
-    },
-    async (request: FastifyRequest<{ Body: RemoveDocumentBody }>, reply: FastifyReply) => {
-      try {
-        const { sourceSchema, sourceTable, sourceId } = request.body;
-        const removed = await removeDocument(sourceSchema, sourceTable, sourceId);
-
-        return reply.send({
-          success: true,
-          data: { removed },
-        });
-      } catch (error) {
-        fastify.log.error(error);
-        return reply.status(500).send({
-          success: false,
-          error: 'Failed to remove document',
-        });
-      }
+  // ── POST /api/sync/:type ──────────────────────────────────────
+  fastify.post<{
+    Params: { type: string };
+    Body: { organizationId?: string };
+  }>('/api/sync/:type', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: 'Authentication required' });
     }
-  );
+
+    if (!hasPermission(request.user, 'settings', 'update')) {
+      return reply.status(403).send({ error: 'Forbidden: settings:update permission required' });
+    }
+
+    const { type } = request.params;
+    const syncFn = syncFunctions[type as SyncType];
+
+    if (!syncFn) {
+      return reply.status(400).send({
+        error: `Invalid sync type: ${type}`,
+        validTypes: Object.keys(syncFunctions),
+      });
+    }
+
+    const orgId = request.body.organizationId || request.user.organizationId;
+
+    try {
+      const result = await syncFn(orgId);
+      return reply.send(result);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Sync failed';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
+  // ── POST /api/sync/document ───────────────────────────────────
+  // Index a single document
+  fastify.post<{
+    Body: DocumentToIndex;
+  }>('/api/sync/document', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: 'Authentication required' });
+    }
+
+    if (!hasPermission(request.user, 'settings', 'update')) {
+      return reply.status(403).send({ error: 'Forbidden: settings:update permission required' });
+    }
+
+    try {
+      const indexed = await indexDocument(request.body);
+      return reply.send({ indexed });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Indexing failed';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
+  // ── GET /api/sync/stats/:organizationId ───────────────────────
+  fastify.get<{
+    Params: { organizationId: string };
+  }>('/api/sync/stats/:organizationId', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: 'Authentication required' });
+    }
+
+    try {
+      const stats = await getIndexingStats(request.params.organizationId);
+      return reply.send(stats);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to get stats';
+      return reply.status(500).send({ error: message });
+    }
+  });
 }
