@@ -897,6 +897,14 @@ export const typeDefs = gql`
     deleteMfaSetting(id: ID!): DeleteResponse!
     createActivityLog(input: JSON!): ActivityLog!
 
+    # RBAC Management
+    """Pause a user (Organizer can pause anyone; Manager can pause Contributors if granted pause_contributors)"""
+    pauseUser(userId: ID!): User!
+    """Unpause a user (same permission rules as pauseUser)"""
+    unpauseUser(userId: ID!): User!
+    """Update a member's permissions. Organizer can customize Manager/Contributor. Manager can customize Contributor (if granted manage_permissions)."""
+    updateMemberPermissions(userId: ID!, permissions: JSON!): OrganizationMember!
+
     # Teams
     createTeam(input: JSON!): Team!
     updateTeam(id: ID!, input: JSON!): Team!

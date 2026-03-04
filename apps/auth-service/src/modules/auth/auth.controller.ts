@@ -98,6 +98,7 @@ interface UserData {
   lastName: string | null;
   email: string;
   avatarUrl?: string | null;
+  status?: string;
   createdAt: Date;
 }
 interface TeamMemberData {
@@ -131,7 +132,7 @@ function formatAuthUser(
     email: user.email,
     role: role?.name || teamMember?.role || 'member',
     avatar: user.avatarUrl || null,
-    status: 'active',
+    status: user.status || 'active',
     skills: [], // Could be extended to fetch from workforce service
     teamId: teamMember?.teamId || null,
     joinedAt: user.createdAt,

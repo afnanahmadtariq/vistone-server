@@ -1,4 +1,4 @@
-import { GraphQLScalarType, Kind } from 'graphql';
+﻿import { GraphQLScalarType, Kind } from 'graphql';
 import {
   authClient,
   workforceClient,
@@ -11,7 +11,7 @@ import {
   aiEngineClient,
   ServiceRecord,
 } from '../services/backendClient';
-import { requireAuth, requireAdmin, requireOrganization, AuthContext } from '../lib/auth';
+import { requireAuth, requireOrganizer, requireOrganization, requirePermission, hasMetaPermission, isOrganizer, getOrgId, AuthContext } from '../lib/auth';
 import { verifyTurnstileToken } from '../lib/turnstile';
 
 interface Context extends AuthContext {
@@ -232,161 +232,444 @@ export const resolvers = {
       return authClient.postWithAuth('/auth/me', {}, context.token);
     },
 
-    // Users & Organizations (Auth Service)
-    users: async (_: unknown, { organizationId }: { organizationId?: string }) => {
+    // Users & Organizations (Auth Service) â€” org-scoped
+    users: async (_: unknown, { organizationId }: { organizationId?: string }, context: Context) => {
+      const user = await requireAuth(context);
+      const orgId = organizationId || getOrgId(user);
+      // Filter users by organization membership
+      const members = await authClient.get(`/organization-members?organizationId=${orgId}`);
+      const memberUserIds = new Set(members.map((m: ServiceRecord) => m.userId));
       const users = await authClient.get('/users');
-      let filteredUsers = users;
-
-      // If organizationId is provided, filter users by organization membership
-      if (organizationId) {
-        // Get organization members for this organization
-        const members = await authClient.get(`/organization-members?organizationId=${organizationId}`);
-        const memberUserIds = new Set(members.map((m: ServiceRecord) => m.userId));
-        filteredUsers = users.filter((user: ServiceRecord) => memberUserIds.has(user.id));
-      }
-
+      const filteredUsers = users.filter((u: ServiceRecord) => memberUserIds.has(u.id));
       return Promise.all(filteredUsers.map(enrichUserWithWorkforceData));
     },
-    user: async (_: unknown, { id }: { id: string }) => {
+    user: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
       const user = await authClient.getById('/users', id);
       return enrichUserWithWorkforceData(user);
     },
-    organizations: () => authClient.get('/organizations'),
-    organization: (_: unknown, { id }: { id: string }) => authClient.getById('/organizations', id),
-    organizationMembers: () => authClient.get('/organization-members'),
-    organizationMember: (_: unknown, { id }: { id: string }) => authClient.getById('/organization-members', id),
-    roles: () => authClient.get('/roles'),
-    role: (_: unknown, { id }: { id: string }) => authClient.getById('/roles', id),
-    roleDefinitions: () => authClient.get('/roles/definitions'),
-    kycData: () => authClient.get('/kyc-data'),
-    kycDataById: (_: unknown, { id }: { id: string }) => authClient.getById('/kyc-data', id),
-    mfaSettings: () => authClient.get('/mfa-settings'),
-    mfaSetting: (_: unknown, { id }: { id: string }) => authClient.getById('/mfa-settings', id),
-    activityLogs: () => authClient.get('/activity-logs'),
-    activityLog: (_: unknown, { id }: { id: string }) => authClient.getById('/activity-logs', id),
-
-    // Teams (Workforce Service)
-    teams: (_: unknown, { organizationId }: { organizationId?: string }) => {
-      const params = new URLSearchParams();
-      if (organizationId) params.append('organizationId', organizationId);
-      return workforceClient.get(`/teams?${params.toString()}`);
+    organizations: async (_: unknown, _args: unknown, context: Context) => {
+      const user = await requireAuth(context);
+      const orgId = getOrgId(user);
+      return [await authClient.getById('/organizations', orgId)];
     },
-    team: (_: unknown, { id }: { id: string }) => workforceClient.getById('/teams', id),
-    teamMembers: () => workforceClient.get('/team-members'),
-    teamMember: (_: unknown, { id }: { id: string }) => workforceClient.getById('/team-members', id),
-    userSkills: () => workforceClient.get('/user-skills'),
-    userSkill: (_: unknown, { id }: { id: string }) => workforceClient.getById('/user-skills', id),
-    userAvailability: () => workforceClient.get('/user-availability'),
-    userAvailabilityById: (_: unknown, { id }: { id: string }) => workforceClient.getById('/user-availability', id),
+    organization: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireOrganization(context, id);
+      return authClient.getById('/organizations', id);
+    },
+    organizationMembers: async (_: unknown, _args: unknown, context: Context) => {
+      const user = await requireAuth(context);
+      const orgId = getOrgId(user);
+      return authClient.get(`/organization-members?organizationId=${orgId}`);
+    },
+    organizationMember: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return authClient.getById('/organization-members', id);
+    },
+    roles: async (_: unknown, _args: unknown, context: Context) => {
+      const user = await requireAuth(context);
+      const orgId = getOrgId(user);
+      return authClient.get(`/roles?organizationId=${orgId}`);
+    },
+    role: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return authClient.getById('/roles', id);
+    },
+    roleDefinitions: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return authClient.get('/roles/definitions');
+    },
+    kycData: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'settings', 'read');
+      return authClient.get('/kyc-data');
+    },
+    kycDataById: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'settings', 'read');
+      return authClient.getById('/kyc-data', id);
+    },
+    mfaSettings: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return authClient.get('/mfa-settings');
+    },
+    mfaSetting: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return authClient.getById('/mfa-settings', id);
+    },
+    activityLogs: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'settings', 'read');
+      return authClient.get('/activity-logs');
+    },
+    activityLog: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'settings', 'read');
+      return authClient.getById('/activity-logs', id);
+    },
 
-    // Projects (Project Service)
-    projects: (_: unknown, { status, search, organizationId }: { status?: string; search?: string; organizationId?: string }) => {
+    // Teams (Workforce Service) â€” org-scoped
+    teams: async (_: unknown, { organizationId }: { organizationId?: string }, context: Context) => {
+      const user = await requirePermission(context, 'teams', 'read');
+      const orgId = organizationId || getOrgId(user);
+      return workforceClient.get(`/teams?organizationId=${orgId}`);
+    },
+    team: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'teams', 'read');
+      return workforceClient.getById('/teams', id);
+    },
+    teamMembers: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'teams', 'read');
+      return workforceClient.get('/team-members');
+    },
+    teamMember: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'teams', 'read');
+      return workforceClient.getById('/team-members', id);
+    },
+    userSkills: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.get('/user-skills');
+    },
+    userSkill: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.getById('/user-skills', id);
+    },
+    userAvailability: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.get('/user-availability');
+    },
+    userAvailabilityById: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.getById('/user-availability', id);
+    },
+
+    // Projects (Project Service) â€” org-scoped
+    projects: async (_: unknown, { status, search, organizationId }: { status?: string; search?: string; organizationId?: string }, context: Context) => {
+      const user = await requirePermission(context, 'projects', 'read');
+      const orgId = organizationId || getOrgId(user);
       const params = new URLSearchParams();
       if (status) params.append('status', status);
       if (search) params.append('search', search);
-      if (organizationId) params.append('organizationId', organizationId);
+      params.append('organizationId', orgId);
       return projectClient.get(`/projects?${params.toString()}`);
     },
-    project: (_: unknown, { id }: { id: string }) => projectClient.getById('/projects', id),
-    projectMembers: () => projectClient.get('/project-members'),
-    projectMember: (_: unknown, { id }: { id: string }) => projectClient.getById('/project-members', id),
-    tasks: () => projectClient.get('/tasks'),
-    task: (_: unknown, { id }: { id: string }) => projectClient.getById('/tasks', id),
-    taskChecklists: () => projectClient.get('/task-checklists'),
-    taskChecklist: (_: unknown, { id }: { id: string }) => projectClient.getById('/task-checklists', id),
-    taskDependencies: () => projectClient.get('/task-dependencies'),
-    taskDependency: (_: unknown, { id }: { id: string }) => projectClient.getById('/task-dependencies', id),
-    milestones: () => projectClient.get('/milestones'),
-    milestone: (_: unknown, { id }: { id: string }) => projectClient.getById('/milestones', id),
-    riskRegisters: () => projectClient.get('/risk-register'),
-    riskRegister: (_: unknown, { id }: { id: string }) => projectClient.getById('/risk-register', id),
-    aiInsights: () => projectClient.get('/ai-insights'),
-    aiInsight: (_: unknown, { id }: { id: string }) => projectClient.getById('/ai-insights', id),
+    project: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'read');
+      return projectClient.getById('/projects', id);
+    },
+    projectMembers: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'projects', 'read');
+      return projectClient.get('/project-members');
+    },
+    projectMember: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'read');
+      return projectClient.getById('/project-members', id);
+    },
+    tasks: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'tasks', 'read');
+      return projectClient.get('/tasks');
+    },
+    task: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'tasks', 'read');
+      return projectClient.getById('/tasks', id);
+    },
+    taskChecklists: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'tasks', 'read');
+      return projectClient.get('/task-checklists');
+    },
+    taskChecklist: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'tasks', 'read');
+      return projectClient.getById('/task-checklists', id);
+    },
+    taskDependencies: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'tasks', 'read');
+      return projectClient.get('/task-dependencies');
+    },
+    taskDependency: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'tasks', 'read');
+      return projectClient.getById('/task-dependencies', id);
+    },
+    milestones: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'projects', 'read');
+      return projectClient.get('/milestones');
+    },
+    milestone: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'read');
+      return projectClient.getById('/milestones', id);
+    },
+    riskRegisters: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'projects', 'read');
+      return projectClient.get('/risk-register');
+    },
+    riskRegister: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'read');
+      return projectClient.getById('/risk-register', id);
+    },
+    aiInsights: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'projects', 'read');
+      return projectClient.get('/ai-insights');
+    },
+    aiInsight: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'read');
+      return projectClient.getById('/ai-insights', id);
+    },
 
-    // Clients (Client Management Service)
-    clients: (_: unknown, { search, status, industry, organizationId }: { search?: string; status?: string; industry?: string; organizationId?: string }) => {
+    // Clients (Client Management Service) â€” org-scoped, require clients:read
+    clients: async (_: unknown, { search, status, industry, organizationId }: { search?: string; status?: string; industry?: string; organizationId?: string }, context: Context) => {
+      const user = await requirePermission(context, 'clients', 'read');
+      const orgId = organizationId || getOrgId(user);
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (status) params.append('status', status);
       if (industry) params.append('industry', industry);
-      if (organizationId) params.append('organizationId', organizationId);
+      params.append('organizationId', orgId);
       return clientMgmtClient.get(`/clients?${params.toString()}`);
     },
-    client: (_: unknown, { id }: { id: string }) => clientMgmtClient.getById('/clients', id),
-    projectClients: () => clientMgmtClient.get('/project-clients'),
-    projectClient: (_: unknown, { id }: { id: string }) => clientMgmtClient.getById('/project-clients', id),
-    clientFeedbacks: () => clientMgmtClient.get('/client-feedback'),
-    clientFeedback: (_: unknown, { id }: { id: string }) => clientMgmtClient.getById('/client-feedback', id),
-    proposals: () => clientMgmtClient.get('/proposals'),
-    proposal: (_: unknown, { id }: { id: string }) => clientMgmtClient.getById('/proposals', id),
-
-    // Documentation (Knowledge Hub Service)
-    wikiPages: () => knowledgeClient.get('/wiki-pages'),
-    wikiPage: (_: unknown, { id }: { id: string }) => knowledgeClient.getById('/wiki-pages', id),
-    wikiPageVersions: () => knowledgeClient.get('/wiki-page-versions'),
-    wikiPageVersion: (_: unknown, { id }: { id: string }) => knowledgeClient.getById('/wiki-page-versions', id),
-    documentFolders: () => knowledgeClient.get('/document-folders'),
-    documentFolder: (_: unknown, { id }: { id: string }) => knowledgeClient.getById('/document-folders', id),
-    documents: () => knowledgeClient.get('/documents'),
-    document: (_: unknown, { id }: { id: string }) => knowledgeClient.getById('/documents', id),
-    documentPermissions: () => knowledgeClient.get('/document-permissions'),
-    documentPermission: (_: unknown, { id }: { id: string }) => knowledgeClient.getById('/document-permissions', id),
-    documentLinks: () => knowledgeClient.get('/document-links'),
-    documentLink: (_: unknown, { id }: { id: string }) => knowledgeClient.getById('/document-links', id),
-
-    // Communication (Communication Service)
-    chatChannels: () => communicationClient.get('/chat-channels'),
-    chatChannel: (_: unknown, { id }: { id: string }) => communicationClient.getById('/chat-channels', id),
-    channelMembers: () => communicationClient.get('/channel-members'),
-    channelMember: (_: unknown, { id }: { id: string }) => communicationClient.getById('/channel-members', id),
-    chatMessages: () => communicationClient.get('/chat-messages'),
-    chatMessage: (_: unknown, { id }: { id: string }) => communicationClient.getById('/chat-messages', id),
-    messageMentions: () => communicationClient.get('/message-mentions'),
-    messageMention: (_: unknown, { id }: { id: string }) => communicationClient.getById('/message-mentions', id),
-    messageAttachments: () => communicationClient.get('/message-attachments'),
-    messageAttachment: (_: unknown, { id }: { id: string }) => communicationClient.getById('/message-attachments', id),
-    communicationLogs: () => communicationClient.get('/communication-logs'),
-    communicationLog: (_: unknown, { id }: { id: string }) => communicationClient.getById('/communication-logs', id),
-
-    // AI & Automation (Monitoring Service)
-    aiConversations: () => monitoringClient.get('/ai-conversations'),
-    aiConversation: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/ai-conversations', id),
-    automationRules: () => monitoringClient.get('/automation-rules'),
-    automationRule: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/automation-rules', id),
-    automationLogs: () => monitoringClient.get('/automation-logs'),
-    automationLog: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/automation-logs', id),
-
-    // Monitoring (Monitoring Service)
-    kpiDefinitions: () => monitoringClient.get('/kpi-definitions'),
-    kpiDefinition: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/kpi-definitions', id),
-    kpiMeasurements: () => monitoringClient.get('/kpi-measurements'),
-    kpiMeasurement: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/kpi-measurements', id),
-    reportTemplates: () => monitoringClient.get('/report-templates'),
-    reportTemplate: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/report-templates', id),
-    generatedReports: () => monitoringClient.get('/generated-reports'),
-    generatedReport: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/generated-reports', id),
-    memberPerformances: () => monitoringClient.get('/member-performance'),
-    memberPerformance: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/member-performance', id),
-    dashboards: () => monitoringClient.get('/dashboards'),
-    dashboard: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/dashboards', id),
-    dashboardWidgets: () => monitoringClient.get('/dashboard-widgets'),
-    dashboardWidget: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/dashboard-widgets', id),
-
-    // Report Schedules (Monitoring Service)
-    reportSchedules: (_: unknown, { organizationId }: { organizationId?: string }) => {
-      const params = new URLSearchParams();
-      if (organizationId) params.append('organizationId', organizationId);
-      return monitoringClient.get(`/report-schedules?${params.toString()}`);
+    client: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'clients', 'read');
+      return clientMgmtClient.getById('/clients', id);
     },
-    reportSchedule: (_: unknown, { id }: { id: string }) => monitoringClient.getById('/report-schedules', id),
+    projectClients: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'clients', 'read');
+      return clientMgmtClient.get('/project-clients');
+    },
+    projectClient: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'clients', 'read');
+      return clientMgmtClient.getById('/project-clients', id);
+    },
+    clientFeedbacks: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'clients', 'read');
+      return clientMgmtClient.get('/client-feedback');
+    },
+    clientFeedback: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'clients', 'read');
+      return clientMgmtClient.getById('/client-feedback', id);
+    },
+    proposals: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'clients', 'read');
+      return clientMgmtClient.get('/proposals');
+    },
+    proposal: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'clients', 'read');
+      return clientMgmtClient.getById('/proposals', id);
+    },
 
-    // Notifications (Notification Service)
-    notificationTemplates: () => notificationClient.get('/notification-templates'),
-    notificationTemplate: (_: unknown, { id }: { id: string }) => notificationClient.getById('/notification-templates', id),
-    notificationPreferences: () => notificationClient.get('/notification-preferences'),
-    notificationPreference: (_: unknown, { id }: { id: string }) => notificationClient.getById('/notification-preferences', id),
-    notifications: () => notificationClient.get('/notifications'),
-    notification: (_: unknown, { id }: { id: string }) => notificationClient.getById('/notifications', id),
+    // Documentation (Knowledge Hub Service) â€” require wiki:read
+    wikiPages: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.get('/wiki-pages');
+    },
+    wikiPage: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.getById('/wiki-pages', id);
+    },
+    wikiPageVersions: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.get('/wiki-page-versions');
+    },
+    wikiPageVersion: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.getById('/wiki-page-versions', id);
+    },
+    documentFolders: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.get('/document-folders');
+    },
+    documentFolder: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.getById('/document-folders', id);
+    },
+    documents: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.get('/documents');
+    },
+    document: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.getById('/documents', id);
+    },
+    documentPermissions: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.get('/document-permissions');
+    },
+    documentPermission: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.getById('/document-permissions', id);
+    },
+    documentLinks: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.get('/document-links');
+    },
+    documentLink: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.getById('/document-links', id);
+    },
+
+    // Communication (Communication Service) â€” require channels:read
+    chatChannels: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.get('/chat-channels');
+    },
+    chatChannel: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.getById('/chat-channels', id);
+    },
+    channelMembers: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.get('/channel-members');
+    },
+    channelMember: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.getById('/channel-members', id);
+    },
+    chatMessages: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.get('/chat-messages');
+    },
+    chatMessage: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.getById('/chat-messages', id);
+    },
+    messageMentions: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.get('/message-mentions');
+    },
+    messageMention: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.getById('/message-mentions', id);
+    },
+    messageAttachments: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.get('/message-attachments');
+    },
+    messageAttachment: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.getById('/message-attachments', id);
+    },
+    communicationLogs: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.get('/communication-logs');
+    },
+    communicationLog: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      return communicationClient.getById('/communication-logs', id);
+    },
+
+    // AI & Automation (Monitoring Service) â€” require reports:read
+    aiConversations: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.get('/ai-conversations');
+    },
+    aiConversation: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.getById('/ai-conversations', id);
+    },
+    automationRules: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'settings', 'read');
+      return monitoringClient.get('/automation-rules');
+    },
+    automationRule: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'settings', 'read');
+      return monitoringClient.getById('/automation-rules', id);
+    },
+    automationLogs: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'settings', 'read');
+      return monitoringClient.get('/automation-logs');
+    },
+    automationLog: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'settings', 'read');
+      return monitoringClient.getById('/automation-logs', id);
+    },
+
+    // Monitoring (Monitoring Service) â€” require reports:read
+    kpiDefinitions: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.get('/kpi-definitions');
+    },
+    kpiDefinition: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.getById('/kpi-definitions', id);
+    },
+    kpiMeasurements: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.get('/kpi-measurements');
+    },
+    kpiMeasurement: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.getById('/kpi-measurements', id);
+    },
+    reportTemplates: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.get('/report-templates');
+    },
+    reportTemplate: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.getById('/report-templates', id);
+    },
+    generatedReports: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.get('/generated-reports');
+    },
+    generatedReport: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.getById('/generated-reports', id);
+    },
+    memberPerformances: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.get('/member-performance');
+    },
+    memberPerformance: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.getById('/member-performance', id);
+    },
+    dashboards: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.get('/dashboards');
+    },
+    dashboard: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.getById('/dashboards', id);
+    },
+    dashboardWidgets: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.get('/dashboard-widgets');
+    },
+    dashboardWidget: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.getById('/dashboard-widgets', id);
+    },
+
+    // Report Schedules (Monitoring Service) â€” org-scoped, require reports:read
+    reportSchedules: async (_: unknown, { organizationId }: { organizationId?: string }, context: Context) => {
+      const user = await requirePermission(context, 'reports', 'read');
+      const orgId = organizationId || getOrgId(user);
+      return monitoringClient.get(`/report-schedules?organizationId=${orgId}`);
+    },
+    reportSchedule: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'reports', 'read');
+      return monitoringClient.getById('/report-schedules', id);
+    },
+
+    // Notifications (Notification Service) â€” require notifications:read
+    notificationTemplates: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'notifications', 'read');
+      return notificationClient.get('/notification-templates');
+    },
+    notificationTemplate: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'notifications', 'read');
+      return notificationClient.getById('/notification-templates', id);
+    },
+    notificationPreferences: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'notifications', 'read');
+      return notificationClient.get('/notification-preferences');
+    },
+    notificationPreference: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'notifications', 'read');
+      return notificationClient.getById('/notification-preferences', id);
+    },
+    notifications: async (_: unknown, _args: unknown, context: Context) => {
+      await requirePermission(context, 'notifications', 'read');
+      return notificationClient.get('/notifications');
+    },
+    notification: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'notifications', 'read');
+      return notificationClient.getById('/notifications', id);
+    },
 
     // AI Engine
     aiChatStats: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
@@ -919,7 +1202,7 @@ export const resolvers = {
             if (membership.roleId) {
               try {
                 const role = await authClient.getById('/roles', membership.roleId);
-                if (role && role.name === 'Admin' && role.isSystem === true) {
+                if (role && role.name === 'Organizer' && role.isSystem === true) {
                   // User is the Admin/Owner of this organization
                   organizationsToDelete.push(membership.organizationId);
                 }
@@ -1084,15 +1367,11 @@ export const resolvers = {
       }
     },
 
-    // Teams - Enhanced
-    removeMember: async (_: unknown, { teamId, memberId }: { teamId: string; memberId: string }) => {
-      return workforceClient.post('/teams/remove-member', { teamId, memberId });
-    },
 
     // Users & Organizations (Auth Service)
     createUser: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      // Only Admins can create users
-      const currentUser = await requireAdmin(context);
+      // Only Organizers can create users
+      const currentUser = await requirePermission(context, 'users', 'create');
 
       // Auto-assign organizationId from current user if not provided
       if (!input.organizationId && currentUser.organizationId) {
@@ -1101,9 +1380,12 @@ export const resolvers = {
 
       return authClient.post('/users', input);
     },
-    updateUser: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => authClient.put('/users', id, input),
+    updateUser: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'users', 'update');
+      return authClient.put('/users', id, input);
+    },
     updateUserRole: async (_: unknown, { userId, role }: { userId: string; role: string }, context: Context) => {
-      const currentUser = await requireAdmin(context);
+      const currentUser = await requireOrganizer(context);
       const organizationId = currentUser.organizationId;
 
       if (!organizationId) {
@@ -1192,9 +1474,12 @@ export const resolvers = {
         role: targetRole.name,
       };
     },
-    deleteUser: (_: unknown, { id }: { id: string }) => authClient.delete('/users', id),
+    deleteUser: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'users', 'delete');
+      return authClient.delete('/users', id);
+    },
     inviteMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      const currentUser = await requireAuth(context);
+      const currentUser = await requirePermission(context, 'users', 'create');
 
       // Use organizationId from input or current user
       const organizationId = input.organizationId || currentUser.organizationId;
@@ -1372,27 +1657,176 @@ export const resolvers = {
 
       return enrichUserWithWorkforceData(user);
     },
-    createOrganization: (_: unknown, { input }: { input: ServiceRecord }) => authClient.post('/organizations', input),
-    updateOrganization: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => authClient.put('/organizations', id, input),
-    deleteOrganization: (_: unknown, { id }: { id: string }) => authClient.delete('/organizations', id),
-    createOrganizationMember: (_: unknown, { input }: { input: ServiceRecord }) => authClient.post('/organization-members', input),
-    updateOrganizationMember: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => authClient.put('/organization-members', id, input),
-    deleteOrganizationMember: (_: unknown, { id }: { id: string }) => authClient.delete('/organization-members', id),
-    createRole: (_: unknown, { input }: { input: ServiceRecord }) => authClient.post('/roles', input),
-    updateRole: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => authClient.put('/roles', id, input),
-    deleteRole: (_: unknown, { id }: { id: string }) => authClient.delete('/roles', id),
-    initializeRoles: (_: unknown, { organizationId }: { organizationId: string }) => authClient.post(`/roles/initialize/${organizationId}`, {}),
-    createKycData: (_: unknown, { input }: { input: ServiceRecord }) => authClient.post('/kyc-data', input),
-    updateKycData: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => authClient.put('/kyc-data', id, input),
-    deleteKycData: (_: unknown, { id }: { id: string }) => authClient.delete('/kyc-data', id),
-    createMfaSetting: (_: unknown, { input }: { input: ServiceRecord }) => authClient.post('/mfa-settings', input),
-    updateMfaSetting: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => authClient.put('/mfa-settings', id, input),
-    deleteMfaSetting: (_: unknown, { id }: { id: string }) => authClient.delete('/mfa-settings', id),
-    createActivityLog: (_: unknown, { input }: { input: ServiceRecord }) => authClient.post('/activity-logs', input),
+    createOrganization: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireOrganizer(context);
+      return authClient.post('/organizations', input);
+    },
+    updateOrganization: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'settings', 'update');
+      return authClient.put('/organizations', id, input);
+    },
+    deleteOrganization: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireOrganizer(context);
+      return authClient.delete('/organizations', id);
+    },
+    createOrganizationMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'users', 'create');
+      return authClient.post('/organization-members', input);
+    },
+    updateOrganizationMember: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'users', 'update');
+      return authClient.put('/organization-members', id, input);
+    },
+    deleteOrganizationMember: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'users', 'delete');
+      return authClient.delete('/organization-members', id);
+    },
+    createRole: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireOrganizer(context);
+      return authClient.post('/roles', input);
+    },
+    updateRole: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requireOrganizer(context);
+      return authClient.put('/roles', id, input);
+    },
+    deleteRole: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireOrganizer(context);
+      return authClient.delete('/roles', id);
+    },
+    initializeRoles: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
+      await requireOrganizer(context);
+      return authClient.post(`/roles/initialize/${organizationId}`, {});
+    },
+    createKycData: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'settings', 'update');
+      return authClient.post('/kyc-data', input);
+    },
+    updateKycData: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'settings', 'update');
+      return authClient.put('/kyc-data', id, input);
+    },
+    deleteKycData: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireOrganizer(context);
+      return authClient.delete('/kyc-data', id);
+    },
+    createMfaSetting: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return authClient.post('/mfa-settings', input);
+    },
+    updateMfaSetting: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return authClient.put('/mfa-settings', id, input);
+    },
+    deleteMfaSetting: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return authClient.delete('/mfa-settings', id);
+    },
+    createActivityLog: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return authClient.post('/activity-logs', input);
+    },
+
+    // RBAC Management
+    pauseUser: async (_: unknown, { userId }: { userId: string }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      const orgId = getOrgId(currentUser);
+
+      // Get target user's membership to check their role
+      const memberships = await authClient.get(`/organization-members?userId=${userId}&organizationId=${orgId}`);
+      if (!Array.isArray(memberships) || memberships.length === 0) {
+        throw new Error('User is not a member of this organization');
+      }
+      const targetMembership = memberships[0];
+      let targetRoleName = 'Contributor';
+      if (targetMembership.roleId) {
+        const targetRole = await authClient.getById('/roles', targetMembership.roleId);
+        targetRoleName = targetRole?.name || 'Contributor';
+      }
+
+      // Organizer can pause anyone
+      if (isOrganizer(currentUser)) {
+        return authClient.put('/users', userId, { status: 'paused' });
+      }
+
+      // Manager can only pause Contributors and only if granted pause_contributors
+      if (hasMetaPermission(currentUser, 'pause_contributors') && targetRoleName === 'Contributor') {
+        return authClient.put('/users', userId, { status: 'paused' });
+      }
+
+      throw new Error('Forbidden: You do not have permission to pause this user');
+    },
+    unpauseUser: async (_: unknown, { userId }: { userId: string }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      const orgId = getOrgId(currentUser);
+
+      const memberships = await authClient.get(`/organization-members?userId=${userId}&organizationId=${orgId}`);
+      if (!Array.isArray(memberships) || memberships.length === 0) {
+        throw new Error('User is not a member of this organization');
+      }
+      const targetMembership = memberships[0];
+      let targetRoleName = 'Contributor';
+      if (targetMembership.roleId) {
+        const targetRole = await authClient.getById('/roles', targetMembership.roleId);
+        targetRoleName = targetRole?.name || 'Contributor';
+      }
+
+      if (isOrganizer(currentUser)) {
+        return authClient.put('/users', userId, { status: 'active' });
+      }
+
+      if (hasMetaPermission(currentUser, 'pause_contributors') && targetRoleName === 'Contributor') {
+        return authClient.put('/users', userId, { status: 'active' });
+      }
+
+      throw new Error('Forbidden: You do not have permission to unpause this user');
+    },
+    updateMemberPermissions: async (_: unknown, { userId, permissions }: { userId: string; permissions: ServiceRecord }, context: Context) => {
+      const currentUser = await requireAuth(context);
+      const orgId = getOrgId(currentUser);
+
+      // Get target user's membership
+      const memberships = await authClient.get(`/organization-members?userId=${userId}&organizationId=${orgId}`);
+      if (!Array.isArray(memberships) || memberships.length === 0) {
+        throw new Error('User is not a member of this organization');
+      }
+      const targetMembership = memberships[0];
+      let targetRoleName = 'Contributor';
+      if (targetMembership.roleId) {
+        const targetRole = await authClient.getById('/roles', targetMembership.roleId);
+        targetRoleName = targetRole?.name || 'Contributor';
+      }
+
+      if (isOrganizer(currentUser)) {
+        if (targetRoleName === 'Organizer') {
+          throw new Error('Cannot modify another Organizer\'s permissions');
+        }
+        // Update the role's permissions
+        if (targetMembership.roleId) {
+          await authClient.put('/roles', targetMembership.roleId, { permissions });
+        }
+        return authClient.getById('/organization-members', targetMembership.id);
+      }
+
+      // Manager can update Contributor permissions only if granted manage_permissions
+      if (hasMetaPermission(currentUser, 'manage_permissions') && targetRoleName === 'Contributor') {
+        if (targetMembership.roleId) {
+          await authClient.put('/roles', targetMembership.roleId, { permissions });
+        }
+        return authClient.getById('/organization-members', targetMembership.id);
+      }
+
+      throw new Error('Forbidden: You do not have permission to manage this user\'s permissions');
+    },
+
+    // Teams - Enhanced
+    removeMember: async (_: unknown, { teamId, memberId }: { teamId: string; memberId: string }, context: Context) => {
+      await requirePermission(context, 'teams', 'update');
+      return workforceClient.post('/teams/remove-member', { teamId, memberId });
+    },
 
     // Teams (Workforce Service)
     createTeam: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      const currentUser = await requireAuth(context);
+      const currentUser = await requirePermission(context, 'teams', 'create');
 
       // Auto-assign organizationId from current user if not provided
       if (!input.organizationId && currentUser.organizationId) {
@@ -1401,49 +1835,73 @@ export const resolvers = {
 
       return workforceClient.post('/teams', input);
     },
-    updateTeam: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => workforceClient.put('/teams', id, input),
-    deleteTeam: (_: unknown, { id }: { id: string }) => workforceClient.delete('/teams', id),
-    addTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }) => {
-      // Add user to team
-      await workforceClient.post('/team-members', {
-        teamId,
-        userId,
-        role: 'member',
-      });
-      // Return updated team
+    updateTeam: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'teams', 'update');
+      return workforceClient.put('/teams', id, input);
+    },
+    deleteTeam: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'teams', 'delete');
+      return workforceClient.delete('/teams', id);
+    },
+    addTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }, context: Context) => {
+      await requirePermission(context, 'teams', 'update');
+      await workforceClient.post('/team-members', { teamId, userId, role: 'member' });
       return workforceClient.getById('/teams', teamId);
     },
-    removeTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }) => {
-      // Find and delete the team member
+    removeTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }, context: Context) => {
+      await requirePermission(context, 'teams', 'update');
       const teamMembers = await workforceClient.get(`/team-members?teamId=${teamId}&userId=${userId}`);
       if (Array.isArray(teamMembers) && teamMembers.length > 0) {
         await workforceClient.delete('/team-members', teamMembers[0].id);
       }
-      // Return updated team
       return workforceClient.getById('/teams', teamId);
     },
-    createTeamMember: (_: unknown, { input }: { input: ServiceRecord }) => workforceClient.post('/team-members', input),
-    updateTeamMember: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => workforceClient.put('/team-members', id, input),
-    deleteTeamMember: (_: unknown, { id }: { id: string }) => workforceClient.delete('/team-members', id),
-    createUserSkill: (_: unknown, { input }: { input: ServiceRecord }) => workforceClient.post('/user-skills', input),
-    updateUserSkill: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => workforceClient.put('/user-skills', id, input),
-    deleteUserSkill: (_: unknown, { id }: { id: string }) => workforceClient.delete('/user-skills', id),
-    createUserAvailability: (_: unknown, { input }: { input: ServiceRecord }) => workforceClient.post('/user-availability', input),
-    updateUserAvailability: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => workforceClient.put('/user-availability', id, input),
-    deleteUserAvailability: (_: unknown, { id }: { id: string }) => workforceClient.delete('/user-availability', id),
+    createTeamMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'teams', 'update');
+      return workforceClient.post('/team-members', input);
+    },
+    updateTeamMember: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'teams', 'update');
+      return workforceClient.put('/team-members', id, input);
+    },
+    deleteTeamMember: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'teams', 'update');
+      return workforceClient.delete('/team-members', id);
+    },
+    createUserSkill: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.post('/user-skills', input);
+    },
+    updateUserSkill: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.put('/user-skills', id, input);
+    },
+    deleteUserSkill: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.delete('/user-skills', id);
+    },
+    createUserAvailability: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.post('/user-availability', input);
+    },
+    updateUserAvailability: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.put('/user-availability', id, input);
+    },
+    deleteUserAvailability: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.delete('/user-availability', id);
+    },
 
     // Projects (Project Service)
     createProject: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      const currentUser = await requireAuth(context);
+      const currentUser = await requirePermission(context, 'projects', 'create');
 
-      // Auto-assign organizationId from current user if not provided
       const organizationId = input.organizationId || currentUser.organizationId;
-
       if (!organizationId) {
         throw new Error('Organization ID is required');
       }
 
-      // Transform input to match Prisma schema
       const projectData: ServiceRecord = {
         organizationId,
         name: input.name,
@@ -1465,7 +1923,6 @@ export const resolvers = {
 
       const project = await projectClient.post('/projects', projectData);
 
-      // Add contributors as project members if provided
       if (input.contributors && input.contributors.length > 0) {
         for (const userId of input.contributors) {
           try {
@@ -1482,10 +1939,9 @@ export const resolvers = {
 
       return project;
     },
-    updateProject: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => {
-      // Transform input to match Prisma schema
+    updateProject: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
       const projectData: ServiceRecord = {};
-
       if (input.name !== undefined) projectData.name = input.name;
       if (input.description !== undefined) projectData.description = input.description;
       if (input.status !== undefined) projectData.status = input.status;
@@ -1497,14 +1953,10 @@ export const resolvers = {
       if (input.progress !== undefined) projectData.progress = input.progress;
       if (input.budget !== undefined) projectData.budget = input.budget;
       if (input.spentBudget !== undefined) projectData.spentBudget = input.spentBudget;
-
-      // Handle metadata fields
       if (input.type !== undefined || input.visibility !== undefined ||
         input.notifyTeam !== undefined || input.notifyClient !== undefined) {
-        // First get existing project to preserve other metadata
         const existingProject = await projectClient.getById('/projects', id);
         const existingMetadata = existingProject?.metadata || {};
-
         projectData.metadata = {
           ...existingMetadata,
           ...(input.type !== undefined && { type: input.type }),
@@ -1513,55 +1965,122 @@ export const resolvers = {
           ...(input.notifyClient !== undefined && { notifyClient: input.notifyClient }),
         };
       }
-
       return projectClient.put('/projects', id, projectData);
     },
-    deleteProject: (_: unknown, { id }: { id: string }) => projectClient.delete('/projects', id),
-    createProjectMember: (_: unknown, { input }: { input: ServiceRecord }) => projectClient.post('/project-members', input),
-    updateProjectMember: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => projectClient.put('/project-members', id, input),
-    deleteProjectMember: (_: unknown, { id }: { id: string }) => projectClient.delete('/project-members', id),
-    createTask: (_: unknown, { input }: { input: ServiceRecord }) => projectClient.post('/tasks', input),
-    updateTask: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => projectClient.put('/tasks', id, input),
-    deleteTask: (_: unknown, { id }: { id: string }) => projectClient.delete('/tasks', id),
-    createTaskChecklist: (_: unknown, { input }: { input: ServiceRecord }) => projectClient.post('/task-checklists', input),
-    updateTaskChecklist: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => projectClient.put('/task-checklists', id, input),
-    deleteTaskChecklist: (_: unknown, { id }: { id: string }) => projectClient.delete('/task-checklists', id),
-    createTaskDependency: (_: unknown, { input }: { input: ServiceRecord }) => projectClient.post('/task-dependencies', input),
-    updateTaskDependency: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => projectClient.put('/task-dependencies', id, input),
-    deleteTaskDependency: (_: unknown, { id }: { id: string }) => projectClient.delete('/task-dependencies', id),
-    createMilestone: (_: unknown, { input }: { input: ServiceRecord }) => projectClient.post('/milestones', input),
-    updateMilestone: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => projectClient.put('/milestones', id, input),
-    deleteMilestone: (_: unknown, { id }: { id: string }) => projectClient.delete('/milestones', id),
-    createRiskRegister: (_: unknown, { input }: { input: ServiceRecord }) => projectClient.post('/risk-register', input),
-    updateRiskRegister: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => projectClient.put('/risk-register', id, input),
-    deleteRiskRegister: (_: unknown, { id }: { id: string }) => projectClient.delete('/risk-register', id),
-    createAiInsight: (_: unknown, { input }: { input: ServiceRecord }) => projectClient.post('/ai-insights', input),
-    updateAiInsight: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => projectClient.put('/ai-insights', id, input),
-    deleteAiInsight: (_: unknown, { id }: { id: string }) => projectClient.delete('/ai-insights', id),
+    deleteProject: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'delete');
+      return projectClient.delete('/projects', id);
+    },
+    createProjectMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.post('/project-members', input);
+    },
+    updateProjectMember: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.put('/project-members', id, input);
+    },
+    deleteProjectMember: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.delete('/project-members', id);
+    },
+    createTask: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'tasks', 'create');
+      return projectClient.post('/tasks', input);
+    },
+    updateTask: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'tasks', 'update');
+      return projectClient.put('/tasks', id, input);
+    },
+    deleteTask: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'tasks', 'delete');
+      return projectClient.delete('/tasks', id);
+    },
+    createTaskChecklist: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'tasks', 'update');
+      return projectClient.post('/task-checklists', input);
+    },
+    updateTaskChecklist: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'tasks', 'update');
+      return projectClient.put('/task-checklists', id, input);
+    },
+    deleteTaskChecklist: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'tasks', 'delete');
+      return projectClient.delete('/task-checklists', id);
+    },
+    createTaskDependency: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'tasks', 'update');
+      return projectClient.post('/task-dependencies', input);
+    },
+    updateTaskDependency: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'tasks', 'update');
+      return projectClient.put('/task-dependencies', id, input);
+    },
+    deleteTaskDependency: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'tasks', 'delete');
+      return projectClient.delete('/task-dependencies', id);
+    },
+    createMilestone: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.post('/milestones', input);
+    },
+    updateMilestone: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.put('/milestones', id, input);
+    },
+    deleteMilestone: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'delete');
+      return projectClient.delete('/milestones', id);
+    },
+    createRiskRegister: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.post('/risk-register', input);
+    },
+    updateRiskRegister: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.put('/risk-register', id, input);
+    },
+    deleteRiskRegister: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'delete');
+      return projectClient.delete('/risk-register', id);
+    },
+    createAiInsight: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.post('/ai-insights', input);
+    },
+    updateAiInsight: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.put('/ai-insights', id, input);
+    },
+    deleteAiInsight: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'delete');
+      return projectClient.delete('/ai-insights', id);
+    },
 
     // Clients (Client Management Service)
     createClient: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      const currentUser = await requireAuth(context);
-
-      // Auto-assign organizationId from current user if not provided
+      const currentUser = await requirePermission(context, 'clients', 'create');
       if (!input.organizationId && currentUser.organizationId) {
         input.organizationId = currentUser.organizationId;
       }
-
       return clientMgmtClient.post('/clients', input);
     },
-    updateClient: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => clientMgmtClient.put('/clients', id, input),
-    deleteClient: (_: unknown, { id }: { id: string }) => clientMgmtClient.delete('/clients', id),
+    updateClient: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'clients', 'update');
+      return clientMgmtClient.put('/clients', id, input);
+    },
+    deleteClient: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'clients', 'delete');
+      return clientMgmtClient.delete('/clients', id);
+    },
 
     inviteClient: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      const currentUser = await requireAuth(context);
+      const currentUser = await requirePermission(context, 'clients', 'create');
 
       const organizationId = input.organizationId || currentUser.organizationId;
       if (!organizationId) {
         throw new Error('Organization ID is required');
       }
 
-      // Get organization details
       let organization;
       try {
         organization = await authClient.getById('/organizations', organizationId);
@@ -1569,14 +2088,12 @@ export const resolvers = {
         throw new Error('Organization not found');
       }
 
-      // Check if client already exists by email
       let client;
       try {
         const clients = await clientMgmtClient.get('/clients');
         client = clients.find((c: ServiceRecord) => c.email === input.email);
 
         if (!client) {
-          // Create new client
           client = await clientMgmtClient.post('/clients', {
             name: input.name,
             email: input.email,
@@ -1587,7 +2104,6 @@ export const resolvers = {
             status: 'active',
           });
         } else {
-          // Enable portal access for existing client
           if (!client.portalAccess) {
             client = await clientMgmtClient.put('/clients', client.id, {
               portalAccess: true,
@@ -1598,14 +2114,11 @@ export const resolvers = {
         throw new Error('Failed to create or find client');
       }
 
-      // If projectId provided, link client to project
       let projectName;
       if (input.projectId) {
         try {
           const project = await projectClient.getById('/projects', input.projectId);
           projectName = project?.name;
-
-          // Create project-client relationship
           await clientMgmtClient.post('/project-clients', {
             projectId: input.projectId,
             clientId: client.id,
@@ -1615,11 +2128,9 @@ export const resolvers = {
         }
       }
 
-      // Send client portal invitation email
       try {
         const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
         const inviteToken = client.id;
-
         await notificationClient.post('/emails/invite/client', {
           email: input.email,
           inviterName,
@@ -1630,95 +2141,307 @@ export const resolvers = {
         });
       } catch (emailError) {
         console.error('Failed to send client invitation email:', emailError);
-        // Don't fail if email fails
       }
 
       return client;
     },
 
-    createProjectClient: (_: unknown, { input }: { input: ServiceRecord }) => clientMgmtClient.post('/project-clients', input),
-    updateProjectClient: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => clientMgmtClient.put('/project-clients', id, input),
-    deleteProjectClient: (_: unknown, { id }: { id: string }) => clientMgmtClient.delete('/project-clients', id),
-    createClientFeedback: (_: unknown, { input }: { input: ServiceRecord }) => clientMgmtClient.post('/client-feedback', input),
-    updateClientFeedback: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => clientMgmtClient.put('/client-feedback', id, input),
-    deleteClientFeedback: (_: unknown, { id }: { id: string }) => clientMgmtClient.delete('/client-feedback', id),
-    createProposal: (_: unknown, { input }: { input: ServiceRecord }) => clientMgmtClient.post('/proposals', input),
-    updateProposal: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => clientMgmtClient.put('/proposals', id, input),
-    deleteProposal: (_: unknown, { id }: { id: string }) => clientMgmtClient.delete('/proposals', id),
+    createProjectClient: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'clients', 'update');
+      return clientMgmtClient.post('/project-clients', input);
+    },
+    updateProjectClient: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'clients', 'update');
+      return clientMgmtClient.put('/project-clients', id, input);
+    },
+    deleteProjectClient: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'clients', 'delete');
+      return clientMgmtClient.delete('/project-clients', id);
+    },
+    createClientFeedback: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'clients', 'update');
+      return clientMgmtClient.post('/client-feedback', input);
+    },
+    updateClientFeedback: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'clients', 'update');
+      return clientMgmtClient.put('/client-feedback', id, input);
+    },
+    deleteClientFeedback: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'clients', 'delete');
+      return clientMgmtClient.delete('/client-feedback', id);
+    },
+    createProposal: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'clients', 'create');
+      return clientMgmtClient.post('/proposals', input);
+    },
+    updateProposal: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'clients', 'update');
+      return clientMgmtClient.put('/proposals', id, input);
+    },
+    deleteProposal: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'clients', 'delete');
+      return clientMgmtClient.delete('/proposals', id);
+    },
 
     // Documentation (Knowledge Hub Service)
-    createWikiPage: (_: unknown, { input }: { input: ServiceRecord }) => knowledgeClient.post('/wiki-pages', input),
-    updateWikiPage: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => knowledgeClient.put('/wiki-pages', id, input),
-    deleteWikiPage: (_: unknown, { id }: { id: string }) => knowledgeClient.delete('/wiki-pages', id),
-    createWikiPageVersion: (_: unknown, { input }: { input: ServiceRecord }) => knowledgeClient.post('/wiki-page-versions', input),
-    createDocumentFolder: (_: unknown, { input }: { input: ServiceRecord }) => knowledgeClient.post('/document-folders', input),
-    updateDocumentFolder: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => knowledgeClient.put('/document-folders', id, input),
-    deleteDocumentFolder: (_: unknown, { id }: { id: string }) => knowledgeClient.delete('/document-folders', id),
-    createDocument: (_: unknown, { input }: { input: ServiceRecord }) => knowledgeClient.post('/documents', input),
-    updateDocument: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => knowledgeClient.put('/documents', id, input),
-    deleteDocument: (_: unknown, { id }: { id: string }) => knowledgeClient.delete('/documents', id),
-    createDocumentPermission: (_: unknown, { input }: { input: ServiceRecord }) => knowledgeClient.post('/document-permissions', input),
-    updateDocumentPermission: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => knowledgeClient.put('/document-permissions', id, input),
-    deleteDocumentPermission: (_: unknown, { id }: { id: string }) => knowledgeClient.delete('/document-permissions', id),
-    createDocumentLink: (_: unknown, { input }: { input: ServiceRecord }) => knowledgeClient.post('/document-links', input),
-    updateDocumentLink: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => knowledgeClient.put('/document-links', id, input),
-    deleteDocumentLink: (_: unknown, { id }: { id: string }) => knowledgeClient.delete('/document-links', id),
+    createWikiPage: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'create');
+      return knowledgeClient.post('/wiki-pages', input);
+    },
+    updateWikiPage: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'update');
+      return knowledgeClient.put('/wiki-pages', id, input);
+    },
+    deleteWikiPage: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'delete');
+      return knowledgeClient.delete('/wiki-pages', id);
+    },
+    createWikiPageVersion: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'update');
+      return knowledgeClient.post('/wiki-page-versions', input);
+    },
+    createDocumentFolder: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'create');
+      return knowledgeClient.post('/document-folders', input);
+    },
+    updateDocumentFolder: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'update');
+      return knowledgeClient.put('/document-folders', id, input);
+    },
+    deleteDocumentFolder: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'delete');
+      return knowledgeClient.delete('/document-folders', id);
+    },
+    createDocument: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'create');
+      return knowledgeClient.post('/documents', input);
+    },
+    updateDocument: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'update');
+      return knowledgeClient.put('/documents', id, input);
+    },
+    deleteDocument: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'delete');
+      return knowledgeClient.delete('/documents', id);
+    },
+    createDocumentPermission: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'update');
+      return knowledgeClient.post('/document-permissions', input);
+    },
+    updateDocumentPermission: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'update');
+      return knowledgeClient.put('/document-permissions', id, input);
+    },
+    deleteDocumentPermission: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'delete');
+      return knowledgeClient.delete('/document-permissions', id);
+    },
+    createDocumentLink: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'update');
+      return knowledgeClient.post('/document-links', input);
+    },
+    updateDocumentLink: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'update');
+      return knowledgeClient.put('/document-links', id, input);
+    },
+    deleteDocumentLink: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'delete');
+      return knowledgeClient.delete('/document-links', id);
+    },
 
     // Communication (Communication Service)
-    createChatChannel: (_: unknown, { input }: { input: ServiceRecord }) => communicationClient.post('/chat-channels', input),
-    updateChatChannel: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => communicationClient.put('/chat-channels', id, input),
-    deleteChatChannel: (_: unknown, { id }: { id: string }) => communicationClient.delete('/chat-channels', id),
-    createChannelMember: (_: unknown, { input }: { input: ServiceRecord }) => communicationClient.post('/channel-members', input),
-    updateChannelMember: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => communicationClient.put('/channel-members', id, input),
-    deleteChannelMember: (_: unknown, { id }: { id: string }) => communicationClient.delete('/channel-members', id),
-    createChatMessage: (_: unknown, { input }: { input: ServiceRecord }) => communicationClient.post('/chat-messages', input),
-    updateChatMessage: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => communicationClient.put('/chat-messages', id, input),
-    deleteChatMessage: (_: unknown, { id }: { id: string }) => communicationClient.delete('/chat-messages', id),
-    createMessageMention: (_: unknown, { input }: { input: ServiceRecord }) => communicationClient.post('/message-mentions', input),
-    createMessageAttachment: (_: unknown, { input }: { input: ServiceRecord }) => communicationClient.post('/message-attachments', input),
-    createCommunicationLog: (_: unknown, { input }: { input: ServiceRecord }) => communicationClient.post('/communication-logs', input),
+    createChatChannel: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'channels', 'create');
+      return communicationClient.post('/chat-channels', input);
+    },
+    updateChatChannel: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'channels', 'update');
+      return communicationClient.put('/chat-channels', id, input);
+    },
+    deleteChatChannel: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'channels', 'delete');
+      return communicationClient.delete('/chat-channels', id);
+    },
+    createChannelMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'channels', 'update');
+      return communicationClient.post('/channel-members', input);
+    },
+    updateChannelMember: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'channels', 'update');
+      return communicationClient.put('/channel-members', id, input);
+    },
+    deleteChannelMember: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'channels', 'delete');
+      return communicationClient.delete('/channel-members', id);
+    },
+    createChatMessage: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'channels', 'update');
+      return communicationClient.post('/chat-messages', input);
+    },
+    updateChatMessage: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'channels', 'update');
+      return communicationClient.put('/chat-messages', id, input);
+    },
+    deleteChatMessage: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'channels', 'delete');
+      return communicationClient.delete('/chat-messages', id);
+    },
+    createMessageMention: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'channels', 'update');
+      return communicationClient.post('/message-mentions', input);
+    },
+    createMessageAttachment: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'channels', 'update');
+      return communicationClient.post('/message-attachments', input);
+    },
+    createCommunicationLog: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'channels', 'update');
+      return communicationClient.post('/communication-logs', input);
+    },
 
     // AI & Automation (Monitoring Service)
-    createAiConversation: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/ai-conversations', input),
-    updateAiConversation: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => monitoringClient.put('/ai-conversations', id, input),
-    deleteAiConversation: (_: unknown, { id }: { id: string }) => monitoringClient.delete('/ai-conversations', id),
-    createAutomationRule: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/automation-rules', input),
-    updateAutomationRule: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => monitoringClient.put('/automation-rules', id, input),
-    deleteAutomationRule: (_: unknown, { id }: { id: string }) => monitoringClient.delete('/automation-rules', id),
-    createAutomationLog: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/automation-logs', input),
+    createAiConversation: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.post('/ai-conversations', input);
+    },
+    updateAiConversation: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.put('/ai-conversations', id, input);
+    },
+    deleteAiConversation: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.delete('/ai-conversations', id);
+    },
+    createAutomationRule: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'settings', 'update');
+      return monitoringClient.post('/automation-rules', input);
+    },
+    updateAutomationRule: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'settings', 'update');
+      return monitoringClient.put('/automation-rules', id, input);
+    },
+    deleteAutomationRule: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'settings', 'update');
+      return monitoringClient.delete('/automation-rules', id);
+    },
+    createAutomationLog: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.post('/automation-logs', input);
+    },
 
     // Monitoring (Monitoring Service)
-    createKpiDefinition: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/kpi-definitions', input),
-    updateKpiDefinition: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => monitoringClient.put('/kpi-definitions', id, input),
-    deleteKpiDefinition: (_: unknown, { id }: { id: string }) => monitoringClient.delete('/kpi-definitions', id),
-    createKpiMeasurement: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/kpi-measurements', input),
-    createReportTemplate: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/report-templates', input),
-    updateReportTemplate: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => monitoringClient.put('/report-templates', id, input),
-    deleteReportTemplate: (_: unknown, { id }: { id: string }) => monitoringClient.delete('/report-templates', id),
-    createGeneratedReport: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/generated-reports', input),
-    createMemberPerformance: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/member-performance', input),
-    createDashboard: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/dashboards', input),
-    updateDashboard: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => monitoringClient.put('/dashboards', id, input),
-    deleteDashboard: (_: unknown, { id }: { id: string }) => monitoringClient.delete('/dashboards', id),
-    createDashboardWidget: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/dashboard-widgets', input),
-    updateDashboardWidget: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => monitoringClient.put('/dashboard-widgets', id, input),
-    deleteDashboardWidget: (_: unknown, { id }: { id: string }) => monitoringClient.delete('/dashboard-widgets', id),
+    createKpiDefinition: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'reports', 'create');
+      return monitoringClient.post('/kpi-definitions', input);
+    },
+    updateKpiDefinition: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'reports', 'update');
+      return monitoringClient.put('/kpi-definitions', id, input);
+    },
+    deleteKpiDefinition: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'reports', 'delete');
+      return monitoringClient.delete('/kpi-definitions', id);
+    },
+    createKpiMeasurement: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'reports', 'create');
+      return monitoringClient.post('/kpi-measurements', input);
+    },
+    createReportTemplate: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'reports', 'create');
+      return monitoringClient.post('/report-templates', input);
+    },
+    updateReportTemplate: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'reports', 'update');
+      return monitoringClient.put('/report-templates', id, input);
+    },
+    deleteReportTemplate: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'reports', 'delete');
+      return monitoringClient.delete('/report-templates', id);
+    },
+    createGeneratedReport: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'reports', 'create');
+      return monitoringClient.post('/generated-reports', input);
+    },
+    createMemberPerformance: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'reports', 'create');
+      return monitoringClient.post('/member-performance', input);
+    },
+    createDashboard: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.post('/dashboards', input);
+    },
+    updateDashboard: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.put('/dashboards', id, input);
+    },
+    deleteDashboard: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.delete('/dashboards', id);
+    },
+    createDashboardWidget: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.post('/dashboard-widgets', input);
+    },
+    updateDashboardWidget: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.put('/dashboard-widgets', id, input);
+    },
+    deleteDashboardWidget: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return monitoringClient.delete('/dashboard-widgets', id);
+    },
 
     // Report Schedules (Monitoring Service)
-    createReportSchedule: (_: unknown, { input }: { input: ServiceRecord }) => monitoringClient.post('/report-schedules', input),
-    updateReportSchedule: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => monitoringClient.put('/report-schedules', id, input),
-    deleteReportSchedule: (_: unknown, { id }: { id: string }) => monitoringClient.delete('/report-schedules', id),
+    createReportSchedule: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'reports', 'create');
+      return monitoringClient.post('/report-schedules', input);
+    },
+    updateReportSchedule: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'reports', 'update');
+      return monitoringClient.put('/report-schedules', id, input);
+    },
+    deleteReportSchedule: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'reports', 'delete');
+      return monitoringClient.delete('/report-schedules', id);
+    },
 
     // Notifications (Notification Service)
-    createNotificationTemplate: (_: unknown, { input }: { input: ServiceRecord }) => notificationClient.post('/notification-templates', input),
-    updateNotificationTemplate: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => notificationClient.put('/notification-templates', id, input),
-    deleteNotificationTemplate: (_: unknown, { id }: { id: string }) => notificationClient.delete('/notification-templates', id),
-    createNotificationPreference: (_: unknown, { input }: { input: ServiceRecord }) => notificationClient.post('/notification-preferences', input),
-    updateNotificationPreference: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => notificationClient.put('/notification-preferences', id, input),
-    deleteNotificationPreference: (_: unknown, { id }: { id: string }) => notificationClient.delete('/notification-preferences', id),
-    createNotification: (_: unknown, { input }: { input: ServiceRecord }) => notificationClient.post('/notifications', input),
-    updateNotification: (_: unknown, { id, input }: { id: string; input: ServiceRecord }) => notificationClient.put('/notifications', id, input),
-    deleteNotification: (_: unknown, { id }: { id: string }) => notificationClient.delete('/notifications', id),
+    createNotificationTemplate: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'notifications', 'create');
+      return notificationClient.post('/notification-templates', input);
+    },
+    updateNotificationTemplate: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'notifications', 'update');
+      return notificationClient.put('/notification-templates', id, input);
+    },
+    deleteNotificationTemplate: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'notifications', 'delete');
+      return notificationClient.delete('/notification-templates', id);
+    },
+    createNotificationPreference: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'notifications', 'update');
+      return notificationClient.post('/notification-preferences', input);
+    },
+    updateNotificationPreference: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'notifications', 'update');
+      return notificationClient.put('/notification-preferences', id, input);
+    },
+    deleteNotificationPreference: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'notifications', 'delete');
+      return notificationClient.delete('/notification-preferences', id);
+    },
+    createNotification: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'notifications', 'create');
+      return notificationClient.post('/notifications', input);
+    },
+    updateNotification: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'notifications', 'update');
+      return notificationClient.put('/notifications', id, input);
+    },
+    deleteNotification: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'notifications', 'delete');
+      return notificationClient.delete('/notifications', id);
+    },
     markNotificationAsRead: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requireAuth(context);
       return notificationClient.put('/notifications', id, { isRead: true });
@@ -1748,7 +2471,6 @@ export const resolvers = {
     // AI Engine
     aiChat: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await validateAiRequest(context, input.organizationId, input.userId);
-      // Use agent query endpoint for full agent capabilities (create/update/delete operations)
       return aiEngineClient.post('/api/agent/query', input);
     },
     aiClearHistory: async (_: unknown, { sessionId }: { sessionId: string }, context: Context) => {
@@ -1770,8 +2492,8 @@ export const resolvers = {
     },
     aiRemoveDocument: async (_: unknown, { sourceSchema, sourceTable, sourceId }: { sourceSchema: string; sourceTable: string; sourceId: string }, context: Context) => {
       await requireAuth(context);
-      // AI Engine uses DELETE /api/index/document with body params
       return aiEngineClient.post('/api/index/document/remove', { sourceSchema, sourceTable, sourceId });
     },
   },
 };
+
