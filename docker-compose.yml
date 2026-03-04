@@ -1,0 +1,167 @@
+services:
+  # ─── API Gateway (GraphQL) ─────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile: apps/api-gateway/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=4000
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - WORKFORCE_SERVICE_URL=http://workforce-management:3002
+      - PROJECT_SERVICE_URL=http://project-management:3003
+      - CLIENT_SERVICE_URL=http://client-management:3004
+      - KNOWLEDGE_SERVICE_URL=http://knowledge-hub:3005
+      - COMMUNICATION_SERVICE_URL=http://communication:3006
+      - MONITORING_SERVICE_URL=http://monitoring-reporting:3007
+      - NOTIFICATION_SERVICE_URL=http://notification:3008
+      - AI_ENGINE_URL=http://ai-engine:3009
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+    depends_on:
+      auth-service:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - vistone-net
+
+  # ─── Auth Service ──────────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3001
+      - DATABASE_URL=${DATABASE_URL}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+    restart: unless-stopped
+    networks:
+      - vistone-net
+
+  # ─── Workforce Management ─────────────────────────────────────────────────
+  workforce-management:
+    build:
+      context: .
+      dockerfile: apps/workforce-management/Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3002
+      - DATABASE_URL=${DATABASE_URL}
+    restart: unless-stopped
+    networks:
+      - vistone-net
+
+  # ─── Project Management ───────────────────────────────────────────────────
+  project-management:
+    build:
+      context: .
+      dockerfile: apps/project-management/Dockerfile
+    ports:
+      - "3003:3003"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3003
+      - DATABASE_URL=${DATABASE_URL}
+    restart: unless-stopped
+    networks:
+      - vistone-net
+
+  # ─── Client Management ────────────────────────────────────────────────────
+  client-management:
+    build:
+      context: .
+      dockerfile: apps/client-management/Dockerfile
+    ports:
+      - "3004:3004"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3004
+      - DATABASE_URL=${DATABASE_URL}
+    restart: unless-stopped
+    networks:
+      - vistone-net
+
+  # ─── Knowledge Hub ────────────────────────────────────────────────────────
+  knowledge-hub:
+    build:
+      context: .
+      dockerfile: apps/knowledge-hub/Dockerfile
+    ports:
+      - "3005:3005"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3005
+      - DATABASE_URL=${DATABASE_URL}
+    restart: unless-stopped
+    networks:
+      - vistone-net
+
+  # ─── Communication ────────────────────────────────────────────────────────
+  communication:
+    build:
+      context: .
+      dockerfile: apps/communication/Dockerfile
+    ports:
+      - "3006:3006"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3006
+      - DATABASE_URL=${DATABASE_URL}
+    restart: unless-stopped
+    networks:
+      - vistone-net
+
+  # ─── Monitoring & Reporting ────────────────────────────────────────────────
+  monitoring-reporting:
+    build:
+      context: .
+      dockerfile: apps/monitoring-reporting/Dockerfile
+    ports:
+      - "3007:3007"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3007
+      - DATABASE_URL=${DATABASE_URL}
+    restart: unless-stopped
+    networks:
+      - vistone-net
+
+  # ─── Notification ─────────────────────────────────────────────────────────
+  notification:
+    build:
+      context: .
+      dockerfile: apps/notification/Dockerfile
+    ports:
+      - "3008:3008"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3008
+      - DATABASE_URL=${DATABASE_URL}
+    restart: unless-stopped
+    networks:
+      - vistone-net
+
+  # ─── AI Engine (Fastify) ──────────────────────────────────────────────────
+  ai-engine:
+    build:
+      context: .
+      dockerfile: apps/ai-engine/Dockerfile
+    ports:
+      - "3009:3009"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3009
+      - DATABASE_URL=${DATABASE_URL}
+    restart: unless-stopped
+    networks:
+      - vistone-net
+
+networks:
+  vistone-net:
+    driver: bridge

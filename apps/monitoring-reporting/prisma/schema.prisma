@@ -143,3 +143,23 @@ model DashboardWidget {
   @@map("dashboard_widgets")
   @@schema("monitoring")
 }
+
+model ReportSchedule {
+  id            String   @id @default(uuid())
+  organizationId String
+  templateId    String?
+  name          String
+  cronExpression String  @default("0 9 * * 1") // Default: every Monday at 9am
+  recipients    Json     @default("[]")         // Array of email addresses
+  format        String   @default("pdf")        // pdf, csv, excel
+  filters       Json?                            // Optional filters for report data
+  isActive      Boolean  @default(true)
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("report_schedules")
+  @@schema("monitoring")
+}

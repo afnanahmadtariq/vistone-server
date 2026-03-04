@@ -58,6 +58,9 @@ test-output
 logs/
 *.log
 
+# TypeScript build info
+*.tsbuildinfo
+
 # Prisma
 *.db
 *.db-journal

@@ -19,7 +19,23 @@ export async function createOrganizationHandler(req: Request, res: Response) {
     }
 
     // Generate slug from name if not provided
-    const organizationSlug = slug || generateSlug(name);
+    let organizationSlug = slug || generateSlug(name);
+
+    // Ensure slug uniqueness by checking DB and appending suffix if needed
+    const existingOrg = await prisma.organization.findUnique({
+      where: { slug: organizationSlug },
+    });
+
+    if (existingOrg) {
+      if (slug) {
+        // User explicitly provided a duplicate slug — reject it
+        res.status(409).json({ error: 'An organization with this slug already exists' });
+        return;
+      }
+      // Auto-generated slug collided — append a random suffix
+      const suffix = Math.random().toString(36).substring(2, 6);
+      organizationSlug = `${organizationSlug}-${suffix}`;
+    }
 
     const organization = await prisma.organization.create({
       data: {
@@ -30,6 +46,11 @@ export async function createOrganizationHandler(req: Request, res: Response) {
     });
     res.json(organization);
   } catch (error) {
+    // Handle race condition where slug was taken between check and insert
+    if (error instanceof Error && 'code' in error && (error as { code: string }).code === 'P2002') {
+      res.status(409).json({ error: 'An organization with this slug already exists. Please try again.' });
+      return;
+    }
     console.error(error);
     res.status(500).json({ error: 'Failed to create organization' });
   }

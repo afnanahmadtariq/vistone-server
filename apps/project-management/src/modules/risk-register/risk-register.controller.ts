@@ -2,29 +2,33 @@ import { Request, Response } from "express";
 import prisma from "../../lib/prisma";
 
 export async function createRiskRegisterHandler(req: Request, res: Response) {
-    try {
+  try {
     const riskRegister = await prisma.riskRegister.create({
       data: req.body,
     });
     res.json(riskRegister);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to create risk register' });
-    }
+  }
 }
 
 export async function getAllRiskRegistersHandler(req: Request, res: Response) {
-    try {
-    const riskRegisters = await prisma.riskRegister.findMany();
+  try {
+    const { projectId, status } = req.query;
+    const where: Record<string, unknown> = {};
+    if (projectId) where.projectId = projectId as string;
+    if (status) where.status = status as string;
+    const riskRegisters = await prisma.riskRegister.findMany({ where, orderBy: { createdAt: 'desc' } });
     res.json(riskRegisters);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch risk registers' });
-    }
+  }
 }
 
 export async function getRiskRegisterByIdHandler(req: Request, res: Response) {
-    try {
+  try {
     const riskRegister = await prisma.riskRegister.findUnique({
       where: { id: req.params.id },
     });
@@ -33,33 +37,33 @@ export async function getRiskRegisterByIdHandler(req: Request, res: Response) {
       return;
     }
     res.json(riskRegister);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch risk register' });
-    }
+  }
 }
 
 export async function updateRiskRegisterHandler(req: Request, res: Response) {
-    try {
+  try {
     const riskRegister = await prisma.riskRegister.update({
       where: { id: req.params.id },
       data: req.body,
     });
     res.json(riskRegister);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to update risk register' });
-    }
+  }
 }
 
 export async function deleteRiskRegisterHandler(req: Request, res: Response) {
-    try {
+  try {
     await prisma.riskRegister.delete({
       where: { id: req.params.id },
     });
     res.json({ success: true, message: 'Risk register deleted' });
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete risk register' });
-    }
+  }
 }

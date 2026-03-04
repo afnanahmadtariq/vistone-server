@@ -1,216 +1,103 @@
-# AI Engine - RAG-based Assistant
+# AI Engine
 
-The AI Engine provides a Retrieval-Augmented Generation (RAG) system that allows users to query their organization's data using natural language.
+> **Port:** `3009` | **Framework:** Fastify | **DB Schema:** `ai_engine`
+
+---
+
+## Overview
+
+The AI Engine powers the platform's intelligent features through a **RAG (Retrieval-Augmented Generation)** pipeline. It indexes data from all other microservices, generates vector embeddings using Mistral AI, and provides context-aware chat and agentic capabilities using LangChain.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Postgres Cluster                         │
-├─────────────────────────────────────────────────────────────┤
-│  ├── auth (users, organizations, roles)                     │
-│  ├── project (projects, tasks, milestones)                  │
-│  ├── knowledge (wiki, documents)                            │
-│  ├── workforce (teams, skills)                              │
-│  ├── client (clients, proposals)                            │
-│  └── ai_engine                                               │
-│       ├── rag_documents (metadata + content)                │
-│       ├── rag_embeddings (pgvector - 1024 dims)             │
-│       ├── conversation_history                               │
-│       └── system_prompt_templates                           │
-└─────────────────────────────────────────────────────────────┘
+Data Sources (all services) → Data Sync → Text Splitting → Embeddings → pgvector
+                                                                           ↓
+                        User Query → RAG Service → Context Retrieval → LLM → Response
 ```
 
-## Features
+## Database Schema
 
-- **Multi-tenant RAG**: Each organization's data is isolated
-- **Semantic Search**: Using pgvector for similarity search
-- **LLM Integration**: Mistral API for embeddings and chat
-- **Conversation History**: Maintains context across messages
-- **Content Filtering**: Only responds to system-related queries
-- **Real-time Indexing**: Webhook support for instant updates
+**Prisma Schema:** `prisma/schema.prisma`
+
+> Uses the `vector` PostgreSQL extension for 1024-dimension embeddings.
+
+### Models
+
+| Model                | Table                               | Key Fields                                                                |
+| -------------------- | ----------------------------------- | ------------------------------------------------------------------------- |
+| RagDocument          | `ai_engine.rag_documents`           | organizationId, sourceSchema, sourceTable, sourceId, content, contentType |
+| RagEmbedding         | `ai_engine.rag_embeddings`          | documentId, chunkIndex, chunkText, embedding (vector 1024)                |
+| ConversationHistory  | `ai_engine.conversation_history`    | organizationId, userId, sessionId, role, content                          |
+| SystemPromptTemplate | `ai_engine.system_prompt_templates` | name, template, category, isActive                                        |
+| RagAccessControl     | `ai_engine.rag_access_control`      | organizationId, contentType, isEnabled                                    |
+
+## Implemented Features
+
+### Routes
+
+| Route            | Description                                   |
+| ---------------- | --------------------------------------------- |
+| Root (`/`)       | Health check and service info                 |
+| Chat (`/chat`)   | RAG-powered conversational AI                 |
+| Sync (`/sync`)   | Data synchronization from other microservices |
+| Agent (`/agent`) | Agentic AI with action execution capabilities |
+
+### Services
+
+| Service         | Description                                          |
+| --------------- | ---------------------------------------------------- |
+| `data-sync`     | Syncs data from all microservices into RAG documents |
+| `embeddings`    | Generates Mistral AI embeddings (1024-dim vectors)   |
+| `enhanced-rag`  | Enhanced RAG with advanced retrieval strategies      |
+| `indexing`      | Document chunking and indexing pipeline              |
+| `rag`           | Core RAG query and response generation               |
+| `text-splitter` | Intelligent text chunking for embedding              |
+| `user-context`  | User context management for personalized responses   |
+| `vector-store`  | pgvector operations (store, search, similarity)      |
+
+### Plugins
+
+| Plugin     | Description               |
+| ---------- | ------------------------- |
+| `auth`     | Authentication middleware |
+| `sensible` | Fastify sensible defaults |
+
+### Key Capabilities
+
+| Capability                      | Status |
+| ------------------------------- | ------ |
+| RAG pipeline (index + query)    | ✅     |
+| Mistral embeddings (1024-dim)   | ✅     |
+| pgvector similarity search      | ✅     |
+| Multi-service data sync         | ✅     |
+| Conversation history tracking   | ✅     |
+| System prompt templates         | ✅     |
+| Per-org access control          | ✅     |
+| Content change detection (hash) | ✅     |
+| Agent mode (NL → actions)       | ✅     |
+| Text chunking strategies        | ✅     |
+| User context awareness          | ✅     |
 
 ## Tech Stack
 
-- **LangChain TypeScript**: For RAG orchestration
-- **Mistral AI**: Embeddings (`mistral-embed`) and Chat (`mistral-large-latest`)
-- **pgvector**: Vector similarity search in PostgreSQL
-- **Fastify**: Fast, low-overhead web framework
+| Component  | Technology               |
+| ---------- | ------------------------ |
+| Framework  | Fastify 5                |
+| LLM        | Mistral AI via LangChain |
+| Embeddings | Mistral (1024-dim)       |
+| Vector DB  | pgvector (PostgreSQL)    |
+| ORM        | Prisma                   |
 
-## Setup
-
-### 1. Environment Variables
-
-Add to your `.env`:
-
-```bash
-AI_ENGINE_PORT=3009
-MISTRAL_API_KEY="your-mistral-api-key"
-DATABASE_URL="your-neon-postgres-url"
-```
-
-### 2. Install Dependencies
+## Running
 
 ```bash
-npm install
+npx nx serve ai-engine
 ```
 
-### 3. Run Database Migration
+## Testing
 
 ```bash
-# Apply the migration
-psql $DATABASE_URL -f apps/ai-engine/prisma/migrations/001_init_ai_engine.sql
-```
-
-Or use the Prisma schema:
-
-```bash
-cd apps/ai-engine
-npx prisma db push
-```
-
-### 4. Generate Prisma Client
-
-```bash
-npx prisma generate --schema=apps/ai-engine/prisma/schema.prisma
-```
-
-### 5. Start the Service
-
-```bash
-nx serve ai-engine
-```
-
-## API Endpoints
-
-### Chat
-
-**POST /api/chat**
-
-Query the RAG system with natural language.
-
-```json
-{
-  "organizationId": "org-123",
-  "organizationName": "Acme Corp",
-  "userId": "user-456",
-  "sessionId": "session-789",
-  "query": "What projects are currently in progress?",
-  "contentTypes": ["project", "task"]
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "answer": "Based on your organization's data, there are 3 projects currently in progress...",
-    "sessionId": "session-789",
-    "isOutOfScope": false,
-    "sources": [
-      {
-        "contentType": "project",
-        "title": "Website Redesign",
-        "sourceId": "proj-123"
-      }
-    ]
-  }
-}
-```
-
-### Clear History
-
-**DELETE /api/chat/history/:sessionId**
-
-Clear conversation history for a session.
-
-### Get Stats
-
-**GET /api/chat/stats/:organizationId**
-
-Get indexing statistics for an organization.
-
-### Sync Data
-
-**POST /api/sync/all**
-
-Sync all organization data to the RAG index.
-
-```json
-{
-  "organizationId": "org-123"
-}
-```
-
-**POST /api/sync/:type**
-
-Sync specific data type (`projects`, `tasks`, `milestones`, `wiki`, `documents`, `teams`, `clients`, `proposals`).
-
-### Index Document
-
-**POST /api/index/document**
-
-Index a single document (for real-time updates).
-
-```json
-{
-  "organizationId": "org-123",
-  "sourceSchema": "project",
-  "sourceTable": "tasks",
-  "sourceId": "task-456",
-  "title": "Implement login feature",
-  "content": "Create the login page with email/password authentication",
-  "contentType": "task",
-  "metadata": {
-    "status": "in_progress",
-    "priority": "high"
-  }
-}
-```
-
-### Remove Document
-
-**DELETE /api/index/document**
-
-Remove a document from the index.
-
-## Security Considerations
-
-1. **Organization Isolation**: All queries are filtered by `organizationId`
-2. **Content Filtering**: The LLM only answers questions about allowed domains
-3. **Blocked Topics**: Political, religious, medical, legal, and financial advice queries are rejected
-4. **No Data Hallucination**: The LLM is instructed to only use provided context
-
-## Embedding Dimensions
-
-- **Model**: `mistral-embed`
-- **Dimensions**: 1024
-- **Index**: HNSW (Hierarchical Navigable Small World) for fast similarity search
-
-## Performance Tips
-
-1. **Chunk Size**: Default 1000 characters with 200 overlap
-2. **Top-K**: Default 5 documents retrieved
-3. **Similarity Threshold**: Default 0.7 (70% similarity)
-4. **Batch Embedding**: Process 10 texts per API call
-
-## Development
-
-### Run Tests
-
-```bash
-nx test ai-engine
-```
-
-### Lint
-
-```bash
-nx lint ai-engine
-```
-
-### Build
-
-```bash
-nx build ai-engine
+npx nx test ai-engine
+npx nx e2e ai-engine-e2e
 ```

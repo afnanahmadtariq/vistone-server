@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import prisma from "../../lib/prisma";
 
 export async function createMilestoneHandler(req: Request, res: Response) {
-    try {
+  try {
     const { name, title, description, dueDate, status, projectId, completed, completedAt } = req.body;
 
     // Map 'name' to 'title' if 'title' is not provided (backwards compatibility)
@@ -25,29 +25,28 @@ export async function createMilestoneHandler(req: Request, res: Response) {
       },
     });
     res.json(milestone);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to create milestone' });
-    }
+  }
 }
 
 export async function getAllMilestonesHandler(req: Request, res: Response) {
-    try {
-    const { projectId } = req.query;
-    const where: any = {};
-    if (projectId) {
-      where.projectId = projectId as string;
-    }
-    const milestones = await prisma.milestone.findMany({ where });
+  try {
+    const { projectId, status } = req.query;
+    const where: Record<string, unknown> = {};
+    if (projectId) where.projectId = projectId as string;
+    if (status) where.status = status as string;
+    const milestones = await prisma.milestone.findMany({ where, orderBy: { dueDate: 'asc' } });
     res.json(milestones);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch milestones' });
-    }
+  }
 }
 
 export async function getMilestoneByIdHandler(req: Request, res: Response) {
-    try {
+  try {
     const milestone = await prisma.milestone.findUnique({
       where: { id: req.params.id },
     });
@@ -56,33 +55,40 @@ export async function getMilestoneByIdHandler(req: Request, res: Response) {
       return;
     }
     res.json(milestone);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to fetch milestone' });
-    }
+  }
 }
 
 export async function updateMilestoneHandler(req: Request, res: Response) {
-    try {
+  try {
+    const data: Record<string, unknown> = { ...req.body };
+    if (data.dueDate) data.dueDate = new Date(data.dueDate as string);
+    // Auto-set completedAt when marking as completed
+    if (data.completed === true && !data.completedAt) {
+      data.completedAt = new Date();
+    }
+    if (data.completedAt) data.completedAt = new Date(data.completedAt as string);
     const milestone = await prisma.milestone.update({
       where: { id: req.params.id },
-      data: req.body,
+      data,
     });
     res.json(milestone);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to update milestone' });
-    }
+  }
 }
 
 export async function deleteMilestoneHandler(req: Request, res: Response) {
-    try {
+  try {
     await prisma.milestone.delete({
       where: { id: req.params.id },
     });
     res.json({ success: true, message: 'Milestone deleted' });
-    } catch (error) {
+  } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to delete milestone' });
-    }
+  }
 }

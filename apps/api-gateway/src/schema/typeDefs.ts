@@ -310,7 +310,7 @@ export const typeDefs = gql`
     title: String!
     name: String
     description: String
-    dueDate: DateTime!
+    dueDate: DateTime
     status: String!
     completed: Boolean!
     completedAt: DateTime
@@ -644,6 +644,22 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
+  type ReportSchedule {
+    id: ID!
+    organizationId: String!
+    templateId: String
+    name: String!
+    cronExpression: String!
+    recipients: JSON!
+    format: String!
+    filters: JSON
+    isActive: Boolean!
+    lastRunAt: DateTime
+    nextRunAt: DateTime
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
   # 11. AI Engine Types
 
   type AiChatResponse {
@@ -716,6 +732,7 @@ export const typeDefs = gql`
     organizationMember(id: ID!): OrganizationMember
     roles: [Role!]!
     role(id: ID!): Role
+    roleDefinitions: JSON!
     kycData: [KycData!]!
     kycDataById(id: ID!): KycData
     mfaSettings: [MfaSetting!]!
@@ -823,6 +840,10 @@ export const typeDefs = gql`
     dashboardWidgets: [DashboardWidget!]!
     dashboardWidget(id: ID!): DashboardWidget
 
+    # Report Schedules
+    reportSchedules(organizationId: ID): [ReportSchedule!]!
+    reportSchedule(id: ID!): ReportSchedule
+
     # Analytics & Dashboard
     myProjects: [Project!]!
     analyticsOverview(organizationId: ID!, dateRange: DateRangeInput!): AnalyticsOverview!
@@ -867,6 +888,7 @@ export const typeDefs = gql`
     createRole(input: JSON!): Role!
     updateRole(id: ID!, input: JSON!): Role!
     deleteRole(id: ID!): DeleteResponse!
+    initializeRoles(organizationId: ID!): [Role!]!
     createKycData(input: JSON!): KycData!
     updateKycData(id: ID!, input: JSON!): KycData!
     deleteKycData(id: ID!): DeleteResponse!
@@ -874,6 +896,14 @@ export const typeDefs = gql`
     updateMfaSetting(id: ID!, input: JSON!): MfaSetting!
     deleteMfaSetting(id: ID!): DeleteResponse!
     createActivityLog(input: JSON!): ActivityLog!
+
+    # RBAC Management
+    """Pause a user (Organizer can pause anyone; Manager can pause Contributors if granted pause_contributors)"""
+    pauseUser(userId: ID!): User!
+    """Unpause a user (same permission rules as pauseUser)"""
+    unpauseUser(userId: ID!): User!
+    """Update a member's permissions. Organizer can customize Manager/Contributor. Manager can customize Contributor (if granted manage_permissions)."""
+    updateMemberPermissions(userId: ID!, permissions: JSON!): OrganizationMember!
 
     # Teams
     createTeam(input: JSON!): Team!
@@ -966,6 +996,8 @@ export const typeDefs = gql`
     updateAiConversation(id: ID!, input: JSON!): AiConversation!
     deleteAiConversation(id: ID!): DeleteResponse!
     createAiInsight(input: JSON!): AiInsight!
+    updateAiInsight(id: ID!, input: JSON!): AiInsight!
+    deleteAiInsight(id: ID!): DeleteResponse!
     createAutomationRule(input: JSON!): AutomationRule!
     updateAutomationRule(id: ID!, input: JSON!): AutomationRule!
     deleteAutomationRule(id: ID!): DeleteResponse!
@@ -1002,6 +1034,11 @@ export const typeDefs = gql`
     createDashboardWidget(input: JSON!): DashboardWidget!
     updateDashboardWidget(id: ID!, input: JSON!): DashboardWidget!
     deleteDashboardWidget(id: ID!): DeleteResponse!
+
+    # Report Schedules
+    createReportSchedule(input: JSON!): ReportSchedule!
+    updateReportSchedule(id: ID!, input: JSON!): ReportSchedule!
+    deleteReportSchedule(id: ID!): DeleteResponse!
 
     # AI Engine
     aiChat(input: AiChatInput!): AiChatResponse!

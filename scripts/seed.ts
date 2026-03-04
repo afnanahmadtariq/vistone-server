@@ -1,7 +1,14 @@
 import axios from 'axios';
+import * as crypto from 'crypto';
 
-// Service URLs
-const SERVICES = {
+// 🔑 Login Credentials (password: Password123!)
+// Admin: sarah.admin@vistone.io
+// Organizer: omar.organizer@vistone.io
+// Managers: emily.manager@vistone.io / james.manager@vistone.io
+// Contributors: aisha.dev@vistone.io, lucas.dev@vistone.io, sofia.design@vistone.io, raj.dev@vistone.io, mei.qa@vistone.io, david.content@vistone.io
+
+// ─── Service URLs ───────────────────────────────────────────────────────────────
+const SVC = {
   auth: 'http://localhost:3001',
   workforce: 'http://localhost:3002',
   project: 'http://localhost:3003',
@@ -12,69 +19,83 @@ const SERVICES = {
   notification: 'http://localhost:3008',
 };
 
-// Store created IDs for cross-service references
-const ids: Record<string, string[]> = {
-  users: [],
-  organizations: [],
-  roles: [],
-  teams: [],
-  projects: [],
-  tasks: [],
-  clients: [],
-  channels: [],
-  documents: [],
+// ─── ID Store ───────────────────────────────────────────────────────────────────
+const id = {
+  org: '',
+  roles: { organizer: '', manager: '', contributor: '' },
+  users: [] as string[],
+  teams: [] as string[],
+  projects: [] as string[],
+  tasks: [] as string[],
+  clients: [] as string[],
+  channels: [] as string[],
+  documents: [] as string[],
+  folders: [] as string[],
+  wikis: [] as string[],
+  kpis: [] as string[],
+  templates: [] as string[],
+  rules: [] as string[],
+  dashboards: [] as string[],
 };
 
-async function post(service: string, endpoint: string, data: any) {
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+async function post(base: string, path: string, data: any) {
   try {
-    const response = await axios.post(`${service}${endpoint}`, data);
-    return response.data;
-  } catch (error: any) {
-    console.error(`Error posting to ${service}${endpoint}:`, error.response?.data || error.message);
-    throw error;
+    const res = await axios.post(`${base}${path}`, data);
+    return res.data;
+  } catch (err: any) {
+    if (err.response?.data) {
+      console.error(`  ❌ POST ${path}:`, JSON.stringify(err.response.data, null, 2));
+    } else {
+      console.error(`  ❌ POST ${path}:`, err.message);
+    }
+    throw err;
   }
 }
 
-async function seedAuthService() {
+function daysFromNow(n: number) {
+  return new Date(Date.now() + n * 86400000).toISOString();
+}
+
+const runSuffix = Math.floor(Date.now() / 1000).toString();
+
+function daysAgo(n: number) {
+  return new Date(Date.now() - n * 86400000).toISOString();
+}
+
+// ─── 1. AUTH SERVICE ────────────────────────────────────────────────────────────
+async function seedAuth() {
   console.log('\n📦 Seeding Auth Service...');
+  const pwd = crypto.createHash('sha256').update('Password123!').digest('hex');
 
-  // Create Organizations
-  const orgs = [
-    { name: 'Acme Corporation', slug: 'acme-corp', settings: { timezone: 'UTC', language: 'en' } },
-    { name: 'TechStart Inc', slug: 'techstart', settings: { timezone: 'EST', language: 'en' } },
-  ];
+  // Organization
+  const org = await post(SVC.auth, '/organizations', {
+    name: `Vistone Digital ${runSuffix}`,
+    slug: `vistone-digital-${runSuffix}`,
+    settings: { timezone: 'UTC', language: 'en', theme: 'dark' },
+  });
+  id.org = org.id;
+  console.log(`  ✅ Organization: ${org.name}`);
 
-  for (const org of orgs) {
-    const created = await post(SERVICES.auth, '/organizations', org);
-    ids.organizations.push(created.id);
-    console.log(`  ✅ Created organization: ${org.name}`);
-  }
-
-  // Create Roles (as per BACKEND_IMPLEMENTATION_PLAN.md)
-  // Internal roles: Organizer, Manager, Contributor
-  // External role: Client (handled separately in client-management service)
-  const roles = [
-    // Organization 1 (Acme Corporation) roles
+  // Roles
+  const roleDefs = [
     {
-      organizationId: ids.organizations[0],
-      name: 'Organizer',
+      key: 'organizer', name: 'Organizer', isSystem: true,
       permissions: {
-        users: ['create', 'read', 'update', 'delete', 'assign'],
-        teams: ['create', 'read', 'update', 'delete', 'assign'],
-        projects: ['create', 'read', 'update', 'delete', 'assign'],
+        users: ['create', 'read', 'update', 'delete', 'invite'],
+        teams: ['create', 'read', 'update', 'delete'],
+        projects: ['create', 'read', 'update', 'delete'],
         tasks: ['create', 'read', 'update', 'delete', 'assign'],
         clients: ['create', 'read', 'update', 'delete'],
         wiki: ['create', 'read', 'update', 'delete'],
         channels: ['create', 'read', 'update', 'delete'],
         settings: ['read', 'update'],
-        reports: ['create', 'read', 'update', 'delete'],
-        notifications: ['create', 'read', 'update', 'delete'],
+        reports: ['read', 'export'],
+        notifications: ['read', 'update'],
       },
-      isSystem: true
     },
     {
-      organizationId: ids.organizations[0],
-      name: 'Manager',
+      key: 'manager', name: 'Manager',
       permissions: {
         users: ['read'],
         teams: ['read', 'update'],
@@ -86,713 +107,683 @@ async function seedAuthService() {
         settings: ['read'],
         reports: ['read'],
         notifications: ['read', 'update'],
-      }
-    },
-    {
-      organizationId: ids.organizations[0],
-      name: 'Contributor',
-      permissions: {
-        users: ['read'],
-        teams: ['read'],
-        projects: ['read'],
-        tasks: ['read', 'update'],
-        wiki: ['read'],
-        channels: ['read', 'update'],
-        reports: ['read'],
-        notifications: ['read', 'update'],
-      }
-    },
-    // Organization 2 (TechStart Inc) roles
-    {
-      organizationId: ids.organizations[1],
-      name: 'Organizer',
-      permissions: {
-        users: ['create', 'read', 'update', 'delete', 'assign'],
-        teams: ['create', 'read', 'update', 'delete', 'assign'],
-        projects: ['create', 'read', 'update', 'delete', 'assign'],
-        tasks: ['create', 'read', 'update', 'delete', 'assign'],
-        clients: ['create', 'read', 'update', 'delete'],
-        wiki: ['create', 'read', 'update', 'delete'],
-        channels: ['create', 'read', 'update', 'delete'],
-        settings: ['read', 'update'],
-        reports: ['create', 'read', 'update', 'delete'],
-        notifications: ['create', 'read', 'update', 'delete'],
       },
-      isSystem: true
     },
     {
-      organizationId: ids.organizations[1],
-      name: 'Manager',
-      permissions: {
-        users: ['read'],
-        teams: ['read', 'update'],
-        projects: ['read', 'update'],
-        tasks: ['create', 'read', 'update', 'assign'],
-        clients: ['read'],
-        wiki: ['create', 'read', 'update'],
-        channels: ['create', 'read', 'update'],
-        settings: ['read'],
-        reports: ['read'],
-        notifications: ['read', 'update'],
-      }
-    },
-    {
-      organizationId: ids.organizations[1],
-      name: 'Contributor',
+      key: 'contributor', name: 'Contributor',
       permissions: {
         users: ['read'],
         teams: ['read'],
         projects: ['read'],
         tasks: ['read', 'update'],
+        clients: [],
         wiki: ['read'],
         channels: ['read', 'update'],
+        settings: [],
         reports: ['read'],
         notifications: ['read', 'update'],
-      }
+      },
     },
   ];
 
-  for (const role of roles) {
-    const created = await post(SERVICES.auth, '/roles', role);
-    ids.roles.push(created.id);
-    console.log(`  ✅ Created role: ${role.name}`);
+  for (const r of roleDefs) {
+    const created = await post(SVC.auth, '/roles', {
+      organizationId: id.org, name: r.name, permissions: r.permissions, isSystem: r.isSystem ?? false,
+    });
+    id.roles[r.key as keyof typeof id.roles] = created.id;
+    console.log(`  ✅ Role: ${r.name}`);
   }
 
-  // Create Users with clear role assignments
-  // john.admin -> Organizer (full access)
-  // bob.manager -> Manager (team management)
-  // jane.dev, alice.designer -> Contributors (team members)
-  // charlie.qa -> Contributor (different org)
-  const users = [
-    { email: 'john.organizer@acme.com', firstName: 'John', lastName: 'Smith', password: 'hashed_password_123' },
-    { email: 'bob.manager@acme.com', firstName: 'Bob', lastName: 'Wilson', password: 'hashed_password_123' },
-    { email: 'jane.contributor@acme.com', firstName: 'Jane', lastName: 'Doe', password: 'hashed_password_123' },
-    { email: 'alice.contributor@acme.com', firstName: 'Alice', lastName: 'Johnson', password: 'hashed_password_123' },
-    { email: 'charlie.contributor@techstart.com', firstName: 'Charlie', lastName: 'Brown', password: 'hashed_password_123' },
+  // Users — 10 people
+  const userDefs = [
+    { email: `sarah.organizer1.${runSuffix}@vistone.io`, firstName: 'Sarah', lastName: 'Chen', role: 'organizer' },
+    { email: `omar.organizer2.${runSuffix}@vistone.io`, firstName: 'Omar', lastName: 'Khalid', role: 'organizer' },
+    { email: `emily.manager.${runSuffix}@vistone.io`, firstName: 'Emily', lastName: 'Rodriguez', role: 'manager' },
+    { email: `james.manager.${runSuffix}@vistone.io`, firstName: 'James', lastName: 'Park', role: 'manager' },
+    { email: `aisha.dev.${runSuffix}@vistone.io`, firstName: 'Aisha', lastName: 'Patel', role: 'contributor' },
+    { email: `lucas.dev.${runSuffix}@vistone.io`, firstName: 'Lucas', lastName: 'Müller', role: 'contributor' },
+    { email: `sofia.design.${runSuffix}@vistone.io`, firstName: 'Sofia', lastName: 'Andersson', role: 'contributor' },
+    { email: `raj.dev.${runSuffix}@vistone.io`, firstName: 'Raj', lastName: 'Sharma', role: 'contributor' },
+    { email: `mei.qa.${runSuffix}@vistone.io`, firstName: 'Mei', lastName: 'Lin', role: 'contributor' },
+    { email: `david.content.${runSuffix}@vistone.io`, firstName: 'David', lastName: 'Okonkwo', role: 'contributor' },
   ];
 
-  for (const user of users) {
-    const created = await post(SERVICES.auth, '/users', user);
-    ids.users.push(created.id);
-    console.log(`  ✅ Created user: ${user.email}`);
+  for (const u of userDefs) {
+    const created = await post(SVC.auth, '/users', { email: u.email, firstName: u.firstName, lastName: u.lastName, password: pwd });
+    id.users.push(created.id);
+    await post(SVC.auth, '/organization-members', {
+      organizationId: id.org, userId: created.id, roleId: id.roles[u.role as keyof typeof id.roles],
+    });
+    console.log(`  ✅ User: ${u.firstName} ${u.lastName} (${u.role})`);
   }
 
-  // Create Organization Members with proper role assignments
-  // ids.roles[0] = Acme Organizer
-  // ids.roles[1] = Acme Manager
-  // ids.roles[2] = Acme Contributor
-  // ids.roles[3] = TechStart Organizer
-  // ids.roles[4] = TechStart Manager
-  // ids.roles[5] = TechStart Contributor
-  const members = [
-    { organizationId: ids.organizations[0], userId: ids.users[0], roleId: ids.roles[0] }, // John -> Organizer
-    { organizationId: ids.organizations[0], userId: ids.users[1], roleId: ids.roles[1] }, // Bob -> Manager
-    { organizationId: ids.organizations[0], userId: ids.users[2], roleId: ids.roles[2] }, // Jane -> Contributor
-    { organizationId: ids.organizations[0], userId: ids.users[3], roleId: ids.roles[2] }, // Alice -> Contributor
-    { organizationId: ids.organizations[1], userId: ids.users[4], roleId: ids.roles[5] }, // Charlie -> Contributor (TechStart)
-  ];
-
-  for (const member of members) {
-    await post(SERVICES.auth, '/organization-members', member);
-    console.log(`  ✅ Added user to organization`);
-  }
-
-  // Create KYC Data
-  await post(SERVICES.auth, '/kyc-data', {
-    userId: ids.users[0],
-    status: 'verified',
-    documents: { passport: 'verified', address: 'verified' },
+  // KYC for first organizer
+  await post(SVC.auth, '/kyc-data', {
+    userId: id.users[0], status: 'verified',
+    documents: { passport: 'verified', address: 'verified', businessLicense: 'verified' },
     verifiedAt: new Date().toISOString(),
   });
-  console.log(`  ✅ Created KYC data`);
 
-  // Create MFA Settings
-  await post(SERVICES.auth, '/mfa-settings', {
-    userId: ids.users[0],
-    enabled: true,
-    secret: 'JBSWY3DPEHPK3PXP',
-    backupCodes: ['ABC123', 'DEF456', 'GHI789'],
-  });
-  console.log(`  ✅ Created MFA settings`);
-
-  // Create Activity Logs
-  await post(SERVICES.auth, '/activity-logs', {
-    userId: ids.users[0],
-    action: 'LOGIN',
-    entityType: 'user',
-    entityId: ids.users[0],
-    metadata: { browser: 'Chrome', os: 'Windows' },
-    ipAddress: '192.168.1.1',
-    userAgent: 'Mozilla/5.0',
-  });
-  console.log(`  ✅ Created activity log`);
-}
-
-async function seedWorkforceService() {
-  console.log('\n👥 Seeding Workforce Service...');
-
-  // Create Teams
-  const teams = [
-    { organizationId: ids.organizations[0], name: 'Engineering', description: 'Core development team', managerId: ids.users[0] },
-    { organizationId: ids.organizations[0], name: 'Design', description: 'UI/UX team', managerId: ids.users[3] },
-    { organizationId: ids.organizations[0], name: 'QA', description: 'Quality assurance team', managerId: ids.users[2] },
-  ];
-
-  for (const team of teams) {
-    const created = await post(SERVICES.workforce, '/teams', team);
-    ids.teams.push(created.id);
-    console.log(`  ✅ Created team: ${team.name}`);
-  }
-
-  // Create Team Members
-  const teamMembers = [
-    { teamId: ids.teams[0], userId: ids.users[0], role: 'Lead' },
-    { teamId: ids.teams[0], userId: ids.users[1], role: 'Senior Developer' },
-    { teamId: ids.teams[1], userId: ids.users[3], role: 'Lead Designer' },
-    { teamId: ids.teams[2], userId: ids.users[2], role: 'QA Manager' },
-  ];
-
-  for (const member of teamMembers) {
-    await post(SERVICES.workforce, '/team-members', member);
-    console.log(`  ✅ Added member to team`);
-  }
-
-  // Create User Skills
-  const skills = [
-    { userId: ids.users[1], skillName: 'TypeScript', proficiency: 9 },
-    { userId: ids.users[1], skillName: 'React', proficiency: 8 },
-    { userId: ids.users[1], skillName: 'Node.js', proficiency: 9 },
-    { userId: ids.users[3], skillName: 'Figma', proficiency: 10 },
-    { userId: ids.users[3], skillName: 'UI Design', proficiency: 9 },
-    { userId: ids.users[2], skillName: 'Test Automation', proficiency: 8 },
-  ];
-
-  for (const skill of skills) {
-    await post(SERVICES.workforce, '/user-skills', skill);
-    console.log(`  ✅ Created skill: ${skill.skillName}`);
-  }
-
-  // Create User Availability
-  const today = new Date();
-  for (let i = 0; i < 5; i++) {
-    const date = new Date(today);
-    date.setDate(date.getDate() + i);
-    await post(SERVICES.workforce, '/user-availability', {
-      userId: ids.users[1],
-      date: date.toISOString(),
-      hoursAvailable: 8,
+  // MFA for organizers
+  for (const idx of [0, 1]) {
+    await post(SVC.auth, '/mfa-settings', {
+      userId: id.users[idx], enabled: true,
+      secret: 'JBSWY3DPEHPK3PXP', backupCodes: ['ABCD1234', 'EFGH5678', 'IJKL9012'],
     });
   }
-  console.log(`  ✅ Created availability records`);
+
+  // Activity logs
+  const actions = ['LOGIN', 'CREATE_PROJECT', 'UPDATE_TASK', 'INVITE_MEMBER', 'VIEW_REPORT'];
+  for (let i = 0; i < 8; i++) {
+    await post(SVC.auth, '/activity-logs', {
+      userId: id.users[i % id.users.length],
+      action: actions[i % actions.length],
+      entityType: 'user', entityId: id.users[0],
+      metadata: { browser: 'Chrome', os: 'Windows' },
+      ipAddress: `192.168.1.${10 + i}`, userAgent: 'Mozilla/5.0',
+    });
+  }
+  console.log(`  ✅ Activity logs (8)`);
 }
 
-async function seedProjectService() {
-  console.log('\n📋 Seeding Project Service...');
+// ─── 2. WORKFORCE SERVICE ───────────────────────────────────────────────────────
+async function seedWorkforce() {
+  console.log('\n👥 Seeding Workforce Service...');
 
-  // Create Projects
-  const projects = [
-    {
-      organizationId: ids.organizations[0],
-      name: 'E-Commerce Platform',
-      description: 'Build a modern e-commerce platform with React and Node.js',
-      status: 'in_progress',
-      startDate: new Date().toISOString(),
-      endDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-      budget: 150000,
-      metadata: { priority: 'high', category: 'development' },
-    },
-    {
-      organizationId: ids.organizations[0],
-      name: 'Mobile App Redesign',
-      description: 'Redesign the mobile application UI/UX',
-      status: 'planning',
-      startDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      budget: 50000,
-      metadata: { priority: 'medium', category: 'design' },
-    },
-    {
-      organizationId: ids.organizations[0],
-      name: 'API Migration',
-      description: 'Migrate legacy APIs to microservices architecture',
-      status: 'in_progress',
-      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-      budget: 80000,
-      metadata: { priority: 'high', category: 'infrastructure' },
-    },
+  const teamDefs = [
+    { name: 'Engineering', description: 'Full-stack development team', managerId: id.users[2] },
+    { name: 'Design', description: 'UI/UX and graphic design', managerId: id.users[3] },
+    { name: 'Quality Assurance', description: 'Testing and quality team', managerId: id.users[2] },
+    { name: 'Content & Marketing', description: 'Content creation and marketing', managerId: id.users[3] },
   ];
 
-  for (const project of projects) {
-    const created = await post(SERVICES.project, '/projects', project);
-    ids.projects.push(created.id);
-    console.log(`  ✅ Created project: ${project.name}`);
+  for (const t of teamDefs) {
+    const created = await post(SVC.workforce, '/teams', { ...t, organizationId: id.org });
+    id.teams.push(created.id);
+    console.log(`  ✅ Team: ${t.name}`);
   }
 
-  // Create Project Members
-  const projectMembers = [
-    { projectId: ids.projects[0], userId: ids.users[0], role: 'Project Manager' },
-    { projectId: ids.projects[0], userId: ids.users[1], role: 'Lead Developer' },
-    { projectId: ids.projects[0], userId: ids.users[3], role: 'Designer' },
-    { projectId: ids.projects[1], userId: ids.users[3], role: 'Lead Designer' },
-    { projectId: ids.projects[2], userId: ids.users[1], role: 'Tech Lead' },
-    { projectId: ids.projects[2], userId: ids.users[2], role: 'QA Lead' },
+  // Team Members: Engineering=[Aisha,Lucas,Raj], Design=[Sofia], QA=[Mei], Content=[David]
+  const memberships = [
+    [0, 4, 'Senior Developer'], [0, 5, 'Developer'], [0, 7, 'Developer'],
+    [1, 6, 'Lead Designer'],
+    [2, 8, 'QA Engineer'],
+    [3, 9, 'Content Writer'],
+    [0, 2, 'Manager'], [1, 3, 'Manager'],
   ];
-
-  for (const member of projectMembers) {
-    await post(SERVICES.project, '/project-members', member);
-    console.log(`  ✅ Added project member`);
+  for (const [ti, ui, role] of memberships) {
+    await post(SVC.workforce, '/team-members', { teamId: id.teams[ti as number], userId: id.users[ui as number], role });
   }
+  console.log('  ✅ Team members assigned');
 
-  // Create Tasks
-  const tasks = [
-    { projectId: ids.projects[0], assigneeId: ids.users[1], title: 'Setup project scaffolding', description: 'Initialize the project with proper folder structure', status: 'completed', priority: 'high' },
-    { projectId: ids.projects[0], assigneeId: ids.users[1], title: 'Implement authentication', description: 'Add JWT-based authentication', status: 'in_progress', priority: 'high', dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() },
-    { projectId: ids.projects[0], assigneeId: ids.users[3], title: 'Design login page', description: 'Create mockups for the login page', status: 'completed', priority: 'medium' },
-    { projectId: ids.projects[0], assigneeId: ids.users[1], title: 'Implement product catalog', description: 'Build the product listing and detail pages', status: 'todo', priority: 'high', dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() },
-    { projectId: ids.projects[0], assigneeId: ids.users[1], title: 'Shopping cart functionality', description: 'Implement add to cart and checkout flow', status: 'todo', priority: 'high' },
-    { projectId: ids.projects[2], assigneeId: ids.users[1], title: 'Document existing APIs', description: 'Create OpenAPI specs for all existing endpoints', status: 'in_progress', priority: 'medium' },
-    { projectId: ids.projects[2], assigneeId: ids.users[2], title: 'Create integration tests', description: 'Write tests for API endpoints', status: 'todo', priority: 'medium' },
+  // Skills
+  const skillDefs = [
+    [4, 'TypeScript', 9], [4, 'React', 9], [4, 'Node.js', 8], [4, 'PostgreSQL', 7],
+    [5, 'TypeScript', 8], [5, 'Next.js', 8], [5, 'GraphQL', 7],
+    [6, 'Figma', 10], [6, 'UI Design', 9], [6, 'CSS', 8], [6, 'Prototyping', 9],
+    [7, 'Python', 9], [7, 'FastAPI', 8], [7, 'Docker', 7], [7, 'AWS', 6],
+    [8, 'Test Automation', 9], [8, 'Cypress', 8], [8, 'Jest', 8],
+    [9, 'Technical Writing', 9], [9, 'SEO', 7], [9, 'Markdown', 8],
   ];
-
-  for (const task of tasks) {
-    const created = await post(SERVICES.project, '/tasks', task);
-    ids.tasks.push(created.id);
-    console.log(`  ✅ Created task: ${task.title}`);
+  for (const [ui, name, prof] of skillDefs) {
+    await post(SVC.workforce, '/user-skills', { userId: id.users[ui as number], skillName: name, proficiency: prof });
   }
+  console.log(`  ✅ Skills (${skillDefs.length})`);
 
-  // Create Task Checklists
-  const checklists = [
-    { taskId: ids.tasks[1], item: 'Setup Passport.js', isCompleted: true },
-    { taskId: ids.tasks[1], item: 'Implement JWT token generation', isCompleted: true },
-    { taskId: ids.tasks[1], item: 'Add refresh token logic', isCompleted: false },
-    { taskId: ids.tasks[1], item: 'Write authentication tests', isCompleted: false },
-    { taskId: ids.tasks[3], item: 'Create product model', isCompleted: false },
-    { taskId: ids.tasks[3], item: 'Build product API endpoints', isCompleted: false },
-    { taskId: ids.tasks[3], item: 'Implement search functionality', isCompleted: false },
-  ];
-
-  for (const checklist of checklists) {
-    await post(SERVICES.project, '/task-checklists', checklist);
-    console.log(`  ✅ Created checklist item`);
-  }
-
-  // Create Task Dependencies
-  await post(SERVICES.project, '/task-dependencies', {
-    taskId: ids.tasks[3],
-    dependsOnId: ids.tasks[1],
-    type: 'finish_to_start',
-  });
-  await post(SERVICES.project, '/task-dependencies', {
-    taskId: ids.tasks[4],
-    dependsOnId: ids.tasks[3],
-    type: 'finish_to_start',
-  });
-  console.log(`  ✅ Created task dependencies`);
-
-  // Create Milestones
-  const milestones = [
-    { projectId: ids.projects[0], title: 'MVP Release', description: 'First version with core features', dueDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString(), status: 'in_progress' },
-    { projectId: ids.projects[0], title: 'Beta Release', description: 'Feature complete version', dueDate: new Date(Date.now() + 75 * 24 * 60 * 60 * 1000).toISOString(), status: 'planned' },
-    { projectId: ids.projects[0], title: 'Production Launch', description: 'Go live', dueDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(), status: 'planned' },
-  ];
-
-  for (const milestone of milestones) {
-    await post(SERVICES.project, '/milestones', milestone);
-    console.log(`  ✅ Created milestone: ${milestone.title}`);
-  }
-
-  // Create Risk Register
-  const risks = [
-    { projectId: ids.projects[0], description: 'Third-party payment integration delays', probability: 'medium', impact: 'high', mitigationPlan: 'Start integration early and have fallback provider', status: 'open' },
-    { projectId: ids.projects[0], description: 'Resource availability during holidays', probability: 'high', impact: 'medium', mitigationPlan: 'Front-load critical tasks before holiday season', status: 'mitigated' },
-  ];
-
-  for (const risk of risks) {
-    await post(SERVICES.project, '/risk-register', risk);
-    console.log(`  ✅ Created risk: ${risk.description.substring(0, 30)}...`);
-  }
-
-  // Create AI Insights
-  await post(SERVICES.project, '/ai-insights', {
-    projectId: ids.projects[0],
-    content: 'Based on current velocity, the project is on track to meet the MVP deadline. Consider adding one more developer to ensure buffer time.',
-    confidence: 0.85,
-    actionable: true,
-  });
-  await post(SERVICES.project, '/ai-insights', {
-    taskId: ids.tasks[1],
-    content: 'This task has been in progress for 5 days. Similar tasks typically take 3 days. Consider breaking it into smaller subtasks.',
-    confidence: 0.78,
-    actionable: true,
-  });
-  console.log(`  ✅ Created AI insights`);
-}
-
-async function seedClientService() {
-  console.log('\n🏢 Seeding Client Service...');
-
-  // Create Clients
-  const clients = [
-    { name: 'RetailMax Inc', contactInfo: { email: 'contact@retailmax.com', phone: '+1-555-0100', address: '123 Commerce St' }, portalAccess: true },
-    { name: 'FoodDelivery Pro', contactInfo: { email: 'hello@fooddeliverypro.com', phone: '+1-555-0200' }, portalAccess: true },
-    { name: 'HealthCare Plus', contactInfo: { email: 'info@healthcareplus.com', phone: '+1-555-0300' }, portalAccess: false },
-  ];
-
-  for (const client of clients) {
-    const created = await post(SERVICES.client, '/clients', client);
-    ids.clients.push(created.id);
-    console.log(`  ✅ Created client: ${client.name}`);
-  }
-
-  // Create Project-Client associations
-  await post(SERVICES.client, '/project-clients', { projectId: ids.projects[0], clientId: ids.clients[0] });
-  await post(SERVICES.client, '/project-clients', { projectId: ids.projects[1], clientId: ids.clients[1] });
-  console.log(`  ✅ Associated clients with projects`);
-
-  // Create Client Feedback
-  const feedback = [
-    { clientId: ids.clients[0], projectId: ids.projects[0], rating: 5, comment: 'Great progress on the project! Love the design direction.', response: 'Thank you! We appreciate your feedback.' },
-    { clientId: ids.clients[0], rating: 4, comment: 'Communication has been excellent. Looking forward to the next milestone.' },
-  ];
-
-  for (const fb of feedback) {
-    await post(SERVICES.client, '/client-feedback', fb);
-    console.log(`  ✅ Created client feedback`);
-  }
-
-  // Create Proposals
-  const proposals = [
-    { clientId: ids.clients[2], title: 'Healthcare Portal Development', content: 'Proposal for building a patient management portal with appointment scheduling, medical records, and telemedicine features.', status: 'pending' },
-    { clientId: ids.clients[1], title: 'Mobile App Enhancement', content: 'Proposal for adding real-time order tracking and driver communication features.', status: 'accepted' },
-  ];
-
-  for (const proposal of proposals) {
-    await post(SERVICES.client, '/proposals', proposal);
-    console.log(`  ✅ Created proposal: ${proposal.title}`);
-  }
-}
-
-async function seedKnowledgeService() {
-  console.log('\n📚 Seeding Knowledge Hub Service...');
-
-  // Create Document Folders (matching schema: organizationId, name, parentId)
-  const folders = [
-    { organizationId: ids.organizations[0], name: 'Engineering Docs' },
-    { organizationId: ids.organizations[0], name: 'Design System' },
-    { organizationId: ids.organizations[0], name: 'Policies' },
-  ];
-
-  const folderIds: string[] = [];
-  for (const folder of folders) {
-    const created = await post(SERVICES.knowledge, '/document-folders', folder);
-    folderIds.push(created.id);
-    console.log(`  ✅ Created folder: ${folder.name}`);
-  }
-
-  // Create Documents (matching schema: organizationId, folderId, projectId, name, url, version, metadata)
-  const documents = [
-    { organizationId: ids.organizations[0], folderId: folderIds[0], name: 'API Guidelines', url: '/docs/api-guidelines.md', metadata: { type: 'markdown' } },
-    { organizationId: ids.organizations[0], folderId: folderIds[0], name: 'Database Schema', url: '/docs/database-schema.md', metadata: { type: 'markdown' } },
-    { organizationId: ids.organizations[0], folderId: folderIds[1], name: 'Color Palette', url: '/docs/color-palette.md', metadata: { type: 'markdown' } },
-    { organizationId: ids.organizations[0], folderId: folderIds[2], name: 'Remote Work Policy', url: '/docs/remote-work-policy.md', metadata: { type: 'markdown' } },
-  ];
-
-  for (const doc of documents) {
-    const created = await post(SERVICES.knowledge, '/documents', doc);
-    ids.documents.push(created.id);
-    console.log(`  ✅ Created document: ${doc.name}`);
-  }
-
-  // Create Wiki Pages (matching schema: title, content, parentId)
-  const wikiPages = [
-    { title: 'Getting Started', content: '# Getting Started\n\nWelcome to Acme Corporation! This guide will help you get up to speed.' },
-    { title: 'Development Setup', content: '# Development Setup\n\n## Prerequisites\n- Node.js 18+\n- Docker\n- VS Code' },
-    { title: 'Deployment Process', content: '# Deployment Process\n\nWe use GitHub Actions for CI/CD...' },
-  ];
-
-  const wikiIds: string[] = [];
-  for (const wiki of wikiPages) {
-    const created = await post(SERVICES.knowledge, '/wiki-pages', wiki);
-    wikiIds.push(created.id);
-    console.log(`  ✅ Created wiki page: ${wiki.title}`);
-  }
-
-  // Create Wiki Page Version (matching schema: wikiPageId, content, version)
-  await post(SERVICES.knowledge, '/wiki-page-versions', {
-    wikiPageId: wikiIds[1],
-    content: '# Development Setup\n\n## Prerequisites\n- Node.js 18+\n- Docker\n- VS Code\n\n## Installation\n1. Clone the repo...',
-    version: 2,
-  });
-  console.log(`  ✅ Created wiki page version`);
-
-  // Create Document Permissions (matching schema: documentId, userId, roleId, permission)
-  await post(SERVICES.knowledge, '/document-permissions', {
-    documentId: ids.documents[0],
-    userId: ids.users[1],
-    permission: 'edit',
-  });
-  console.log(`  ✅ Created document permission`);
-}
-
-async function seedCommunicationService() {
-  console.log('\n💬 Seeding Communication Service...');
-
-  // Create Chat Channels (matching schema: name, type, teamId, projectId)
-  const channels = [
-    { name: 'general', type: 'public' },
-    { name: 'engineering', type: 'public', teamId: ids.teams[0] },
-    { name: 'project-ecommerce', type: 'project', projectId: ids.projects[0] },
-  ];
-
-  for (const channel of channels) {
-    const created = await post(SERVICES.communication, '/chat-channels', channel);
-    ids.channels.push(created.id);
-    console.log(`  ✅ Created channel: #${channel.name}`);
-  }
-
-  // Create Channel Members (matching schema: channelId, userId, role)
-  for (const channelId of ids.channels) {
-    for (const userId of ids.users.slice(0, 4)) {
-      await post(SERVICES.communication, '/channel-members', { channelId, userId, role: 'member' });
+  // Availability (next 10 days for devs)
+  for (const ui of [4, 5, 7]) {
+    for (let d = 0; d < 10; d++) {
+      await post(SVC.workforce, '/user-availability', {
+        userId: id.users[ui], date: daysFromNow(d), hoursAvailable: d % 7 < 5 ? 8 : 0,
+      });
     }
   }
-  console.log(`  ✅ Added members to channels`);
+  console.log('  ✅ Availability records');
+}
 
-  // Create Chat Messages (matching schema: channelId, senderId, content, aiFlags)
-  const messages = [
-    { channelId: ids.channels[0], senderId: ids.users[0], content: 'Welcome everyone to our new communication platform! 🎉' },
-    { channelId: ids.channels[0], senderId: ids.users[1], content: 'Thanks John! Excited to be here.' },
-    { channelId: ids.channels[0], senderId: ids.users[3], content: 'The new design looks great!' },
-    { channelId: ids.channels[1], senderId: ids.users[1], content: 'Has anyone looked at the new TypeScript 5.3 features?' },
-    { channelId: ids.channels[1], senderId: ids.users[0], content: 'Yes! The import attributes are really useful.' },
-    { channelId: ids.channels[2], senderId: ids.users[0], content: 'Sprint planning meeting tomorrow at 10 AM. @Jane please prepare the backlog.' },
-    { channelId: ids.channels[2], senderId: ids.users[1], content: 'Will do! I\'ll have the priorities ready.' },
+// ─── 3. PROJECT SERVICE ─────────────────────────────────────────────────────────
+async function seedProjects() {
+  console.log('\n📋 Seeding Project Service...');
+
+  const projDefs = [
+    { name: 'E-Commerce Platform v2', description: 'Next-gen e-commerce with AI recommendations', status: 'Active', startDate: daysAgo(30), endDate: daysFromNow(60), budget: 180000, spentBudget: 45000, progress: 35, managerId: id.users[2], teamIds: [id.teams[0]], clientId: null },
+    { name: 'Mobile App Redesign', description: 'Complete UI/UX overhaul of the mobile application', status: 'Active', startDate: daysAgo(14), endDate: daysFromNow(45), budget: 65000, spentBudget: 12000, progress: 20, managerId: id.users[3], teamIds: [id.teams[1]], clientId: null },
+    { name: 'API Gateway Migration', description: 'Migrate monolith REST API to GraphQL microservices', status: 'Active', startDate: daysAgo(60), endDate: daysFromNow(30), budget: 95000, spentBudget: 62000, progress: 65, managerId: id.users[2], teamIds: [id.teams[0]], clientId: null },
+    { name: 'Healthcare Portal', description: 'Patient management portal with telemedicine features', status: 'Planning', startDate: daysFromNow(14), endDate: daysFromNow(120), budget: 220000, progress: 5, managerId: id.users[2], teamIds: [id.teams[0], id.teams[1]], clientId: null },
+    { name: 'Internal Documentation Hub', description: 'Centralized knowledge base for the organization', status: 'Completed', startDate: daysAgo(90), endDate: daysAgo(10), budget: 25000, spentBudget: 23000, progress: 100, managerId: id.users[3], teamIds: [id.teams[3]], clientId: null },
+  ];
+
+  for (const p of projDefs) {
+    const created = await post(SVC.project, '/projects', { ...p, organizationId: id.org, metadata: { type: 'development', visibility: 'private' } });
+    id.projects.push(created.id);
+    console.log(`  ✅ Project: ${p.name}`);
+  }
+
+  // Project members
+  const pmDefs = [
+    [0, 2, 'Manager'], [0, 4, 'Lead Developer'], [0, 5, 'Developer'], [0, 6, 'Designer'], [0, 8, 'QA'],
+    [1, 3, 'Manager'], [1, 6, 'Lead Designer'], [1, 5, 'Frontend Dev'],
+    [2, 2, 'Manager'], [2, 4, 'Tech Lead'], [2, 7, 'Backend Dev'], [2, 8, 'QA'],
+    [3, 2, 'Manager'], [3, 4, 'Developer'], [3, 7, 'Developer'], [3, 6, 'Designer'],
+    [4, 3, 'Manager'], [4, 9, 'Content Lead'],
+  ];
+  for (const [pi, ui, role] of pmDefs) {
+    await post(SVC.project, '/project-members', { projectId: id.projects[pi as number], userId: id.users[ui as number], role });
+  }
+  console.log('  ✅ Project members');
+
+  // Tasks — rich set across projects
+  const taskDefs = [
+    // Project 0: E-Commerce
+    { projectId: 0, assigneeId: 4, creatorId: 2, title: 'Setup Next.js project scaffold', status: 'Done', priority: 'high', dueDate: daysAgo(25) },
+    { projectId: 0, assigneeId: 4, creatorId: 2, title: 'Implement user authentication flow', status: 'Done', priority: 'high', dueDate: daysAgo(18) },
+    { projectId: 0, assigneeId: 5, creatorId: 2, title: 'Build product listing page', status: 'In Progress', priority: 'high', dueDate: daysFromNow(7) },
+    { projectId: 0, assigneeId: 6, creatorId: 3, title: 'Design product detail page UI', status: 'In Progress', priority: 'medium', dueDate: daysFromNow(5) },
+    { projectId: 0, assigneeId: 5, creatorId: 2, title: 'Shopping cart & checkout flow', status: 'To Do', priority: 'high', dueDate: daysFromNow(21) },
+    { projectId: 0, assigneeId: 4, creatorId: 2, title: 'Payment gateway integration (Stripe)', status: 'To Do', priority: 'high', dueDate: daysFromNow(28) },
+    { projectId: 0, assigneeId: 8, creatorId: 2, title: 'Write E2E tests for checkout', status: 'To Do', priority: 'medium', dueDate: daysFromNow(35) },
+    { projectId: 0, assigneeId: 4, creatorId: 2, title: 'AI recommendation engine integration', status: 'To Do', priority: 'low', dueDate: daysFromNow(45) },
+    // Project 1: Mobile Redesign
+    { projectId: 1, assigneeId: 6, creatorId: 3, title: 'User research & persona mapping', status: 'Done', priority: 'high', dueDate: daysAgo(7) },
+    { projectId: 1, assigneeId: 6, creatorId: 3, title: 'Wireframe main navigation', status: 'In Progress', priority: 'high', dueDate: daysFromNow(3) },
+    { projectId: 1, assigneeId: 6, creatorId: 3, title: 'High-fidelity mockups — Home', status: 'To Do', priority: 'high', dueDate: daysFromNow(14) },
+    { projectId: 1, assigneeId: 5, creatorId: 3, title: 'Implement new design system in React Native', status: 'To Do', priority: 'medium', dueDate: daysFromNow(28) },
+    // Project 2: API Migration
+    { projectId: 2, assigneeId: 4, creatorId: 2, title: 'Document existing REST endpoints', status: 'Done', priority: 'high', dueDate: daysAgo(45) },
+    { projectId: 2, assigneeId: 7, creatorId: 2, title: 'Setup GraphQL gateway', status: 'Done', priority: 'high', dueDate: daysAgo(35) },
+    { projectId: 2, assigneeId: 4, creatorId: 2, title: 'Migrate auth endpoints', status: 'Done', priority: 'high', dueDate: daysAgo(20) },
+    { projectId: 2, assigneeId: 7, creatorId: 2, title: 'Migrate project endpoints', status: 'In Progress', priority: 'high', dueDate: daysFromNow(7) },
+    { projectId: 2, assigneeId: 4, creatorId: 2, title: 'Migrate client endpoints', status: 'To Do', priority: 'medium', dueDate: daysFromNow(14) },
+    { projectId: 2, assigneeId: 8, creatorId: 2, title: 'Integration test suite', status: 'In Progress', priority: 'medium', dueDate: daysFromNow(21) },
+    // Project 3: Healthcare
+    { projectId: 3, assigneeId: 4, creatorId: 2, title: 'Requirements gathering', status: 'In Progress', priority: 'high', dueDate: daysFromNow(10) },
+    { projectId: 3, assigneeId: 6, creatorId: 3, title: 'UX research for patient portal', status: 'To Do', priority: 'high', dueDate: daysFromNow(21) },
+  ];
+
+  for (const t of taskDefs) {
+    const created = await post(SVC.project, '/tasks', {
+      projectId: id.projects[t.projectId],
+      assigneeId: id.users[t.assigneeId],
+      creatorId: id.users[t.creatorId],
+      title: t.title, status: t.status, priority: t.priority,
+      dueDate: t.dueDate, description: `Task: ${t.title}`,
+    });
+    id.tasks.push(created.id);
+  }
+  console.log(`  ✅ Tasks (${taskDefs.length})`);
+
+  // Checklists for a few tasks
+  const checklists = [
+    [2, 'Create product card component', true], [2, 'Implement pagination', false], [2, 'Add search filters', false],
+    [5, 'Setup Stripe SDK', false], [5, 'Implement payment intent', false], [5, 'Handle webhooks', false],
+  ];
+  for (const [ti, item, done] of checklists) {
+    await post(SVC.project, '/task-checklists', { taskId: id.tasks[ti as number], item, isCompleted: done });
+  }
+  console.log('  ✅ Task checklists');
+
+  // Dependencies
+  await post(SVC.project, '/task-dependencies', { taskId: id.tasks[4], dependsOnId: id.tasks[2], type: 'finish_to_start' });
+  await post(SVC.project, '/task-dependencies', { taskId: id.tasks[5], dependsOnId: id.tasks[4], type: 'finish_to_start' });
+  await post(SVC.project, '/task-dependencies', { taskId: id.tasks[6], dependsOnId: id.tasks[5], type: 'finish_to_start' });
+  console.log('  ✅ Task dependencies');
+
+  // Milestones
+  const msDefs = [
+    [0, 'MVP Launch', 'Core features ready for demo', 30, 'In Progress'],
+    [0, 'Beta Release', 'Feature-complete with payment', 50, 'Planned'],
+    [0, 'Production Go-Live', 'Public launch', 60, 'Planned'],
+    [1, 'Design Approval', 'All mockups approved by client', 14, 'In Progress'],
+    [1, 'Dev Handoff', 'Design specs ready for dev', 30, 'Planned'],
+    [2, 'Auth Migration Complete', 'All auth endpoints migrated', -5, 'Completed'],
+    [2, 'Full Migration Complete', 'All services migrated', 21, 'In Progress'],
+    [3, 'Requirements Sign-Off', 'Requirements doc approved', 21, 'Planned'],
+  ];
+  for (const [pi, title, desc, dayOffset, status] of msDefs) {
+    await post(SVC.project, '/milestones', {
+      projectId: id.projects[pi as number], title, description: desc,
+      dueDate: daysFromNow(dayOffset as number), status,
+      completed: status === 'Completed', completedAt: status === 'Completed' ? daysAgo(5) : null,
+    });
+  }
+  console.log(`  ✅ Milestones (${msDefs.length})`);
+
+  // Risk Register
+  const risks = [
+    [0, 'Stripe API rate limits during peak sales', 'medium', 'high', 'Implement request queuing and caching', 'open'],
+    [0, 'Delayed design approvals from client', 'high', 'medium', 'Set weekly review cadence', 'mitigated'],
+    [2, 'Data loss during migration', 'low', 'critical', 'Run dual-write for 2 weeks before cutover', 'open'],
+    [3, 'HIPAA compliance requirements unclear', 'medium', 'high', 'Engage compliance consultant early', 'open'],
+  ];
+  for (const [pi, desc, prob, imp, plan, status] of risks) {
+    await post(SVC.project, '/risk-register', {
+      projectId: id.projects[pi as number], description: desc,
+      probability: prob, impact: imp, mitigationPlan: plan, status,
+    });
+  }
+  console.log('  ✅ Risk register');
+
+  // AI Insights
+  const insights = [
+    [0, null, 'Based on current velocity (12 pts/sprint), MVP deadline is achievable with 85% confidence. Consider parallelizing checkout and payment tasks.', 0.85],
+    [null, 2, 'This task has taken 3x longer than similar tasks. Consider pair programming or breaking into subtasks.', 0.72],
+    [2, null, 'Migration is 65% complete. Projected completion is 5 days ahead of schedule if current pace holds.', 0.90],
+  ];
+  for (const [pi, ti, content, conf] of insights) {
+    await post(SVC.project, '/ai-insights', {
+      projectId: pi !== null ? id.projects[pi as number] : null,
+      taskId: ti !== null ? id.tasks[ti as number] : null,
+      content, confidence: conf, actionable: true,
+    });
+  }
+  console.log('  ✅ AI insights');
+}
+
+// ─── 4. CLIENT SERVICE ──────────────────────────────────────────────────────────
+async function seedClients() {
+  console.log('\n🏢 Seeding Client Service...');
+
+  const clientDefs = [
+    { name: 'RetailMax Inc', email: 'contact@retailmax.com', company: 'RetailMax Inc', phone: '+1-555-0100', industry: 'Retail', status: 'active', portalAccess: true, address: '123 Commerce St, NYC' },
+    { name: 'MediCare Solutions', email: 'info@medicare-solutions.com', company: 'MediCare Solutions', phone: '+1-555-0200', industry: 'Healthcare', status: 'active', portalAccess: true },
+    { name: 'FoodChain Global', email: 'hello@foodchain.io', company: 'FoodChain Global', phone: '+1-555-0300', industry: 'Food & Beverage', status: 'active', portalAccess: false },
+    { name: 'EduTech Labs', email: 'partnerships@edutech.com', company: 'EduTech Labs', phone: '+1-555-0400', industry: 'Education', status: 'prospect', portalAccess: false },
+  ];
+
+  for (const c of clientDefs) {
+    const created = await post(SVC.client, '/clients', { ...c, organizationId: id.org, contactPersonId: id.users[0] });
+    id.clients.push(created.id);
+    console.log(`  ✅ Client: ${c.name}`);
+  }
+
+  // Link clients to projects
+  await post(SVC.client, '/project-clients', { projectId: id.projects[0], clientId: id.clients[0] });
+  await post(SVC.client, '/project-clients', { projectId: id.projects[3], clientId: id.clients[1] });
+  await post(SVC.client, '/project-clients', { projectId: id.projects[1], clientId: id.clients[2] });
+  console.log('  ✅ Project-client links');
+
+  // Feedback
+  const fbDefs = [
+    [0, 0, 5, 'Excellent progress! The team is very responsive.', 'Thank you for the kind words!'],
+    [0, 0, 4, 'Design looks great, minor tweaks needed on mobile.', 'We\'ll address mobile issues this sprint.'],
+    [1, 3, 5, 'Very thorough requirements gathering process.', null],
+    [2, null, 3, 'Would like more frequent status updates.', 'We\'ll switch to bi-weekly updates.'],
+  ];
+  for (const [ci, pi, rating, comment, response] of fbDefs) {
+    await post(SVC.client, '/client-feedback', {
+      clientId: id.clients[ci as number],
+      projectId: pi !== null ? id.projects[pi as number] : null,
+      rating, comment, response,
+    });
+  }
+  console.log('  ✅ Client feedback');
+
+  // Proposals
+  const proposals = [
+    { clientId: id.clients[1], title: 'Healthcare Portal — Phase 1', content: 'Patient registration, appointment scheduling, medical records dashboard. Timeline: 4 months. Budget: $220,000.', status: 'accepted' },
+    { clientId: id.clients[3], title: 'E-Learning Platform Development', content: 'Interactive course platform with video hosting, quizzes, and progress tracking. Timeline: 6 months. Budget: $180,000.', status: 'pending' },
+    { clientId: id.clients[2], title: 'Supply Chain Dashboard', content: 'Real-time inventory tracking and supplier management dashboard. Timeline: 3 months. Budget: $85,000.', status: 'draft' },
+  ];
+  for (const p of proposals) {
+    await post(SVC.client, '/proposals', p);
+    console.log(`  ✅ Proposal: ${p.title}`);
+  }
+}
+
+// ─── 5. KNOWLEDGE HUB ──────────────────────────────────────────────────────────
+async function seedKnowledge() {
+  console.log('\n📚 Seeding Knowledge Hub...');
+
+  // Folders
+  const folderDefs = ['Engineering', 'Design System', 'Policies & HR', 'Project Docs'];
+  for (const name of folderDefs) {
+    const created = await post(SVC.knowledge, '/document-folders', { organizationId: id.org, name });
+    id.folders.push(created.id);
+    console.log(`  ✅ Folder: ${name}`);
+  }
+
+  // Documents
+  const docDefs = [
+    [0, 'API Design Guidelines', '/docs/api-guidelines.pdf'],
+    [0, 'Database Schema Reference', '/docs/db-schema.md'],
+    [0, 'Git Branching Strategy', '/docs/git-workflow.md'],
+    [1, 'Brand Color Palette', '/docs/brand-colors.pdf'],
+    [1, 'Component Library Specs', '/docs/components.pdf'],
+    [2, 'Remote Work Policy', '/docs/remote-policy.pdf'],
+    [2, 'Employee Handbook', '/docs/handbook.pdf'],
+    [3, 'E-Commerce PRD', '/docs/ecommerce-prd.pdf'],
+  ];
+  for (const [fi, name, url] of docDefs) {
+    const created = await post(SVC.knowledge, '/documents', {
+      organizationId: id.org, folderId: id.folders[fi as number],
+      name, url, metadata: { type: (url as string).endsWith('.pdf') ? 'pdf' : 'markdown' },
+    });
+    id.documents.push(created.id);
+  }
+  console.log(`  ✅ Documents (${docDefs.length})`);
+
+  // Document permissions
+  await post(SVC.knowledge, '/document-permissions', { documentId: id.documents[0], userId: id.users[4], permission: 'edit' });
+  await post(SVC.knowledge, '/document-permissions', { documentId: id.documents[5], roleId: id.roles.contributor, permission: 'read' });
+
+  // Document links
+  await post(SVC.knowledge, '/document-links', { documentId: id.documents[7], entityType: 'project', entityId: id.projects[0] });
+
+  // Wiki pages
+  const wikiDefs = [
+    ['Getting Started at Vistone', '# Welcome to Vistone Digital!\n\nThis guide helps new team members get set up quickly.\n\n## First Day\n1. Set up your development environment\n2. Join Slack channels\n3. Review the codebase\n\n## Key Contacts\n- Sarah Chen (Admin)\n- Omar Khalid (Organizer)'],
+    ['Development Environment Setup', '# Development Setup\n\n## Prerequisites\n- Node.js 20+\n- Docker Desktop\n- VS Code with ESLint & Prettier\n- PostgreSQL 15\n\n## Steps\n```bash\ngit clone https://github.com/vistone/server.git\nnpm install\nnx run-many -t serve\n```'],
+    ['Coding Standards', '# Coding Standards\n\n## TypeScript\n- Use strict mode\n- Prefer interfaces over types\n- Use barrel exports\n\n## Git\n- Conventional commits\n- Feature branches from `develop`\n- Squash merge to `main`'],
+    ['Deployment Guide', '# Deployment Process\n\n## Environments\n- `staging` — auto-deploy from `develop`\n- `production` — manual promotion from staging\n\n## CI/CD\nWe use GitHub Actions for all pipelines.'],
+  ];
+  for (const [title, content] of wikiDefs) {
+    const created = await post(SVC.knowledge, '/wiki-pages', { title, content });
+    id.wikis.push(created.id);
+    console.log(`  ✅ Wiki: ${title}`);
+  }
+
+  // Wiki version
+  await post(SVC.knowledge, '/wiki-page-versions', { wikiPageId: id.wikis[1], content: wikiDefs[1][1] + '\n\n## Troubleshooting\n- Port 3000 in use? Kill the process.', version: 2 });
+  console.log('  ✅ Wiki version');
+}
+
+// ─── 6. COMMUNICATION ───────────────────────────────────────────────────────────
+async function seedCommunication() {
+  console.log('\n💬 Seeding Communication Service...');
+
+  const channelDefs = [
+    { name: 'general', type: 'public' },
+    { name: 'engineering', type: 'public', teamId: id.teams[0] },
+    { name: 'design', type: 'public', teamId: id.teams[1] },
+    { name: 'ecommerce-project', type: 'project', projectId: id.projects[0] },
+    { name: 'random', type: 'public' },
+  ];
+
+  for (const ch of channelDefs) {
+    const created = await post(SVC.communication, '/chat-channels', ch);
+    id.channels.push(created.id);
+    console.log(`  ✅ Channel: #${ch.name}`);
+  }
+
+  // Add all users to general & random; relevant users to others
+  for (const uid of id.users) {
+    await post(SVC.communication, '/channel-members', { channelId: id.channels[0], userId: uid, role: 'member' });
+    await post(SVC.communication, '/channel-members', { channelId: id.channels[4], userId: uid, role: 'member' });
+  }
+  for (const ui of [2, 4, 5, 7]) {
+    await post(SVC.communication, '/channel-members', { channelId: id.channels[1], userId: id.users[ui], role: 'member' });
+  }
+  for (const ui of [3, 6]) {
+    await post(SVC.communication, '/channel-members', { channelId: id.channels[2], userId: id.users[ui], role: 'member' });
+  }
+  for (const ui of [2, 4, 5, 6, 8]) {
+    await post(SVC.communication, '/channel-members', { channelId: id.channels[3], userId: id.users[ui], role: 'member' });
+  }
+  console.log('  ✅ Channel members');
+
+  // Messages
+  const msgDefs = [
+    [0, 0, 'Welcome to Vistone Digital! 🎉 Excited to have everyone on board.'],
+    [0, 1, 'Thanks Sarah! Looking forward to building great things together.'],
+    [0, 4, 'Happy to be here! When is our first sprint planning?'],
+    [0, 2, 'Sprint planning is tomorrow at 10 AM. See you all there!'],
+    [1, 4, 'Has anyone tried the new Prisma 6 features? The typed SQL looks amazing.'],
+    [1, 5, 'Yes! The performance improvements are significant too.'],
+    [1, 7, 'I benchmarked it — 40% faster queries with the new engine.'],
+    [3, 2, 'Sprint 3 starts Monday. @Aisha please update the backlog priorities.'],
+    [3, 4, 'On it! I\'ll have everything ready by Friday EOD.'],
+    [3, 6, 'The product detail page mockups are ready for review 🎨'],
+    [4, 9, 'Anyone up for virtual coffee? ☕'],
+    [4, 8, 'Count me in! 3 PM works for me.'],
   ];
 
   const messageIds: string[] = [];
-  for (const message of messages) {
-    const created = await post(SERVICES.communication, '/chat-messages', message);
+  for (const [ci, ui, content] of msgDefs) {
+    const created = await post(SVC.communication, '/chat-messages', {
+      channelId: id.channels[ci as number], senderId: id.users[ui as number], content,
+    });
     messageIds.push(created.id);
-    console.log(`  ✅ Created message`);
   }
+  console.log(`  ✅ Messages (${msgDefs.length})`);
 
-  // Create Message Mentions (matching schema: messageId, userId)
-  await post(SERVICES.communication, '/message-mentions', {
-    messageId: messageIds[5],
-    userId: ids.users[1],
-  });
-  console.log(`  ✅ Created message mention`);
+  // Mentions & attachments
+  await post(SVC.communication, '/message-mentions', { messageId: messageIds[7], userId: id.users[4] });
+  await post(SVC.communication, '/message-attachments', { messageId: messageIds[9], url: '/uploads/product-detail-v3.fig', fileType: 'figma' });
 
-  // Create Communication Log (matching schema: type, details)
-  await post(SERVICES.communication, '/communication-logs', {
-    type: 'email',
-    details: {
-      from: 'noreply@acme.com',
-      to: 'john.admin@acme.com',
-      subject: 'Weekly Report',
-      status: 'sent',
-    },
+  // Communication log
+  await post(SVC.communication, '/communication-logs', {
+    type: 'email', details: { from: 'noreply@vistone.io', to: 'team@vistone.io', subject: 'Sprint 2 Recap', status: 'sent' },
   });
-  console.log(`  ✅ Created communication log`);
+  console.log('  ✅ Mentions, attachments, logs');
 }
 
-async function seedMonitoringService() {
-  console.log('\n📊 Seeding Monitoring & Reporting Service...');
+// ─── 7. MONITORING & REPORTING ──────────────────────────────────────────────────
+async function seedMonitoring() {
+  console.log('\n📊 Seeding Monitoring Service...');
 
-  // Create KPI Definitions (matching schema: name, formula)
-  const kpis = [
+  // KPIs
+  const kpiDefs = [
     { name: 'Sprint Velocity', formula: 'SUM(story_points) WHERE sprint=current' },
-    { name: 'Bug Resolution Time', formula: 'AVG(resolved_at - created_at) WHERE type=bug' },
-    { name: 'Customer Satisfaction', formula: 'AVG(rating) FROM feedback' },
+    { name: 'Bug Resolution Time (hrs)', formula: 'AVG(resolved_at - created_at) WHERE type=bug' },
+    { name: 'Customer Satisfaction Score', formula: 'AVG(rating) FROM client_feedback' },
+    { name: 'Code Review Turnaround (hrs)', formula: 'AVG(reviewed_at - submitted_at)' },
   ];
-
-  const kpiIds: string[] = [];
-  for (const kpi of kpis) {
-    const created = await post(SERVICES.monitoring, '/kpi-definitions', kpi);
-    kpiIds.push(created.id);
-    console.log(`  ✅ Created KPI: ${kpi.name}`);
+  for (const k of kpiDefs) {
+    const created = await post(SVC.monitoring, '/kpi-definitions', k);
+    id.kpis.push(created.id);
+    console.log(`  ✅ KPI: ${k.name}`);
   }
 
-  // Create KPI Measurements (matching schema: kpiId, value, measuredAt)
-  const measurements = [
-    { kpiId: kpiIds[0], value: 48, measuredAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString() },
-    { kpiId: kpiIds[0], value: 52, measuredAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() },
-    { kpiId: kpiIds[0], value: 55, measuredAt: new Date().toISOString() },
-    { kpiId: kpiIds[1], value: 18, measuredAt: new Date().toISOString() },
-    { kpiId: kpiIds[2], value: 85, measuredAt: new Date().toISOString() },
+  // Measurements (trend data)
+  const measurementData = [
+    [0, [42, 45, 48, 52, 55, 58]], // velocity trending up
+    [1, [24, 22, 18, 16, 14, 12]], // bug fix time trending down
+    [2, [78, 80, 82, 85, 87, 90]], // satisfaction trending up
+    [3, [8, 7, 6, 5, 4, 4]],       // review time trending down
   ];
-
-  for (const measurement of measurements) {
-    await post(SERVICES.monitoring, '/kpi-measurements', measurement);
+  for (const [ki, values] of measurementData) {
+    for (let w = 0; w < (values as number[]).length; w++) {
+      await post(SVC.monitoring, '/kpi-measurements', {
+        kpiId: id.kpis[ki as number], value: (values as number[])[w], measuredAt: daysAgo((5 - w) * 7),
+      });
+    }
   }
-  console.log(`  ✅ Created KPI measurements`);
+  console.log('  ✅ KPI measurements');
 
-  // Create Report Templates (matching schema: name, config)
-  const templates = [
-    { name: 'Weekly Status Report', config: { sections: ['progress', 'blockers'], format: 'markdown' } },
-    { name: 'Sprint Retrospective', config: { sections: ['positives', 'improvements'], format: 'markdown' } },
+  // Report templates
+  const tplDefs = [
+    { name: 'Weekly Status Report', config: { sections: ['progress', 'blockers', 'next_week'], format: 'pdf' } },
+    { name: 'Sprint Retrospective', config: { sections: ['went_well', 'improve', 'action_items'], format: 'pdf' } },
+    { name: 'Monthly Executive Summary', config: { sections: ['kpis', 'financials', 'risks'], format: 'pdf' } },
   ];
-
-  const templateIds: string[] = [];
-  for (const template of templates) {
-    const created = await post(SERVICES.monitoring, '/report-templates', template);
-    templateIds.push(created.id);
-    console.log(`  ✅ Created report template: ${template.name}`);
-  }
-
-  // Create Generated Report (matching schema: templateId, url, format)
-  await post(SERVICES.monitoring, '/generated-reports', {
-    templateId: templateIds[0],
-    url: '/reports/weekly-status-2024-01.pdf',
-    format: 'pdf',
-  });
-  console.log(`  ✅ Created generated report`);
-
-  // Create Member Performance (matching schema: userId, metric, value, period)
-  await post(SERVICES.monitoring, '/member-performance', {
-    userId: ids.users[1],
-    metric: 'tasks_completed',
-    value: 8,
-    period: 'week',
-  });
-  console.log(`  ✅ Created member performance record`);
-
-  // Create AI Conversation (matching schema: userId, context, tokensUsed)
-  await post(SERVICES.monitoring, '/ai-conversations', {
-    userId: ids.users[0],
-    context: {
-      projectId: ids.projects[0],
-      messages: [
-        { role: 'user', content: 'What is the status of the E-Commerce project?' },
-        { role: 'assistant', content: 'The E-Commerce Platform project is currently in progress with 65% completion.' },
-      ],
-    },
-    tokensUsed: 150,
-  });
-  console.log(`  ✅ Created AI conversation`);
-
-  // Create Automation Rules (matching schema: name, trigger, actions, isActive)
-  const rules = [
-    { name: 'Auto-assign reviewer', trigger: { event: 'pr_opened', conditions: { branch: 'main' } }, actions: { assign: 'team_lead' }, isActive: true },
-    { name: 'Notify on blocker', trigger: { event: 'task_blocked' }, actions: { notify: ['manager', 'team_lead'] }, isActive: true },
-  ];
-
-  const ruleIds: string[] = [];
-  for (const rule of rules) {
-    const created = await post(SERVICES.monitoring, '/automation-rules', rule);
-    ruleIds.push(created.id);
-    console.log(`  ✅ Created automation rule: ${rule.name}`);
+  for (const t of tplDefs) {
+    const created = await post(SVC.monitoring, '/report-templates', t);
+    id.templates.push(created.id);
+    console.log(`  ✅ Template: ${t.name}`);
   }
 
-  // Create Automation Log (matching schema: ruleId, status, details)
-  await post(SERVICES.monitoring, '/automation-logs', {
-    ruleId: ruleIds[0],
-    status: 'success',
-    details: { prNumber: 42, assignedTo: ids.users[0] },
-  });
-  console.log(`  ✅ Created automation log`);
-
-  // Create Dashboard (matching schema: userId, name, layout)
-  const dashboard = await post(SERVICES.monitoring, '/dashboards', {
-    userId: ids.users[0],
-    name: 'Project Overview',
-    layout: { columns: 12, rows: 8 },
-  });
-  console.log(`  ✅ Created dashboard`);
-
-  // Create Dashboard Widgets (matching schema: dashboardId, type, config)
-  const widgets = [
-    { dashboardId: dashboard.id, type: 'chart', config: { title: 'Sprint Velocity', chartType: 'line', kpiId: kpiIds[0] } },
-    { dashboardId: dashboard.id, type: 'metric', config: { title: 'Tasks Completed', source: 'tasks', filter: 'completed' } },
-    { dashboardId: dashboard.id, type: 'list', config: { title: 'Recent Activity', source: 'activity_logs', limit: 10 } },
-  ];
-
-  for (const widget of widgets) {
-    await post(SERVICES.monitoring, '/dashboard-widgets', widget);
-    console.log(`  ✅ Created widget: ${widget.config.title}`);
-  }
-}
-
-async function seedNotificationService() {
-  console.log('\n🔔 Seeding Notification Service...');
-
-  // Create Notification Templates (matching schema: name, content, channels as Json)
-  const templates = [
-    { name: 'Task Assigned', content: 'You have been assigned to task: {{taskTitle}}', channels: { types: ['email', 'push', 'in_app'] } },
-    { name: 'Mention', content: '{{mentionedBy}} mentioned you in {{context}}', channels: { types: ['push', 'in_app'] } },
-    { name: 'Project Update', content: 'Project {{projectName}} has been updated: {{updateSummary}}', channels: { types: ['email', 'in_app'] } },
-    { name: 'Deadline Reminder', content: 'Task "{{taskTitle}}" is due in {{timeRemaining}}', channels: { types: ['email', 'push', 'in_app'] } },
-  ];
-
-  for (const template of templates) {
-    await post(SERVICES.notification, '/notification-templates', template);
-    console.log(`  ✅ Created notification template: ${template.name}`);
-  }
-
-  // Create Notification Preferences
-  for (const userId of ids.users.slice(0, 3)) {
-    await post(SERVICES.notification, '/notification-preferences', {
-      userId,
-      preferences: {
-        email: { enabled: true, frequency: 'immediate' },
-        push: { enabled: true },
-        inApp: { enabled: true },
-        digest: { enabled: false, time: '09:00' },
-      },
+  // Generated reports
+  for (let w = 0; w < 4; w++) {
+    await post(SVC.monitoring, '/generated-reports', {
+      templateId: id.templates[0], url: `/reports/weekly-status-week-${w + 1}.pdf`, format: 'pdf',
     });
   }
-  console.log(`  ✅ Created notification preferences`);
+  console.log('  ✅ Generated reports (4)');
 
-  // Create Notifications
-  const notifications = [
-    { userId: ids.users[1], content: 'You have been assigned to task: Implement authentication', type: 'task_assigned', isRead: true },
-    { userId: ids.users[1], content: 'John mentioned you in #project-ecommerce', type: 'mention', isRead: true },
-    { userId: ids.users[1], content: 'Task "Implement product catalog" is due in 2 days', type: 'deadline', isRead: false },
-    { userId: ids.users[0], content: 'New client feedback received on E-Commerce Platform', type: 'feedback', isRead: false },
-    { userId: ids.users[3], content: 'You have been added to project: Mobile App Redesign', type: 'project_added', isRead: false },
-  ];
-
-  for (const notification of notifications) {
-    await post(SERVICES.notification, '/notifications', notification);
-    console.log(`  ✅ Created notification for user`);
+  // Member performance
+  for (const [ui, tasks, hours] of [[4, 12, 85], [5, 9, 72], [7, 10, 78], [6, 8, 65], [8, 11, 80]]) {
+    await post(SVC.monitoring, '/member-performance', { userId: id.users[ui as number], metric: 'tasks_completed', value: tasks, period: 'month' });
+    await post(SVC.monitoring, '/member-performance', { userId: id.users[ui as number], metric: 'hours_logged', value: hours, period: 'month' });
   }
+  console.log('  ✅ Member performance');
+
+  // AI conversations
+  await post(SVC.monitoring, '/ai-conversations', {
+    userId: id.users[0], tokensUsed: 450,
+    context: {
+      messages: [
+        { role: 'user', content: 'What is the status of E-Commerce Platform v2?' },
+        { role: 'assistant', content: 'The project is 35% complete with 3 tasks in progress and 4 tasks pending. MVP milestone is on track.' },
+      ]
+    },
+  });
+  await post(SVC.monitoring, '/ai-conversations', {
+    userId: id.users[2], tokensUsed: 320,
+    context: {
+      messages: [
+        { role: 'user', content: 'Show me the sprint velocity trend' },
+        { role: 'assistant', content: 'Sprint velocity has been trending upward: 42 → 45 → 48 → 52 → 55 → 58 points over the last 6 sprints.' },
+      ]
+    },
+  });
+  console.log('  ✅ AI conversations');
+
+  // Automation rules
+  const ruleDefs = [
+    { name: 'Auto-assign code reviewer', trigger: { event: 'pr_opened', conditions: { branch: 'develop' } }, actions: { assign: 'tech_lead', notify: true }, isActive: true },
+    { name: 'Escalate overdue tasks', trigger: { event: 'task_overdue', conditions: { daysOverdue: 3 } }, actions: { notify: ['manager', 'organizer'], priority: 'urgent' }, isActive: true },
+    { name: 'Weekly digest email', trigger: { event: 'schedule', cron: '0 9 * * 1' }, actions: { sendDigest: true, recipients: 'all_members' }, isActive: true },
+  ];
+  for (const r of ruleDefs) {
+    const created = await post(SVC.monitoring, '/automation-rules', r);
+    id.rules.push(created.id);
+    console.log(`  ✅ Rule: ${r.name}`);
+  }
+
+  // Automation logs
+  for (let i = 0; i < 3; i++) {
+    await post(SVC.monitoring, '/automation-logs', {
+      ruleId: id.rules[i % id.rules.length],
+      status: i < 2 ? 'success' : 'failed',
+      details: { executedAt: daysAgo(i), affectedItems: 3 - i },
+    });
+  }
+  console.log('  ✅ Automation logs');
+
+  // Dashboards
+  for (const [ui, name] of [[0, 'Executive Overview'], [2, 'Engineering Dashboard']]) {
+    const dash = await post(SVC.monitoring, '/dashboards', {
+      userId: id.users[ui as number], name, layout: { columns: 12, rows: 8 },
+    });
+    id.dashboards.push(dash.id);
+    console.log(`  ✅ Dashboard: ${name}`);
+  }
+
+  // Widgets
+  const widgetDefs = [
+    [0, 'chart', { title: 'Sprint Velocity Trend', chartType: 'line', kpiId: id.kpis[0] }],
+    [0, 'metric', { title: 'Active Projects', source: 'projects', filter: 'active' }],
+    [0, 'list', { title: 'Recent Activity', source: 'activity_logs', limit: 10 }],
+    [0, 'chart', { title: 'Satisfaction Score', chartType: 'gauge', kpiId: id.kpis[2] }],
+    [1, 'chart', { title: 'Bug Resolution Time', chartType: 'line', kpiId: id.kpis[1] }],
+    [1, 'list', { title: 'Overdue Tasks', source: 'tasks', filter: 'overdue' }],
+    [1, 'metric', { title: 'Code Review Time', kpiId: id.kpis[3] }],
+  ];
+  for (const [di, type, config] of widgetDefs) {
+    await post(SVC.monitoring, '/dashboard-widgets', { dashboardId: id.dashboards[di as number], type, config });
+  }
+  console.log(`  ✅ Dashboard widgets (${widgetDefs.length})`);
+
+  // Report schedules
+  await post(SVC.monitoring, '/report-schedules', {
+    organizationId: id.org, templateId: id.templates[0], name: 'Weekly Status — Auto',
+    cronExpression: '0 9 * * 1', recipients: [`sarah.organizer1.${runSuffix}@vistone.io`, `omar.organizer2.${runSuffix}@vistone.io`],
+    format: 'pdf', isActive: true,
+  });
+  await post(SVC.monitoring, '/report-schedules', {
+    organizationId: id.org, templateId: id.templates[2], name: 'Monthly Executive — Auto',
+    cronExpression: '0 9 1 * *', recipients: [`sarah.organizer1.${runSuffix}@vistone.io`],
+    format: 'pdf', isActive: true,
+  });
+  console.log('  ✅ Report schedules');
 }
 
-async function main() {
-  console.log('🚀 Starting database seeding...\n');
-  console.log('Make sure all microservices are running:');
-  console.log('  - Auth Service (3001)');
-  console.log('  - Workforce Service (3002)');
-  console.log('  - Project Service (3003)');
-  console.log('  - Client Service (3004)');
-  console.log('  - Knowledge Hub (3005)');
-  console.log('  - Communication (3006)');
-  console.log('  - Monitoring (3007)');
-  console.log('  - Notification (3008)');
-  console.log('\nWaiting 2 seconds before starting...\n');
+// ─── 8. NOTIFICATION SERVICE ────────────────────────────────────────────────────
+async function seedNotifications() {
+  console.log('\n🔔 Seeding Notification Service...');
 
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  // Templates
+  const tplDefs = [
+    { name: 'Task Assigned', content: 'You have been assigned to: {{taskTitle}}', channels: { types: ['email', 'push', 'in_app'] } },
+    { name: 'Mention', content: '{{user}} mentioned you in {{context}}', channels: { types: ['push', 'in_app'] } },
+    { name: 'Project Update', content: 'Project "{{projectName}}" updated: {{summary}}', channels: { types: ['email', 'in_app'] } },
+    { name: 'Deadline Reminder', content: '"{{taskTitle}}" is due in {{timeLeft}}', channels: { types: ['email', 'push', 'in_app'] } },
+    { name: 'New Feedback', content: 'New feedback from {{clientName}} on {{projectName}}', channels: { types: ['email', 'in_app'] } },
+  ];
+  for (const t of tplDefs) {
+    await post(SVC.notification, '/notification-templates', t);
+    console.log(`  ✅ Template: ${t.name}`);
+  }
+
+  // Preferences for all users
+  for (const uid of id.users) {
+    await post(SVC.notification, '/notification-preferences', {
+      userId: uid,
+      preferences: { email: { enabled: true, frequency: 'immediate' }, push: { enabled: true }, inApp: { enabled: true } },
+    });
+  }
+  console.log('  ✅ Preferences (all users)');
+
+  // Notifications
+  const notifDefs = [
+    [4, 'You have been assigned to: Build product listing page', 'task_assigned', true],
+    [4, 'Emily mentioned you in #ecommerce-project', 'mention', true],
+    [5, 'You have been assigned to: Shopping cart & checkout flow', 'task_assigned', false],
+    [6, 'New comment on your design mockup', 'comment', false],
+    [2, 'New feedback from RetailMax Inc on E-Commerce Platform v2', 'feedback', false],
+    [0, 'Sprint 3 retrospective starts in 1 hour', 'reminder', false],
+    [4, '"Payment gateway integration" is due in 5 days', 'deadline', false],
+    [8, 'You have been added to project: API Gateway Migration', 'project_added', true],
+    [7, 'Code review requested on PR #142', 'review_request', false],
+    [3, 'Design approval needed for Mobile App Redesign', 'approval', false],
+    [0, 'Weekly status report generated successfully', 'report', true],
+    [1, 'New member joined: David Okonkwo', 'member_joined', true],
+  ];
+  for (const [ui, content, type, isRead] of notifDefs) {
+    await post(SVC.notification, '/notifications', { userId: id.users[ui as number], content, type, isRead });
+  }
+  console.log(`  ✅ Notifications (${notifDefs.length})`);
+}
+
+// ─── MAIN ───────────────────────────────────────────────────────────────────────
+async function main() {
+  console.log('🚀 Vistone Digital — Database Seed\n');
+  console.log('Ensure all services are running:');
+  console.log('  Auth (3001) | Workforce (3002) | Project (3003) | Client (3004)');
+  console.log('  Knowledge (3005) | Communication (3006) | Monitoring (3007) | Notification (3008)');
+  console.log('\nStarting in 2 seconds...\n');
+  await new Promise(r => setTimeout(r, 2000));
 
   try {
-    await seedAuthService();
-    await seedWorkforceService();
-    await seedProjectService();
-    await seedClientService();
-    await seedKnowledgeService();
-    await seedCommunicationService();
-    await seedMonitoringService();
-    await seedNotificationService();
+    await seedAuth();
+    await seedWorkforce();
+    await seedProjects();
+    await seedClients();
+    await seedKnowledge();
+    await seedCommunication();
+    await seedMonitoring();
+    await seedNotifications();
 
-    console.log('\n✅ Database seeding completed successfully!');
-    console.log('\n📊 Summary:');
-    console.log(`  - Organizations: ${ids.organizations.length}`);
-    console.log(`  - Users: ${ids.users.length}`);
-    console.log(`  - Roles: ${ids.roles.length}`);
-    console.log(`  - Teams: ${ids.teams.length}`);
-    console.log(`  - Projects: ${ids.projects.length}`);
-    console.log(`  - Tasks: ${ids.tasks.length}`);
-    console.log(`  - Clients: ${ids.clients.length}`);
-    console.log(`  - Channels: ${ids.channels.length}`);
-    console.log(`  - Documents: ${ids.documents.length}`);
+    console.log('\n' + '═'.repeat(60));
+    console.log('✅ SEED COMPLETED SUCCESSFULLY');
+    console.log('═'.repeat(60));
+    console.log(`\n📊 Summary — Organization: Vistone Digital`);
+    console.log(`  Users:       ${id.users.length} (2 organizers, 2 managers, 6 contributors)`);
+    console.log(`  Teams:       ${id.teams.length}`);
+    console.log(`  Projects:    ${id.projects.length}`);
+    console.log(`  Tasks:       ${id.tasks.length}`);
+    console.log(`  Clients:     ${id.clients.length}`);
+    console.log(`  Channels:    ${id.channels.length}`);
+    console.log(`  Documents:   ${id.documents.length}`);
+    console.log(`  Wiki Pages:  ${id.wikis.length}`);
+    console.log(`  Dashboards:  ${id.dashboards.length}`);
+    console.log(`  KPIs:        ${id.kpis.length}`);
+
+    console.log(`\n📧 Login credentials (all use password: Password123!):`);
+    console.log(`  Organizers:  sarah.organizer1.${runSuffix}@vistone.io / omar.organizer2.${runSuffix}@vistone.io`);
+    console.log(`  Manager:     emily.manager.${runSuffix}@vistone.io / james.manager.${runSuffix}@vistone.io`);
+    console.log(`  Contributor: aisha.dev.${runSuffix}@vistone.io / lucas.dev.${runSuffix}@vistone.io / sofia.design.${runSuffix}@vistone.io`);
+    console.log(`               raj.dev.${runSuffix}@vistone.io / mei.qa.${runSuffix}@vistone.io / david.content.${runSuffix}@vistone.io`);
   } catch (error) {
     console.error('\n❌ Seeding failed:', error);
     process.exit(1);
