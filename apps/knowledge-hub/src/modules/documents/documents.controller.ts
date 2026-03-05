@@ -54,9 +54,9 @@ export async function updateDocumentHandler(req: Request, res: Response) {
 
 export async function deleteDocumentHandler(req: Request, res: Response) {
     try {
-    await prisma.document.delete({
-      where: { id: req.params.id },
-    });
+    await prisma.documentPermission.deleteMany({ where: { documentId: req.params.id } });
+    await prisma.documentLink.deleteMany({ where: { documentId: req.params.id } });
+    await prisma.document.delete({ where: { id: req.params.id } });
     res.json({ success: true, message: 'Document deleted' });
     } catch (error) {
     console.error(error);
