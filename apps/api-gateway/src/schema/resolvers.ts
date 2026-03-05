@@ -1320,11 +1320,12 @@ export const resolvers = {
             }
           }
 
-          // Delete organization roles
+          // Delete organization roles (skip system roles which cannot be deleted)
           try {
             const roles = await authClient.get(`/roles?organizationId=${orgId}`);
             if (Array.isArray(roles)) {
               for (const role of roles) {
+                if (role.isSystem) continue;
                 await authClient.delete('/roles', role.id);
               }
             }
