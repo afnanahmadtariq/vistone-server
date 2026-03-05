@@ -25,6 +25,10 @@ app.get('/', (req, res) => {
   res.send({ message: 'Monitoring & Reporting Service' });
 });
 
+app.get('/health', (req, res) => {
+  res.send({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 app.use('/kpi-definitions', kpiDefinitionsRouter);
 app.use('/kpi-measurements', kpiMeasurementsRouter);
 app.use('/report-templates', reportTemplatesRouter);

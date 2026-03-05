@@ -18,6 +18,10 @@ app.get('/', (req, res) => {
   res.send({ message: 'Notification Service' });
 });
 
+app.get('/health', (req, res) => {
+  res.send({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 app.use('/notification-templates', notificationTemplatesRouter);
 app.use('/notification-preferences', notificationPreferencesRouter);
 app.use('/notifications', notificationsRouter);
