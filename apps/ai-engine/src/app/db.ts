@@ -3,6 +3,7 @@
  * Single pg.Pool + lazy Prisma initialization.
  * All database access goes through this module.
  */
+import * as path from 'path';
 import { Pool } from 'pg';
 import { config } from './config';
 
@@ -36,9 +37,9 @@ export async function getPrisma() {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore - dynamic Prisma client import
         const { PrismaPg } = await import('@prisma/adapter-pg');
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore - dynamic import into node_modules
-        const { PrismaClient } = await import('../../node_modules/.prisma/ai-engine-client/index.js');
+        // Use path.join + require to resolve at runtime from cwd, not relative to source file
+        const clientPath = path.join(process.cwd(), 'node_modules', '.prisma', 'ai-engine-client');
+        const { PrismaClient } = require(clientPath);
         const adapter = new PrismaPg(getPool());
         prismaClient = new PrismaClient({ adapter });
     }
