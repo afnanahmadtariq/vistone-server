@@ -425,5 +425,25 @@ export async function getIndexingStats(orgId: string) {
     };
 }
 
+// ── Remove a Document ───────────────────────────────────────────
+
+export async function removeDocument(sourceSchema: string, sourceTable: string, sourceId: string): Promise<boolean> {
+    const prisma = await getPrisma();
+    try {
+        await prisma.ragDocument.delete({
+            where: {
+                sourceSchema_sourceTable_sourceId: {
+                    sourceSchema,
+                    sourceTable,
+                    sourceId,
+                },
+            },
+        });
+        return true;
+    } catch {
+        return false; // Not found or already deleted
+    }
+}
+
 // Re-export for route use
 export { indexDocument, type DocumentToIndex };

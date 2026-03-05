@@ -45,6 +45,8 @@ export interface ChatResponse {
     answer: string;
     sessionId: string;
     sources: SourceReference[];
+    isOutOfScope?: boolean;
+    isActionResponse?: boolean;
     actionResult?: ActionResult;
 }
 

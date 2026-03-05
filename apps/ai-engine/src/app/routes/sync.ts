@@ -18,6 +18,7 @@ import {
   syncProposals,
   getIndexingStats,
   indexDocument,
+  removeDocument,
   type DocumentToIndex,
 } from '../services/sync.service';
 
@@ -117,6 +118,29 @@ export default async function syncRoutes(fastify: FastifyInstance) {
       return reply.send({ indexed });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Indexing failed';
+      return reply.status(500).send({ error: message });
+    }
+  });
+
+  // ── POST /api/sync/document/remove ────────────────────────────
+  fastify.post<{
+    Body: { sourceSchema: string; sourceTable: string; sourceId: string };
+  }>('/api/sync/document/remove', async (request, reply) => {
+    if (!request.user) {
+      return reply.status(401).send({ error: 'Authentication required' });
+    }
+
+    if (!hasPermission(request.user, 'settings', 'update')) {
+      return reply.status(403).send({ error: 'Forbidden: settings:update permission required' });
+    }
+
+    const { sourceSchema, sourceTable, sourceId } = request.body;
+
+    try {
+      const removed = await removeDocument(sourceSchema, sourceTable, sourceId);
+      return reply.send({ removed });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Removal failed';
       return reply.status(500).send({ error: message });
     }
   });
