@@ -10,6 +10,7 @@ import {
     ROLE_NAMES,
     hasPermission,
     isValidRole,
+    getDefaultPermissions,
     ResourceType,
     PermissionAction,
     RoleName,
@@ -54,7 +55,7 @@ export function requirePermission(resource: ResourceType, action: PermissionActi
         }
 
         // Check if role has the required permission
-        if (!hasPermission(user.role, resource, action)) {
+        if (!hasPermission(getDefaultPermissions(user.role), resource, action)) {
             res.status(403).json({
                 error: 'Access denied',
                 message: `Role '${user.role}' does not have '${action}' permission for '${resource}'`,
