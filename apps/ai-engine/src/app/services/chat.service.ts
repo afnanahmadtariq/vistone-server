@@ -116,6 +116,7 @@ export async function chat(
             answer: "I'm designed to help with your organization's workspace — projects, tasks, teams, and more. I can't help with that topic.",
             sessionId: sid,
             sources: [],
+            isOutOfScope: true,
         };
     }
 
@@ -174,7 +175,7 @@ async function handleInfoQuery(
         sources,
     });
 
-    return { answer, sessionId, sources };
+    return { answer, sessionId, sources, isActionResponse: false };
 }
 
 // ── Action Query (Agent) ────────────────────────────────────────
@@ -215,6 +216,7 @@ You have access to tools to perform actions. Use them to fulfill the user's requ
         answer: result.response,
         sessionId,
         sources,
+        isActionResponse: true,
         actionResult: {
             success: result.success,
             toolsUsed: result.toolsUsed,

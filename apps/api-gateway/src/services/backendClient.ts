@@ -44,6 +44,19 @@ class ServiceClient {
     }
   }
 
+  async getWithAuth(endpoint: string, token: string): Promise<ServiceRecord | ServiceRecord[]> {
+    try {
+      const response = await this.client.get(endpoint, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      return response.data;
+    } catch (error) {
+      this.handleError(error, 'GET');
+    }
+  }
+
   async getById(endpoint: string, id: string): Promise<ServiceRecord> {
     try {
       const response = await this.client.get(`${endpoint}/${id}`);
@@ -87,6 +100,19 @@ class ServiceClient {
   async delete(endpoint: string, id: string): Promise<ServiceRecord> {
     try {
       const response = await this.client.delete(`${endpoint}/${id}`);
+      return response.data;
+    } catch (error) {
+      this.handleError(error, 'DELETE');
+    }
+  }
+
+  async deleteWithAuth(endpoint: string, id: string, token: string): Promise<ServiceRecord> {
+    try {
+      const response = await this.client.delete(`${endpoint}/${id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       return response.data;
     } catch (error) {
       this.handleError(error, 'DELETE');

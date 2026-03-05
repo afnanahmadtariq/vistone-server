@@ -674,7 +674,7 @@ export const resolvers = {
     // AI Engine
     aiChatStats: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
       await requireOrganization(context, organizationId);
-      return aiEngineClient.get(`/api/chat/stats/${organizationId}`);
+      return aiEngineClient.getWithAuth(`/api/sync/stats/${organizationId}`, context.token || '');
     },
 
     // Analytics & Dashboard
@@ -2474,28 +2474,28 @@ export const resolvers = {
     // AI Engine
     aiChat: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await validateAiRequest(context, input.organizationId, input.userId);
-      return aiEngineClient.post('/api/agent/query', input);
+      return aiEngineClient.postWithAuth('/api/chat', input, context.token || '');
     },
     aiClearHistory: async (_: unknown, { sessionId }: { sessionId: string }, context: Context) => {
       await requireAuth(context);
-      await aiEngineClient.delete('/api/chat/history', sessionId);
+      await aiEngineClient.deleteWithAuth('/api/chat/history', sessionId, context.token || '');
       return { message: 'Conversation history cleared' };
     },
     aiSyncAll: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
       await requireOrganization(context, organizationId);
-      return aiEngineClient.post('/api/sync/all', { organizationId });
+      return aiEngineClient.postWithAuth('/api/sync/all', { organizationId }, context.token || '');
     },
     aiSyncType: async (_: unknown, { organizationId, type }: { organizationId: string; type: string }, context: Context) => {
       await requireOrganization(context, organizationId);
-      return aiEngineClient.post(`/api/sync/${type}`, { organizationId });
+      return aiEngineClient.postWithAuth(`/api/sync/${type}`, { organizationId }, context.token || '');
     },
     aiIndexDocument: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requireOrganization(context, input.organizationId);
-      return aiEngineClient.post('/api/index/document', input);
+      return aiEngineClient.postWithAuth('/api/sync/document', input, context.token || '');
     },
     aiRemoveDocument: async (_: unknown, { sourceSchema, sourceTable, sourceId }: { sourceSchema: string; sourceTable: string; sourceId: string }, context: Context) => {
       await requireAuth(context);
-      return aiEngineClient.post('/api/index/document/remove', { sourceSchema, sourceTable, sourceId });
+      return aiEngineClient.postWithAuth('/api/sync/document/remove', { sourceSchema, sourceTable, sourceId }, context.token || '');
     },
   },
 };
