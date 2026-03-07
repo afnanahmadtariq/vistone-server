@@ -175,7 +175,7 @@ async function handleInfoQuery(
         sources,
     });
 
-    return { answer, sessionId, sources, isActionResponse: false };
+    return { answer, sessionId, sources, isOutOfScope: false, isActionResponse: false };
 }
 
 // ── Action Query (Agent) ────────────────────────────────────────
@@ -216,6 +216,7 @@ You have access to tools to perform actions. Use them to fulfill the user's requ
         answer: result.response,
         sessionId,
         sources,
+        isOutOfScope: false,
         isActionResponse: true,
         actionResult: {
             success: result.success,

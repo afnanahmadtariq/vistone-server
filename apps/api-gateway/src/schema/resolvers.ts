@@ -2475,7 +2475,8 @@ export const resolvers = {
     // AI Engine
     aiChat: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await validateAiRequest(context, input.organizationId, input.userId);
-      return aiEngineClient.postWithAuth('/api/chat', input, context.token || '');
+      const result = await aiEngineClient.postWithAuth('/api/chat', input, context.token || '');
+      return { success: true, data: result };
     },
     aiClearHistory: async (_: unknown, { sessionId }: { sessionId: string }, context: Context) => {
       await requireAuth(context);
