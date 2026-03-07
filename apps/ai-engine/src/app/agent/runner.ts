@@ -109,6 +109,10 @@ export async function runAgent(
         iterations++;
 
         const response = await llmWithTools.invoke(messages);
+        // Ensure content is not empty to avoid Mistral rejecting the assistant message
+        if (!response.content || response.content === "") {
+            response.content = " ";
+        }
         messages.push(response);
 
         // Check if LLM wants to call tools
@@ -130,7 +134,8 @@ export async function runAgent(
             if (!tool) {
                 messages.push(
                     new ToolMessage({
-                        toolCallId: toolCall.id,
+                        tool_call_id: toolCall.id,
+                        name: toolCall.name,
                         content: JSON.stringify({ error: `Tool "${toolCall.name}" not available.` }),
                     })
                 );
@@ -141,13 +146,14 @@ export async function runAgent(
                 const result = await tool.invoke(toolCall.args);
                 toolsUsed.push(toolCall.name);
                 messages.push(
-                    new ToolMessage({ toolCallId: toolCall.id, content: result })
+                    new ToolMessage({ tool_call_id: toolCall.id, name: toolCall.name, content: result })
                 );
             } catch (err: unknown) {
                 const message = err instanceof Error ? err.message : 'Tool execution failed';
                 messages.push(
                     new ToolMessage({
-                        toolCallId: toolCall.id,
+                        tool_call_id: toolCall.id,
+                        name: toolCall.name,
                         content: JSON.stringify({ error: message }),
                     })
                 );
