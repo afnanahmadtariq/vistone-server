@@ -48,6 +48,7 @@ export const emailTemplates = {
     inviterName: string;
     organizationName: string;
     inviteLink: string;
+    role?: string;
     recipientName?: string;
   }) => ({
     subject: `You've been invited to join ${data.organizationName} on Vistone`,
@@ -75,7 +76,7 @@ export const emailTemplates = {
                 Hi${data.recipientName ? ` ${data.recipientName}` : ''},
               </p>
               <p style="margin: 0 0 15px; color: #52525b; font-size: 16px; line-height: 1.6;">
-                <strong>${data.inviterName}</strong> has invited you to join <strong>${data.organizationName}</strong> on Vistone - the modern project management platform.
+                <strong>${data.inviterName}</strong> has invited you to join <strong>${data.organizationName}</strong> as a <strong>${data.role || 'Member'}</strong> on Vistone - the modern project management platform.
               </p>
               <p style="margin: 0 0 30px; color: #52525b; font-size: 16px; line-height: 1.6;">
                 Click the button below to accept the invitation and get started:

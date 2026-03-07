@@ -39,17 +39,20 @@ export async function getCurrentUser(context: AuthContext): Promise<AuthUser | n
     return null;
   }
 
+  const requestedOrgId = context.headers['x-organization-id'] as string || '';
+  const cacheKey = `${context.token}|${requestedOrgId}`;
+
   // Check cache first
-  const cached = authCache.get(context.token);
+  const cached = authCache.get(cacheKey);
   if (cached && cached.expiresAt > new Date()) {
     return cached.user;
   }
 
   try {
-    const user = await authClient.postWithAuth('/auth/me', {}, context.token) as AuthUser;
+    const user = await authClient.postWithAuth('/auth/me', { organizationId: requestedOrgId }, context.token) as AuthUser;
 
     // Cache the user
-    authCache.set(context.token, {
+    authCache.set(cacheKey, {
       user,
       expiresAt: new Date(Date.now() + CACHE_TTL),
     });

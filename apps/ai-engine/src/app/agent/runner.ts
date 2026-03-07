@@ -7,6 +7,7 @@ import { config } from '../config';
 import type { AuthenticatedUser, ActionResult } from '../types';
 import { filterToolsByPermission } from '../services/rbac.service';
 import { getAllToolDefs, type ToolDef } from './tools';
+import { TOOL_PERMISSIONS } from '../types';
 
 // ── Lazy LangChain imports ─────────────────────────────────────
 
@@ -73,16 +74,26 @@ function toLangChainTools(defs: ToolDef[]) {
 export async function runAgent(
     user: AuthenticatedUser,
     query: string,
-    systemPrompt: string
+    systemPrompt: string,
+    history: { role: string; content: string }[] = [],
+    readOnly = false
 ): Promise<ActionResult & { response: string }> {
     // Load LangChain lazily
     await loadLangChain();
 
     // Get tools filtered by user's RBAC permissions
     const allDefs = getAllToolDefs();
-    const allowedDefs = filterToolsByPermission(user, allDefs);
+    let allowedDefs = filterToolsByPermission(user, allDefs);
 
-    if (allowedDefs.length === 0) {
+    // If readOnly is true, filter out non-read tools
+    if (readOnly) {
+        allowedDefs = allowedDefs.filter((d) => {
+            const perm = TOOL_PERMISSIONS[d.name];
+            return perm && perm.action === 'read';
+        });
+    }
+
+    if (allowedDefs.length === 0 && !readOnly) {
         return {
             success: false,
             response: "I don't have any tools available for your permission level. Please contact your administrator.",
@@ -91,15 +102,27 @@ export async function runAgent(
         };
     }
 
-    const tools = toLangChainTools(allowedDefs);
+    // No tools available in ReadOnly is fine (fall back to pure LLM/RAG if needed)
+    const tools = allowedDefs.length > 0 ? toLangChainTools(allowedDefs) : [];
     const llm = getLLM();
-    const llmWithTools = llm.bindTools(tools);
+    // Only bind if there are tools
+    const llmWithTools = tools.length > 0 ? llm.bindTools(tools) : llm;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const messages: any[] = [
-        new SystemMessage(systemPrompt),
-        new HumanMessage(query),
-    ];
+    const messages: any[] = [new SystemMessage(systemPrompt)];
+
+    // Add history support
+    for (const h of history) {
+        if (h.role === 'user') {
+            messages.push(new HumanMessage(h.content));
+        } else {
+            // Simply use assistant for history content
+            messages.push({ role: 'assistant', content: h.content });
+        }
+    }
+
+    // Add current query
+    messages.push(new HumanMessage(query));
 
     const toolsUsed: string[] = [];
     let iterations = 0;
