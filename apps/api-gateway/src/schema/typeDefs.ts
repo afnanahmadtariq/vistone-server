@@ -26,6 +26,7 @@ export const typeDefs = gql`
     lastName: String
     email: String!
     role: String
+    jobTitle: String
     avatar: String
     status: String
     skills: [String]
@@ -60,6 +61,7 @@ export const typeDefs = gql`
     firstName: String
     lastName: String
     role: String
+    jobTitle: String
     avatar: String
     status: String
     skills: [String]
@@ -154,6 +156,7 @@ export const typeDefs = gql`
     id: ID!
     name: String
     role: String
+    jobTitle: String
     email: String
     status: String
     avatar: String
@@ -1144,6 +1147,7 @@ export const typeDefs = gql`
     firstName: String
     lastName: String
     role: String
+    jobTitle: String
     teamId: ID
     organizationId: ID!
   }

@@ -1540,6 +1540,7 @@ export const resolvers = {
             email: input.email,
             firstName: input.firstName || '',
             lastName: input.lastName || '',
+            jobTitle: input.jobTitle || '',
           });
         }
       } catch {
@@ -1671,7 +1672,7 @@ export const resolvers = {
             organizationName: organization.name,
             inviteToken,
             recipientName,
-            role: input.role,
+            role: input.jobTitle || input.role,
           });
         } else {
           // Send organization invitation
@@ -1681,7 +1682,7 @@ export const resolvers = {
             organizationName: organization.name,
             inviteToken,
             recipientName,
-            role: input.role,
+            role: input.jobTitle || input.role,
           });
         }
       } catch (emailError) {
