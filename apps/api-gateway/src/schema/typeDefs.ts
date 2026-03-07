@@ -65,6 +65,7 @@ export const typeDefs = gql`
     skills: [String]
     teamId: ID
     joinedAt: DateTime
+    permissions: JSON
     createdAt: DateTime!
     updatedAt: DateTime!
     deletedAt: DateTime

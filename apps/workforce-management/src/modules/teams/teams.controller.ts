@@ -25,6 +25,7 @@ interface ProjectData {
   id: string;
   name: string;
   status: string;
+  teamId?: string;
   endDate?: Date;
   updatedAt?: Date;
 }
@@ -37,6 +38,23 @@ async function fetchUserData(userId: string) {
     return null;
   }
 }
+
+async function fetchUserRole(userId: string): Promise<string> {
+  try {
+    // Get organization membership for the user
+    const membershipsRes = await axios.get(`${AUTH_SERVICE_URL}/organization-members?userId=${userId}`);
+    const memberships = membershipsRes.data;
+    if (Array.isArray(memberships) && memberships.length > 0 && memberships[0].roleId) {
+      // Fetch the role name
+      const roleRes = await axios.get(`${AUTH_SERVICE_URL}/roles/${memberships[0].roleId}`);
+      if (roleRes.data?.name) return roleRes.data.name;
+    }
+  } catch (error) {
+    console.error(`Failed to fetch role for user ${userId}:`, error);
+  }
+  return 'Contributor';
+}
+
 async function fetchProjects(): Promise<ProjectData[]> {
   try {
     const response = await axios.get(`${PROJECT_SERVICE_URL}/projects`);
@@ -75,9 +93,42 @@ export async function getAllTeamsHandler(req: Request, res: Response) {
       },
     }) as TeamWithMembers[];
 
-    const enhancedTeams = teams.map((team: TeamWithMembers) => ({
-      ...team,
-      memberCount: team.members.length,
+    const enhancedTeams = await Promise.all(teams.map(async (team: TeamWithMembers) => {
+      // Fetch manager data
+      let manager = null;
+      if (team.managerId) {
+        const managerData = await fetchUserData(team.managerId);
+        if (managerData) {
+          manager = {
+            id: managerData.id,
+            name: [managerData.firstName, managerData.lastName].filter(Boolean).join(' ') || managerData.email,
+            avatar: null,
+          };
+        }
+      }
+
+      // Fetch enriched member data with real roles
+      const members = await Promise.all(
+        team.members.map(async (member: TeamMemberRecord) => {
+          const userData = await fetchUserData(member.userId);
+          const role = await fetchUserRole(member.userId);
+          return {
+            id: member.userId,
+            name: userData ? [userData.firstName, userData.lastName].filter(Boolean).join(' ') || userData.email : 'Unknown',
+            role,
+            email: userData?.email || '',
+            status: userData?.status || 'active',
+            avatar: null,
+          };
+        })
+      );
+
+      return {
+        ...team,
+        memberCount: team.members.length,
+        manager,
+        members,
+      };
     }));
 
     res.json(enhancedTeams);
@@ -114,16 +165,17 @@ export async function getTeamByIdHandler(req: Request, res: Response) {
       }
     }
 
-    // Fetch member details
+    // Fetch member details with real roles from org membership
     const members = await Promise.all(
       team.members.map(async (member: TeamMemberRecord) => {
         const userData = await fetchUserData(member.userId);
+        const role = await fetchUserRole(member.userId);
         return {
           id: member.userId,
           name: userData ? [userData.firstName, userData.lastName].filter(Boolean).join(' ') || userData.email : 'Unknown',
-          role: member.role || 'member',
+          role,
           email: userData?.email || '',
-          status: 'active',
+          status: userData?.status || 'active',
           avatar: null,
         };
       })
@@ -133,7 +185,7 @@ export async function getTeamByIdHandler(req: Request, res: Response) {
     const allProjects = await fetchProjects();
 
     const ongoingProjects = allProjects
-      .filter((p: ProjectData) => p.status !== 'completed' && p.status !== 'Completed')
+      .filter((p: ProjectData) => p.teamId === team.id && p.status !== 'completed' && p.status !== 'Completed')
       .slice(0, 5)
       .map((p: ProjectData) => ({
         id: p.id,
@@ -143,7 +195,7 @@ export async function getTeamByIdHandler(req: Request, res: Response) {
       }));
 
     const completedProjects = allProjects
-      .filter((p: ProjectData) => p.status === 'completed' || p.status === 'Completed')
+      .filter((p: ProjectData) => p.teamId === team.id && (p.status === 'completed' || p.status === 'Completed'))
       .slice(0, 5)
       .map((p: ProjectData) => ({
         id: p.id,
@@ -185,6 +237,12 @@ export async function updateTeamHandler(req: Request, res: Response) {
 
 export async function deleteTeamHandler(req: Request, res: Response) {
   try {
+    // First delete all team members associated with the team
+    await prisma.teamMember.deleteMany({
+      where: { teamId: req.params.id },
+    });
+
+    // Then delete the team itself
     await prisma.team.delete({
       where: { id: req.params.id },
     });

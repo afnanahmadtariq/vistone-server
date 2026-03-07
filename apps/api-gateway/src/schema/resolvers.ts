@@ -102,7 +102,6 @@ async function enrichUserWithWorkforceData(user: ServiceRecord | null): Promise<
 
     return {
       ...user,
-      role: teamMember?.role || null,
       teamId: teamMember?.teamId || null,
       joinedAt: teamMember?.createdAt || user.createdAt,
       skills,
@@ -113,7 +112,6 @@ async function enrichUserWithWorkforceData(user: ServiceRecord | null): Promise<
     // If workforce service is unavailable, return user with default enriched fields
     return {
       ...user,
-      role: null,
       teamId: null,
       joinedAt: user.createdAt,
       skills: [],
@@ -1102,12 +1100,42 @@ export const resolvers = {
 
   // User resolver to handle enrichment for any User type returned
   User: {
-    role: (parent: ServiceRecord) => parent.role ?? null,
+    role: async (parent: ServiceRecord) => {
+      // If role is explicitly provided and is not 'member' (team fallback), use it
+      if (parent.role && parent.role !== 'member') return parent.role;
+      // Look up role from organization membership
+      try {
+        const memberships = await authClient.get(`/organization-members?userId=${parent.id}`);
+        if (Array.isArray(memberships) && memberships.length > 0 && memberships[0].roleId) {
+          const role = await authClient.getById('/roles', memberships[0].roleId);
+          if (role?.name) return role.name;
+        }
+      } catch {
+        // ignore
+      }
+      return parent.role ?? 'Contributor';
+    },
     avatar: (parent: ServiceRecord) => parent.avatar ?? parent.avatarUrl ?? null,
     status: (parent: ServiceRecord) => parent.status ?? 'active',
     skills: (parent: ServiceRecord) => parent.skills ?? [],
     teamId: (parent: ServiceRecord) => parent.teamId ?? null,
     joinedAt: (parent: ServiceRecord) => parent.joinedAt ?? parent.createdAt,
+    permissions: async (parent: ServiceRecord) => {
+      // If permissions already present on the parent (e.g. from enrichment), return them
+      if (parent.permissions) return parent.permissions;
+
+      // Otherwise, look up from org membership -> role
+      try {
+        const memberships = await authClient.get(`/organization-members?userId=${parent.id}`);
+        if (Array.isArray(memberships) && memberships.length > 0 && memberships[0].roleId) {
+          const role = await authClient.getById('/roles', memberships[0].roleId);
+          return role?.permissions ?? null;
+        }
+      } catch {
+        // ignore
+      }
+      return null;
+    },
     team: async (parent: ServiceRecord) => {
       const teamId = parent.teamId;
       if (!teamId) {
@@ -1643,6 +1671,7 @@ export const resolvers = {
             organizationName: organization.name,
             inviteToken,
             recipientName,
+            role: input.role,
           });
         } else {
           // Send organization invitation
@@ -1652,6 +1681,7 @@ export const resolvers = {
             organizationName: organization.name,
             inviteToken,
             recipientName,
+            role: input.role,
           });
         }
       } catch (emailError) {
@@ -1824,13 +1854,13 @@ export const resolvers = {
 
     // Teams - Enhanced
     removeMember: async (_: unknown, { teamId, memberId }: { teamId: string; memberId: string }, context: Context) => {
-      await requirePermission(context, 'teams', 'update');
+      await requireAuth(context);
       return workforceClient.post('/teams/remove-member', { teamId, memberId });
     },
 
     // Teams (Workforce Service)
     createTeam: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      const currentUser = await requirePermission(context, 'teams', 'create');
+      const currentUser = await requireAuth(context);
 
       // Auto-assign organizationId from current user if not provided
       if (!input.organizationId && currentUser.organizationId) {
@@ -1840,20 +1870,20 @@ export const resolvers = {
       return workforceClient.post('/teams', input);
     },
     updateTeam: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'teams', 'update');
+      await requireAuth(context);
       return workforceClient.put('/teams', id, input);
     },
     deleteTeam: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'teams', 'delete');
+      await requireAuth(context);
       return workforceClient.delete('/teams', id);
     },
     addTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }, context: Context) => {
-      await requirePermission(context, 'teams', 'update');
+      await requireAuth(context);
       await workforceClient.post('/team-members', { teamId, userId, role: 'member' });
       return workforceClient.getById('/teams', teamId);
     },
     removeTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }, context: Context) => {
-      await requirePermission(context, 'teams', 'update');
+      await requireAuth(context);
       const teamMembers = await workforceClient.get(`/team-members?teamId=${teamId}&userId=${userId}`);
       if (Array.isArray(teamMembers) && teamMembers.length > 0) {
         await workforceClient.delete('/team-members', teamMembers[0].id);
@@ -1861,15 +1891,15 @@ export const resolvers = {
       return workforceClient.getById('/teams', teamId);
     },
     createTeamMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'teams', 'update');
+      await requireAuth(context);
       return workforceClient.post('/team-members', input);
     },
     updateTeamMember: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'teams', 'update');
+      await requireAuth(context);
       return workforceClient.put('/team-members', id, input);
     },
     deleteTeamMember: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'teams', 'update');
+      await requireAuth(context);
       return workforceClient.delete('/team-members', id);
     },
     createUserSkill: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
@@ -2142,6 +2172,7 @@ export const resolvers = {
           projectName,
           inviteToken,
           recipientName: input.name,
+          role: 'Client',
         });
       } catch (emailError) {
         console.error('Failed to send client invitation email:', emailError);
