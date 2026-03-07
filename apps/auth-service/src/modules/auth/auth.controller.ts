@@ -119,7 +119,8 @@ function formatAuthUser(
   user: UserData,
   teamMember: TeamMemberData | null,
   organization?: FormatOrganizationData | null,
-  role?: FormatRoleData | null
+  role?: FormatRoleData | null,
+  memberships?: Record<string, unknown>[]
 ) {
   // Combine firstName and lastName into name
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || null;
@@ -142,8 +143,43 @@ function formatAuthUser(
       name: organization.name,
       slug: organization.slug,
     } : null,
+    organizations: memberships?.map((m: any) => ({
+      id: m.id,
+      role: m.role?.name || 'member',
+      organization: {
+        id: m.organization.id,
+        name: m.organization.name,
+        slug: m.organization.slug,
+      }
+    })) || (organization ? [{
+      id: 'primary',
+      role: role?.name || 'member',
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+      }
+    }] : []),
     permissions: role?.permissions || null,
   };
+}
+
+async function getActiveOrgAndMemberships(userId: string, requestedOrgId?: string) {
+  const memberships = await prisma.organizationMember.findMany({
+    where: { userId },
+    include: { organization: true, role: true },
+  });
+
+  let activeMembership = memberships.length > 0 ? memberships[0] : null;
+
+  if (requestedOrgId && requestedOrgId !== 'undefined' && requestedOrgId !== 'null') {
+    const requested = memberships.find((m: any) => m.organizationId === requestedOrgId);
+    if (requested) {
+      activeMembership = requested;
+    }
+  }
+
+  return { memberships, activeMembership };
 }
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function getTeamMembershipWithRole(_userId: string): Promise<TeamMemberData | null> {
@@ -192,10 +228,8 @@ export async function loginHandler(req: Request, res: Response) {
     const teamMember = await getTeamMembershipWithRole(user.id);
 
     // Get user's organization and role
-    const membership = await prisma.organizationMember.findFirst({
-      where: { userId: user.id },
-      include: { organization: true, role: true },
-    });
+    const requestedOrgId = req.headers['x-organization-id'] as string;
+    const { memberships, activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
 
     // Log login activity
     logActivity({ userId: user.id, action: 'LOGIN', entityType: 'USER', entityId: user.id, details: { method: 'email' } });
@@ -203,7 +237,7 @@ export async function loginHandler(req: Request, res: Response) {
     res.json({
       accessToken,
       refreshToken,
-      user: formatAuthUser(user, teamMember, membership?.organization, membership?.role),
+      user: formatAuthUser(user, teamMember, activeMembership?.organization, activeMembership?.role, memberships),
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -252,22 +286,12 @@ export async function registerHandler(req: Request, res: Response) {
       });
 
       // Fetch existing organization and role
-      const membership = await prisma.organizationMember.findFirst({
-        where: { userId: user.id },
-        include: { organization: true, role: true },
-      });
+      const requestedOrgId = req.headers['x-organization-id'] as string;
+      const { activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
 
-      if (membership) {
-        organization = membership.organization;
-        role = membership.role;
-      } else {
-        // Edge case: User exists but has no organization? 
-        // Should create one if they are claiming account but have no org?
-        // For now, adhere to "signup = organizer" rules if no membership exists.
-        const orgName = organizationName || `${firstName}'s Organization`;
-        const orgData = await createOrganizationForUser(user.id, orgName);
-        organization = orgData.organization;
-        role = orgData.role;
+      if (activeMembership) {
+        organization = activeMembership.organization;
+        role = activeMembership.role;
       }
     } else {
       // Create entirely new user
@@ -305,13 +329,16 @@ export async function registerHandler(req: Request, res: Response) {
     // Get team membership if exists (might have been added during invite)
     const teamMember = await getTeamMembershipWithRole(user.id);
 
+    const requestedOrgId = req.headers['x-organization-id'] as string;
+    const { memberships, activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
+
     // Log register activity
     logActivity({ userId: user.id, action: 'REGISTER', entityType: 'USER', entityId: user.id, details: { method: 'email', isNewUser } });
 
     res.json({
       accessToken,
       refreshToken,
-      user: formatAuthUser(user, teamMember, organization, role),
+      user: formatAuthUser(user, teamMember, activeMembership?.organization || organization, activeMembership?.role || role, memberships),
       isNewUser,
     });
   } catch (error) {
@@ -381,14 +408,12 @@ export async function googleOauthHandler(req: Request, res: Response) {
       }
 
       // Get existing organization and role for returning user
-      const membership = await prisma.organizationMember.findFirst({
-        where: { userId: user.id },
-        include: { organization: true, role: true },
-      });
+      const requestedOrgId = req.headers['x-organization-id'] as string;
+      const { activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
 
-      if (membership) {
-        organization = membership.organization;
-        role = membership.role;
+      if (activeMembership) {
+        organization = activeMembership.organization;
+        role = activeMembership.role;
       }
     } else {
       // Create new user (signup with Google)
@@ -426,13 +451,16 @@ export async function googleOauthHandler(req: Request, res: Response) {
     // Get user's team membership
     const teamMember = await getTeamMembershipWithRole(user.id);
 
+    const requestedOrgId = req.headers['x-organization-id'] as string;
+    const { memberships, activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
+
     // Log Google OAuth activity
     logActivity({ userId: user.id, action: isNewUser ? 'REGISTER' : 'LOGIN', entityType: 'USER', entityId: user.id, details: { method: 'google' } });
 
     res.json({
       accessToken,
       refreshToken,
-      user: formatAuthUser(user, teamMember, organization, role),
+      user: formatAuthUser(user, teamMember, activeMembership?.organization || organization, activeMembership?.role || role, memberships),
       isNewUser,
     });
   } catch (error) {
@@ -516,61 +544,86 @@ export async function acceptInviteHandler(req: Request, res: Response) {
   try {
     const { token, password, name, role } = req.body;
 
-    if (!token || !password || !name) {
-      res.status(400).json({ error: 'Token, password, and name are required' });
+    if (!token) {
+      res.status(400).json({ error: 'Token is required' });
       return;
     }
 
-    // The token is the user ID (as set in inviteMember resolver)
-    const user = await prisma.user.findUnique({
-      where: { id: token },
+    // Check if token is a new Invitation record
+    const invitation = await prisma.invitation.findUnique({
+      where: { token },
     });
 
-    if (!user) {
+    if (!invitation) {
       res.status(404).json({ error: 'Invalid invitation token' });
       return;
     }
 
-    // Check if user already has a password (invite already accepted)
-    if (user.password) {
+    if (invitation.expiresAt < new Date()) {
+      res.status(400).json({ error: 'Invitation link has expired' });
+      return;
+    }
+
+    if (invitation.acceptedAt) {
       res.status(400).json({ error: 'Invitation has already been accepted. Please log in.' });
       return;
     }
 
-    // Parse name into firstName and lastName
-    const nameParts = name.trim().split(' ');
-    const firstName = nameParts[0] || '';
-    const lastName = nameParts.slice(1).join(' ') || '';
-
-    // Update user with password and name
-    const updatedUser = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        password: hashPassword(password),
-        firstName,
-        lastName,
-      },
+    // Find if the user already exists by email
+    let user = await prisma.user.findUnique({
+      where: { email: invitation.email },
     });
 
-    // Get user's organization membership
-    const membership = await prisma.organizationMember.findFirst({
-      where: { userId: user.id },
-      include: { organization: true, role: true },
-    });
+    if (!user) {
+      if (!name || !password) {
+        res.status(400).json({ error: 'Name and password are required for new users' });
+        return;
+      }
 
-    // If role is specified and different from current, update the role
-    let finalRole = membership?.role;
-    if (role && membership) {
-      // Find the role in the organization
+      const nameParts = (name || '').trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      user = await prisma.user.create({
+        data: {
+          email: invitation.email,
+          password: hashPassword(password),
+          firstName,
+          lastName,
+        }
+      });
+    } else {
+      // User exists. Update password/name if provided and not already set
+      if (!user.password && password && name) {
+        const nameParts = name.trim().split(' ');
+        const firstName = nameParts[0] || '';
+        const lastName = nameParts.slice(1).join(' ') || '';
+
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            password: hashPassword(password),
+            firstName: firstName || user.firstName,
+            lastName: lastName || user.lastName,
+          },
+        });
+      }
+    }
+
+    // Attempt to link to organization
+    const orgId = invitation.organizationId;
+    const fallbackRole = invitation.role || role || 'member';
+
+    if (orgId) {
+      // Create role if doesn't exist
       let roleRecord = await prisma.role.findFirst({
         where: {
-          organizationId: membership.organizationId,
-          name: { equals: role, mode: 'insensitive' },
+          organizationId: orgId,
+          name: { equals: fallbackRole, mode: 'insensitive' },
         },
       });
 
-      // Create role if doesn't exist
-      if (!roleRecord && membership.organizationId) {
+      if (!roleRecord) {
         const rolePermissionsLookup: Record<string, Record<string, string[]>> = {
           organizer: ORGANIZER_PERMISSIONS as Record<string, string[]>,
           manager: {
@@ -599,29 +652,47 @@ export async function acceptInviteHandler(req: Request, res: Response) {
           },
         };
 
-        const normalizedRole = role.toLowerCase();
-        const permissions = rolePermissionsLookup[normalizedRole];
+        const normalizedRole = fallbackRole.toLowerCase();
+        const permissions = rolePermissionsLookup[normalizedRole] || rolePermissionsLookup['contributor'];
 
-        if (permissions) {
-          roleRecord = await prisma.role.create({
-            data: {
-              organizationId: membership.organizationId,
-              name: role.charAt(0).toUpperCase() + role.slice(1).toLowerCase(),
-              permissions,
-              isSystem: true,
-            },
-          });
-        }
-      }
-
-      // Update membership with new role
-      if (roleRecord) {
-        await prisma.organizationMember.update({
-          where: { id: membership.id },
-          data: { roleId: roleRecord.id },
+        roleRecord = await prisma.role.create({
+          data: {
+            organizationId: orgId,
+            name: fallbackRole.charAt(0).toUpperCase() + fallbackRole.slice(1).toLowerCase(),
+            permissions,
+            isSystem: true,
+          },
         });
-        finalRole = roleRecord;
       }
+
+      // Check if membership already exists (for returning users or backward compat tokens)
+      const membershipCheck = await prisma.organizationMember.findFirst({
+        where: { userId: user.id, organizationId: orgId }
+      });
+
+      if (!membershipCheck) {
+        await prisma.organizationMember.create({
+          data: {
+            userId: user.id,
+            organizationId: orgId,
+            roleId: roleRecord.id
+          }
+        });
+      } else {
+        // Update role of existing membership
+        await prisma.organizationMember.update({
+          where: { id: membershipCheck.id },
+          data: { roleId: roleRecord.id }
+        });
+      }
+    }
+
+    if (invitation) {
+      // Mark the invitation as accepted
+      await prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { acceptedAt: new Date() },
+      });
     }
 
     // Generate tokens
@@ -632,16 +703,23 @@ export async function acceptInviteHandler(req: Request, res: Response) {
     const accessTokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-    tokenStore.set(accessToken, { userId: updatedUser.id, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(refreshToken, { userId: updatedUser.id, expiresAt: refreshTokenExpiry });
+    tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
+    refreshTokenStore.set(refreshToken, { userId: user.id, expiresAt: refreshTokenExpiry });
 
     // Get team membership
-    const teamMember = await getTeamMembershipWithRole(updatedUser.id);
+    const teamMember = await getTeamMembershipWithRole(user.id);
+
+    // Get newly updated memberships
+    const requestedOrgId = orgId || req.headers['x-organization-id'] as string;
+    const { memberships, activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
+
+    // Log invite accepted
+    logActivity({ userId: user.id, action: 'REGISTER', entityType: 'USER', entityId: user.id, details: { method: 'invite' } });
 
     res.json({
       accessToken,
       refreshToken,
-      user: formatAuthUser(updatedUser, teamMember, membership?.organization, finalRole),
+      user: formatAuthUser(user, teamMember, activeMembership?.organization, activeMembership?.role, memberships),
     });
   } catch (error) {
     console.error('Accept invite error:', error);
@@ -693,5 +771,82 @@ export async function getCurrentUserMeHandler(req: Request, res: Response) {
   } catch (error) {
     console.error('Get me error:', error);
     res.status(500).json({ error: 'Failed to get user' });
+  }
+}
+
+export async function getInviteDetailsHandler(req: Request, res: Response) {
+  try {
+    const { token } = req.params;
+
+    if (!token) {
+      res.status(400).json({ error: 'Token is required' });
+      return;
+    }
+
+    // 1. Check if token belongs to an Invitation model record
+    const invitation = await prisma.invitation.findUnique({
+      where: { token },
+    });
+
+    if (invitation) {
+      if (invitation.expiresAt < new Date()) {
+        res.status(400).json({ error: 'Invitation link has expired' });
+        return;
+      }
+
+      if (invitation.acceptedAt) {
+        res.status(400).json({ error: 'Invitation has already been accepted' });
+        return;
+      }
+
+      const organization = await prisma.organization.findUnique({
+        where: { id: invitation.organizationId },
+      });
+
+      res.json({
+        email: invitation.email,
+        firstName: '',
+        lastName: '',
+        role: invitation.role || 'Member',
+        organizationName: organization?.name || 'Unknown Organization',
+      });
+      return;
+    }
+
+    res.status(404).json({ error: 'Invalid invitation token' });
+  } catch (error) {
+    console.error('Get invite details error:', error);
+    res.status(500).json({ error: 'Failed to fetch invitation details' });
+  }
+}
+
+import { v4 as uuidv4 } from 'uuid';
+
+export async function createInvitationHandler(req: Request, res: Response) {
+  try {
+    const { email, role, organizationId } = req.body;
+
+    if (!email || !organizationId) {
+      res.status(400).json({ error: 'Email and organizationId are required' });
+      return;
+    }
+
+    const token = uuidv4();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+
+    const invitation = await prisma.invitation.create({
+      data: {
+        email,
+        role: role || 'Member',
+        token,
+        organizationId,
+        expiresAt,
+      },
+    });
+
+    res.json({ success: true, token: invitation.token });
+  } catch (error) {
+    console.error('Create invitation error:', error);
+    res.status(500).json({ error: 'Failed to create invitation' });
   }
 }

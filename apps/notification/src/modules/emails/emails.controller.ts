@@ -9,6 +9,7 @@ export async function sendOrganizationMemberInvitationEmailHandler(req: Request,
       organizationName,
       inviteToken,
       recipientName,
+      role,
     } = req.body;
 
     if (!email || !inviterName || !organizationName || !inviteToken) {
@@ -25,6 +26,7 @@ export async function sendOrganizationMemberInvitationEmailHandler(req: Request,
       organizationName,
       inviteLink,
       recipientName,
+      role,
     });
 
     const sent = await sendEmail({
