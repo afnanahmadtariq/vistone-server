@@ -852,9 +852,19 @@ export const typeDefs = gql`
     myProjects: [Project!]!
     analyticsOverview(organizationId: ID!, dateRange: DateRangeInput!): AnalyticsOverview!
     dashboardStats(organizationId: ID!): DashboardStats!
+    clientDashboardStats: ClientDashboardStats!
 
     # AI Engine
     aiChatStats(organizationId: String!): AiIndexingStats!
+  }
+
+  type ClientDashboardStats {
+    totalProjects: Int!
+    ongoingProjects: Int!
+    completedProjects: Int!
+    pendingApprovals: Int!
+    totalContractValue: Float!
+    recentActivities: [ActivityItem!]!
   }
 
   # Mutation Type
@@ -1183,6 +1193,8 @@ export const typeDefs = gql`
     name: String!
     company: String
     phone: String
+    address: String
+    industry: String
     projectId: ID
     organizationId: ID!
   }

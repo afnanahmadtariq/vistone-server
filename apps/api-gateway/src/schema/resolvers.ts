@@ -678,22 +678,29 @@ export const resolvers = {
     // Analytics & Dashboard
     myProjects: async (_: unknown, _args: unknown, context: Context) => {
       const user = await requireAuth(context);
-      try {
-        // Get projects where the user is either:
-        // 1. A project member
-        // 2. A manager
-        // 3. Associated as client contact
-        const projectMembers = await projectClient.get(`/project-members?userId=${user.id}`);
-        const projectIds = new Set<string>();
+      const projectIds = new Set<string>();
 
+      try {
+        // 1. As Member/Manager
+        const projectMembers = await projectClient.get(`/project-members?userId=${user.id}`);
         if (Array.isArray(projectMembers)) {
           projectMembers.forEach((pm: ServiceRecord) => projectIds.add(pm.projectId));
         }
 
-        // Also get projects where user is manager
         const managedProjects = await projectClient.get(`/projects?managerId=${user.id}`);
         if (Array.isArray(managedProjects)) {
           managedProjects.forEach((p: ServiceRecord) => projectIds.add(p.id));
+        }
+
+        // 2. As Client contact person
+        const clients = await clientMgmtClient.get(`/clients?contactPersonId=${user.id}`);
+        if (Array.isArray(clients)) {
+          for (const client of clients) {
+            const pcs = await clientMgmtClient.get(`/project-clients?clientId=${client.id}`);
+            if (Array.isArray(pcs)) {
+              pcs.forEach((pc: ServiceRecord) => projectIds.add(pc.projectId));
+            }
+          }
         }
 
         // Fetch all unique projects
@@ -886,6 +893,85 @@ export const resolvers = {
           upcomingMilestones: [],
           recentActivities: [],
           teamUtilization: [],
+        };
+      }
+    },
+
+    clientDashboardStats: async (_: unknown, _args: unknown, context: Context) => {
+      const user = await requireAuth(context);
+      
+      try {
+        // Get all projects for this client user
+        const projectIds = new Set<string>();
+        
+        // Find Client entities where this user is the contact person
+        const clients = await clientMgmtClient.get(`/clients?contactPersonId=${user.id}`);
+        if (Array.isArray(clients)) {
+          for (const client of clients) {
+            const pcs = await clientMgmtClient.get(`/project-clients?clientId=${client.id}`);
+            if (Array.isArray(pcs)) {
+              pcs.forEach((pc: ServiceRecord) => projectIds.add(pc.projectId));
+            }
+          }
+        }
+        
+        // Fetch Projects
+        const projects = (await Promise.all(
+          Array.from(projectIds).map(id => projectClient.getById('/projects', id).catch(() => null))
+        )).filter(Boolean) as ServiceRecord[];
+        
+        // Calculate Stats
+        const totalProjects = projects.length;
+        const ongoingProjects = projects.filter(p => p.status === 'Active' || p.status === 'In Progress').length;
+        const completedProjects = projects.filter(p => p.status === 'Completed').length;
+        const pendingApprovals = projects.filter(p => p.status === 'Pending Approval' || p.status === 'Approval Requested').length;
+        
+        const totalContractValue = projects.reduce((sum, p) => sum + (Number(p.budget) || 0), 0);
+        
+        // Fetch Activities for these projects
+        const activities: ServiceRecord[] = [];
+        for (const project of projects) {
+          try {
+            const logs = await authClient.get(`/activity-logs?entityType=project&entityId=${project.id}`);
+            if (Array.isArray(logs)) {
+              logs.forEach(log => {
+                activities.push({
+                  id: log.id,
+                  type: log.action || 'update',
+                  description: log.description || `${log.action} on project ${project.name}`,
+                  timestamp: log.createdAt,
+                  userId: log.userId,
+                  projectId: project.id,
+                  // We'll return the project object directly to help the resolver if we add one
+                  project: project
+                });
+              });
+            }
+          } catch { /* ignore */ }
+        }
+        
+        // Sort and limit activities
+        const recentActivities = activities
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, 10);
+
+        return {
+          totalProjects,
+          ongoingProjects,
+          completedProjects,
+          pendingApprovals,
+          totalContractValue,
+          recentActivities
+        };
+      } catch (error) {
+        console.error('Error fetching client dashboard stats:', error);
+        return {
+          totalProjects: 0,
+          ongoingProjects: 0,
+          completedProjects: 0,
+          pendingApprovals: 0,
+          totalContractValue: 0,
+          recentActivities: []
         };
       }
     },
@@ -1152,6 +1238,26 @@ export const resolvers = {
       }
       try {
         return await workforceClient.getById('/teams', teamId);
+      } catch {
+        return null;
+      }
+    },
+  },
+
+  ActivityItem: {
+    user: async (parent: ServiceRecord) => {
+      if (!parent.userId) return null;
+      try {
+        return await getEnrichedUser(parent.userId);
+      } catch {
+        return null;
+      }
+    },
+    project: async (parent: ServiceRecord) => {
+      if (parent.project) return parent.project;
+      if (!parent.projectId) return null;
+      try {
+        return await projectClient.getById('/projects', parent.projectId);
       } catch {
         return null;
       }
@@ -1972,6 +2078,18 @@ export const resolvers = {
         }
       }
 
+      // Create project-clients link so the client can see this project on their dashboard
+      if (input.clientId) {
+        try {
+          await clientMgmtClient.post('/project-clients', {
+            projectId: project.id,
+            clientId: input.clientId,
+          });
+        } catch (error) {
+          console.error(`Failed to create project-client link for client ${input.clientId}:`, error);
+        }
+      }
+
       return project;
     },
     updateProject: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
@@ -2123,6 +2241,69 @@ export const resolvers = {
         throw new Error('Organization not found');
       }
 
+      let user;
+      try {
+        const users = await authClient.get('/users');
+        user = users.find((u: ServiceRecord) => u.email === input.email);
+        
+        if (!user) {
+          const nameParts = input.name.trim().split(' ');
+          const firstName = nameParts[0] || '';
+          const lastName = nameParts.slice(1).join(' ') || '';
+          user = await authClient.post('/users', {
+            email: input.email,
+            firstName,
+            lastName,
+          });
+        }
+      } catch {
+        throw new Error('Failed to create or find user');
+      }
+
+      // Find or create 'Client' role
+      let roleId: string | null = null;
+      try {
+        const roles = await authClient.get(`/roles?organizationId=${organizationId}`);
+        const matchingRole = Array.isArray(roles)
+          ? roles.find((r: ServiceRecord) => r.name.toLowerCase() === 'client')
+          : null;
+
+        if (matchingRole) {
+          roleId = matchingRole.id;
+        } else {
+          const newRole = await authClient.post('/roles', {
+            organizationId,
+            name: 'Client',
+            permissions: {
+              users: [],
+              teams: [],
+              projects: ['read'],
+              tasks: ['read'],
+              clients: [],
+              wiki: [],
+              channels: ['read', 'update'],
+              settings: [],
+              reports: ['read'],
+              notifications: ['read'],
+            },
+            isSystem: true,
+          });
+          roleId = newRole.id;
+        }
+      } catch (e) {
+        console.error('Failed to resolve Client role:', e);
+      }
+
+      try {
+        await authClient.post('/organization-members', {
+          userId: user.id,
+          organizationId,
+          roleId,
+        });
+      } catch {
+        // May already exist
+      }
+
       let client;
       try {
         const clients = await clientMgmtClient.get('/clients');
@@ -2134,16 +2315,20 @@ export const resolvers = {
             email: input.email,
             company: input.company,
             phone: input.phone,
+            address: input.address,
+            industry: input.industry,
             organizationId,
             portalAccess: true,
             status: 'active',
+            contactPersonId: user.id,
           });
         } else {
-          if (!client.portalAccess) {
-            client = await clientMgmtClient.put('/clients', client.id, {
-              portalAccess: true,
-            });
-          }
+          client = await clientMgmtClient.put('/clients', client.id, {
+            portalAccess: true,
+            contactPersonId: user.id,
+            address: input.address,
+            industry: input.industry,
+          });
         }
       } catch {
         throw new Error('Failed to create or find client');
@@ -2165,7 +2350,7 @@ export const resolvers = {
 
       try {
         const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
-        const inviteToken = client.id;
+        const inviteToken = user.id;
         await notificationClient.post('/emails/invite/client', {
           email: input.email,
           inviterName,
