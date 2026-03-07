@@ -8,20 +8,29 @@ datasource db {
   schemas  = ["communication"]
 }
 
-// Communication Schema - Chat & Messaging
+// Communication Schema
+// Messages live in MongoDB for high-volume, fast writes.
+// PostgreSQL keeps only structured/relational data: channels & memberships.
+
+// Channel types:
+//   "project"  – auto-created per project, visible on project page
+//   "group"    – custom channel created by authorized users
+//   "dm"       – direct message between exactly 2 users
 
 model ChatChannel {
-  id          String   @id @default(uuid())
-  name        String?
-  type        String
-  teamId      String?
-  projectId   String?
-  
-  members     ChannelMember[]
-  messages    ChatMessage[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String?           // null for DMs
+  description    String?
+  type           String            // "project" | "group" | "dm"
+  projectId      String?           // only set when type = "project"
+  createdBy      String            // userId who created the channel
+  isArchived     Boolean  @default(false)
+
+  members        ChannelMember[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@map("chat_channels")
   @@schema("communication")
@@ -31,69 +40,14 @@ model ChannelMember {
   id          String   @id @default(uuid())
   channelId   String
   userId      String
-  role        String?
-  
-  channel     ChatChannel @relation(fields: [channelId], references: [id])
-  
+  role        String   @default("member")  // "admin" | "member"
+
+  channel     ChatChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  @@unique([channelId, userId])
   @@map("channel_members")
-  @@schema("communication")
-}
-
-model ChatMessage {
-  id          String   @id @default(uuid())
-  channelId   String
-  senderId    String
-  content     String
-  aiFlags     Json?
-  
-  channel     ChatChannel @relation(fields: [channelId], references: [id])
-  mentions    MessageMention[]
-  attachments MessageAttachment[]
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("chat_messages")
-  @@schema("communication")
-}
-
-model MessageMention {
-  id          String   @id @default(uuid())
-  messageId   String
-  userId      String
-  
-  message     ChatMessage @relation(fields: [messageId], references: [id])
-  
-  createdAt   DateTime @default(now())
-
-  @@map("message_mentions")
-  @@schema("communication")
-}
-
-model MessageAttachment {
-  id          String   @id @default(uuid())
-  messageId   String
-  url         String
-  fileType    String
-  
-  message     ChatMessage @relation(fields: [messageId], references: [id])
-  
-  createdAt   DateTime @default(now())
-
-  @@map("message_attachments")
-  @@schema("communication")
-}
-
-model CommunicationLog {
-  id          String   @id @default(uuid())
-  type        String
-  details     Json
-  
-  createdAt   DateTime @default(now())
-
-  @@map("communication_logs")
   @@schema("communication")
 }

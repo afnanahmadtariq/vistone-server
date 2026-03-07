@@ -504,54 +504,22 @@ export const resolvers = {
       return knowledgeClient.get(`/document-permissions?documentId=${documentId}`);
     },
 
-    // Communication (Communication Service) â€” require channels:read
-    chatChannels: async (_: unknown, _args: unknown, context: Context) => {
+    // Communication (Communication Service) â€" require channels:read
+    chatChannels: async (_: unknown, { organizationId, userId, type, projectId }: { organizationId: string; userId?: string; type?: string; projectId?: string }, context: Context) => {
       await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/chat-channels');
+      const params = new URLSearchParams({ organizationId });
+      if (userId) params.append('userId', userId);
+      if (type) params.append('type', type);
+      if (projectId) params.append('projectId', projectId);
+      return communicationClient.get(`/chat-channels?${params.toString()}`);
     },
     chatChannel: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'channels', 'read');
       return communicationClient.getById('/chat-channels', id);
     },
-    channelMembers: async (_: unknown, _args: unknown, context: Context) => {
+    channelMembers: async (_: unknown, { channelId }: { channelId: string }, context: Context) => {
       await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/channel-members');
-    },
-    channelMember: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.getById('/channel-members', id);
-    },
-    chatMessages: async (_: unknown, _args: unknown, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/chat-messages');
-    },
-    chatMessage: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.getById('/chat-messages', id);
-    },
-    messageMentions: async (_: unknown, _args: unknown, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/message-mentions');
-    },
-    messageMention: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.getById('/message-mentions', id);
-    },
-    messageAttachments: async (_: unknown, _args: unknown, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/message-attachments');
-    },
-    messageAttachment: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.getById('/message-attachments', id);
-    },
-    communicationLogs: async (_: unknown, _args: unknown, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/communication-logs');
-    },
-    communicationLog: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.getById('/communication-logs', id);
+      return communicationClient.get(`/channel-members?channelId=${channelId}`);
     },
 
     // AI & Automation (Monitoring Service) â€” require reports:read
@@ -2298,37 +2266,9 @@ export const resolvers = {
       await requirePermission(context, 'channels', 'update');
       return communicationClient.post('/channel-members', input);
     },
-    updateChannelMember: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.put('/channel-members', id, input);
-    },
     deleteChannelMember: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'channels', 'delete');
       return communicationClient.delete('/channel-members', id);
-    },
-    createChatMessage: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.post('/chat-messages', input);
-    },
-    updateChatMessage: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.put('/chat-messages', id, input);
-    },
-    deleteChatMessage: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'delete');
-      return communicationClient.delete('/chat-messages', id);
-    },
-    createMessageMention: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.post('/message-mentions', input);
-    },
-    createMessageAttachment: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.post('/message-attachments', input);
-    },
-    createCommunicationLog: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.post('/communication-logs', input);
     },
 
     // AI & Automation (Monitoring Service)

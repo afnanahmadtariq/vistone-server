@@ -486,10 +486,14 @@ export const typeDefs = gql`
 
   type ChatChannel {
     id: ID!
+    organizationId: String!
     name: String
+    description: String
     type: String!
-    teamId: String
     projectId: String
+    createdBy: String!
+    isArchived: Boolean!
+    members: [ChannelMember!]
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -498,41 +502,9 @@ export const typeDefs = gql`
     id: ID!
     channelId: String!
     userId: String!
-    role: String
+    role: String!
     createdAt: DateTime!
     updatedAt: DateTime!
-  }
-
-  type ChatMessage {
-    id: ID!
-    channelId: String!
-    senderId: String!
-    content: String!
-    aiFlags: JSON
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  type MessageMention {
-    id: ID!
-    messageId: String!
-    userId: String!
-    createdAt: DateTime!
-  }
-
-  type MessageAttachment {
-    id: ID!
-    messageId: String!
-    url: String!
-    fileType: String!
-    createdAt: DateTime!
-  }
-
-  type CommunicationLog {
-    id: ID!
-    type: String!
-    details: JSON!
-    createdAt: DateTime!
   }
 
   # 7. AI & Automation Types
@@ -812,18 +784,9 @@ export const typeDefs = gql`
     documentPermissions(documentId: ID!): [DocumentPermission!]!
 
     # Communication
-    chatChannels: [ChatChannel!]!
+    chatChannels(organizationId: ID!, userId: ID, type: String, projectId: ID): [ChatChannel!]!
     chatChannel(id: ID!): ChatChannel
-    channelMembers: [ChannelMember!]!
-    channelMember(id: ID!): ChannelMember
-    chatMessages: [ChatMessage!]!
-    chatMessage(id: ID!): ChatMessage
-    messageMentions: [MessageMention!]!
-    messageMention(id: ID!): MessageMention
-    messageAttachments: [MessageAttachment!]!
-    messageAttachment(id: ID!): MessageAttachment
-    communicationLogs: [CommunicationLog!]!
-    communicationLog(id: ID!): CommunicationLog
+    channelMembers(channelId: ID!): [ChannelMember!]!
 
     # AI & Automation
     aiConversations: [AiConversation!]!
@@ -1005,14 +968,7 @@ export const typeDefs = gql`
     updateChatChannel(id: ID!, input: JSON!): ChatChannel!
     deleteChatChannel(id: ID!): DeleteResponse!
     createChannelMember(input: JSON!): ChannelMember!
-    updateChannelMember(id: ID!, input: JSON!): ChannelMember!
     deleteChannelMember(id: ID!): DeleteResponse!
-    createChatMessage(input: JSON!): ChatMessage!
-    updateChatMessage(id: ID!, input: JSON!): ChatMessage!
-    deleteChatMessage(id: ID!): DeleteResponse!
-    createMessageMention(input: JSON!): MessageMention!
-    createMessageAttachment(input: JSON!): MessageAttachment!
-    createCommunicationLog(input: JSON!): CommunicationLog!
 
     # AI & Automation
     createAiConversation(input: JSON!): AiConversation!
