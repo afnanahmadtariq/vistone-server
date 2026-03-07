@@ -5,8 +5,8 @@ import wikiPageVersionRoutes from './modules/wiki-page-versions/wiki-page-versio
 import documentFolderRoutes from './modules/document-folders/document-folders.routes';
 import documentRoutes from './modules/documents/documents.routes';
 import documentPermissionRoutes from './modules/document-permissions/document-permissions.routes';
-import documentLinkRoutes from './modules/document-links/document-links.routes';
-
+import wikisRoutes from './modules/wikis/wikis.routes';
+import wikiProjectLinksRoutes from './modules/wiki-project-links/wiki-project-links.routes';
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3005;
 
@@ -25,12 +25,13 @@ app.get('/health', (req, res) => {
 });
 
 // Documentation & Knowledge routes
+app.use('/wikis', wikisRoutes);
+app.use('/wiki-project-links', wikiProjectLinksRoutes);
 app.use('/wiki-pages', wikiPageRoutes);
 app.use('/wiki-page-versions', wikiPageVersionRoutes);
 app.use('/document-folders', documentFolderRoutes);
 app.use('/documents', documentRoutes);
 app.use('/document-permissions', documentPermissionRoutes);
-app.use('/document-links', documentLinkRoutes);
 
 app.listen(port, host, () => {
   console.log(`[ ready ] Knowledge Hub Service running at http://${host}:${port}`);

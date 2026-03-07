@@ -10,13 +10,47 @@ datasource db {
 
 // Knowledge Hub Schema - Documentation & Knowledge Management
 
+model Wiki {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+
+  pages          WikiPage[]
+  folders        DocumentFolder[]
+  documents      Document[]
+  projectLinks   WikiProjectLink[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("wikis")
+  @@schema("knowledge")
+}
+
+model WikiProjectLink {
+  id        String   @id @default(uuid())
+  wikiId    String
+  projectId String
+
+  wiki      Wiki     @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([wikiId, projectId])
+  @@map("wiki_project_links")
+  @@schema("knowledge")
+}
+
 model WikiPage {
   id          String   @id @default(uuid())
+  wikiId      String
   title       String
   content     String?
   parentId    String?
   
-  parent      WikiPage? @relation("WikiHierarchy", fields: [parentId], references: [id])
+  wiki        Wiki     @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  parent      WikiPage? @relation("WikiHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children    WikiPage[] @relation("WikiHierarchy")
   versions    WikiPageVersion[]
   
@@ -33,7 +67,7 @@ model WikiPageVersion {
   content     String
   version     Int
   
-  wikiPage    WikiPage @relation(fields: [wikiPageId], references: [id])
+  wikiPage    WikiPage @relation(fields: [wikiPageId], references: [id], onDelete: Cascade)
   
   createdAt   DateTime @default(now())
 
@@ -43,11 +77,12 @@ model WikiPageVersion {
 
 model DocumentFolder {
   id             String   @id @default(uuid())
-  organizationId String
+  wikiId         String
   name           String
   parentId       String?
   
-  parent         DocumentFolder? @relation("FolderHierarchy", fields: [parentId], references: [id])
+  wiki           Wiki     @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  parent         DocumentFolder? @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children       DocumentFolder[] @relation("FolderHierarchy")
   documents      Document[]
   
@@ -60,17 +95,16 @@ model DocumentFolder {
 
 model Document {
   id             String   @id @default(uuid())
-  organizationId String
+  wikiId         String
   folderId       String?
-  projectId      String?
   name           String
   url            String
   version        Int      @default(1)
   metadata       Json?
   
-  folder         DocumentFolder? @relation(fields: [folderId], references: [id])
+  wiki           Wiki            @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  folder         DocumentFolder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
   permissions    DocumentPermission[]
-  links          DocumentLink[]
   
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -86,26 +120,11 @@ model DocumentPermission {
   roleId      String?
   permission  String
   
-  document    Document @relation(fields: [documentId], references: [id])
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("document_permissions")
-  @@schema("knowledge")
-}
-
-model DocumentLink {
-  id          String   @id @default(uuid())
-  documentId  String
-  entityType  String
-  entityId    String
-  
-  document    Document @relation(fields: [documentId], references: [id])
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("document_links")
   @@schema("knowledge")
 }
