@@ -680,10 +680,19 @@ export const resolvers = {
         const clients = await clientMgmtClient.get(`/clients?contactPersonId=${user.id}`);
         if (Array.isArray(clients)) {
           for (const client of clients) {
+            // Check project-clients link table
             const pcs = await clientMgmtClient.get(`/project-clients?clientId=${client.id}`);
             if (Array.isArray(pcs)) {
               pcs.forEach((pc: ServiceRecord) => projectIds.add(pc.projectId));
             }
+
+            // Also directly query projects that have clientId assigned as a fallback
+            try {
+              const clientAssignedProjects = await projectClient.get(`/projects?clientId=${client.id}`);
+              if (Array.isArray(clientAssignedProjects)) {
+                clientAssignedProjects.forEach((p: ServiceRecord) => projectIds.add(p.id));
+              }
+            } catch { /* ignore if not found */ }
           }
         }
 
@@ -892,10 +901,19 @@ export const resolvers = {
         const clients = await clientMgmtClient.get(`/clients?contactPersonId=${user.id}`);
         if (Array.isArray(clients)) {
           for (const client of clients) {
+            // Check project-clients link table
             const pcs = await clientMgmtClient.get(`/project-clients?clientId=${client.id}`);
             if (Array.isArray(pcs)) {
               pcs.forEach((pc: ServiceRecord) => projectIds.add(pc.projectId));
             }
+
+            // Also directly query projects that have clientId assigned as a fallback
+            try {
+              const clientAssignedProjects = await projectClient.get(`/projects?clientId=${client.id}`);
+              if (Array.isArray(clientAssignedProjects)) {
+                clientAssignedProjects.forEach((p: ServiceRecord) => projectIds.add(p.id));
+              }
+            } catch { /* ignore if not found */ }
           }
         }
         
@@ -1641,12 +1659,13 @@ export const resolvers = {
         user = users.find((u: ServiceRecord) => u.email === input.email);
 
         if (!user) {
-          // Create new user
+          // Create new user with pending status
           user = await authClient.post('/users', {
             email: input.email,
             firstName: input.firstName || '',
             lastName: input.lastName || '',
             jobTitle: input.jobTitle || '',
+            status: 'pending',
           });
         }
       } catch {
