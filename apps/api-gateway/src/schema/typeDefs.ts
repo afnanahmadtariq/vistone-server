@@ -671,7 +671,14 @@ export const typeDefs = gql`
     isOutOfScope: Boolean!
     isActionResponse: Boolean
     actionResult: AiActionResult
+    pendingAction: AiPendingAction
     sources: [AiSource!]!
+  }
+
+  type AiPendingAction {
+    description: String!
+    tools: [String!]!
+    originalQuery: String!
   }
 
   type AiActionResult {
@@ -1276,6 +1283,8 @@ export const typeDefs = gql`
     enableAgent: Boolean
     # Tool categories: projectManagement, clientManagement, workforceManagement, communication, notification, knowledgeHub
     enabledToolCategories: [String!]
+    # Set to true when user confirms a pending action
+    confirmAction: Boolean
   }
 
   input AiIndexDocumentInput {

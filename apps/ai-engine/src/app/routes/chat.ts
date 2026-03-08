@@ -16,14 +16,14 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Authentication required' });
     }
 
-    const { query, sessionId } = request.body;
+    const { query, sessionId, confirmAction } = request.body;
 
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
       return reply.status(400).send({ error: 'Query is required' });
     }
 
     try {
-      const result = await chat(request.user, query.trim(), sessionId);
+      const result = await chat(request.user, query.trim(), sessionId, confirmAction);
       return reply.send(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Chat failed';

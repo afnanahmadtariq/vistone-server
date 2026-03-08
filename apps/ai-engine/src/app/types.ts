@@ -39,6 +39,17 @@ export type ContentType =
 export interface ChatRequest {
     query: string;
     sessionId?: string;
+    /** When true, execute the previously proposed pending action */
+    confirmAction?: boolean;
+}
+
+export interface PendingAction {
+    /** Human-readable description of what the agent wants to do */
+    description: string;
+    /** Tool names the agent plans to call */
+    tools: string[];
+    /** The original query that triggered the action */
+    originalQuery: string;
 }
 
 export interface ChatResponse {
@@ -48,6 +59,8 @@ export interface ChatResponse {
     isOutOfScope?: boolean;
     isActionResponse?: boolean;
     actionResult?: ActionResult;
+    /** Set when the agent wants to perform a write action and needs user confirmation */
+    pendingAction?: PendingAction;
 }
 
 export interface SourceReference {

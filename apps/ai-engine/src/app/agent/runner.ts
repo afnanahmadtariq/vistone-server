@@ -2,6 +2,12 @@
  * AI Engine — Agent Runner (Lazy LangChain)
  * Executes the LLM tool-calling loop.
  * LangChain is only imported when runAgent() is first called.
+ *
+ * Supports two modes:
+ *   - planAgent(): Dry-run — asks LLM what tools it *would* call, but
+ *     does NOT execute them. Returns a human-readable description for the
+ *     user to confirm.
+ *   - runAgent():  Full execution — actually calls the tools.
  */
 import { config } from '../config';
 import type { AuthenticatedUser, ActionResult } from '../types';
@@ -53,6 +59,13 @@ function getLLM() {
         });
     }
     return _llm;
+}
+
+// ── Helper: is a tool a write (non-read) action? ───────────────
+
+export function isWriteTool(toolName: string): boolean {
+    const perm = TOOL_PERMISSIONS[toolName];
+    return !!perm && perm.action !== 'read';
 }
 
 // ── Convert plain ToolDefs → LangChain DynamicStructuredTools ───
@@ -198,4 +211,91 @@ export async function runAgent(
         toolsUsed: [...new Set(toolsUsed)],
         iterations,
     };
+}
+
+// ── Plan Agent (Dry-Run) ────────────────────────────────────────
+// Asks the LLM what tools it would call for the query, collects
+// their names, then asks it to produce a human-readable summary
+// WITHOUT actually executing anything.
+
+export async function planAgent(
+    user: AuthenticatedUser,
+    query: string,
+    systemPrompt: string,
+    history: { role: string; content: string }[] = []
+): Promise<{ description: string; tools: string[] }> {
+    await loadLangChain();
+
+    const allDefs = getAllToolDefs();
+    const allowedDefs = filterToolsByPermission(user, allDefs);
+
+    if (allowedDefs.length === 0) {
+        return {
+            description: "I don't have any tools available for your permission level.",
+            tools: [],
+        };
+    }
+
+    const tools = toLangChainTools(allowedDefs);
+    const llm = getLLM();
+    const llmWithTools = llm.bindTools(tools);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const messages: any[] = [new SystemMessage(systemPrompt)];
+
+    for (const h of history) {
+        if (h.role === 'user') {
+            messages.push(new HumanMessage(h.content));
+        } else {
+            messages.push({ role: 'assistant', content: h.content });
+        }
+    }
+
+    messages.push(new HumanMessage(query));
+
+    // Single LLM call — we only need the first set of tool_calls
+    const response = await llmWithTools.invoke(messages);
+
+    const toolCalls = response.tool_calls;
+    if (!toolCalls || toolCalls.length === 0) {
+        // LLM didn't want to call any tools — it answered directly
+        return {
+            description: response.content || query,
+            tools: [],
+        };
+    }
+
+    const plannedTools = toolCalls.map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (tc: any) => tc.name as string
+    ) as string[];
+
+    // Ask the LLM to describe what it's about to do in plain English
+    if (!response.content || response.content.trim() === '' || response.content === ' ') {
+        response.content = ' ';
+    }
+    messages.push(response);
+
+    // Provide fake tool results so the LLM can summarise
+    for (const tc of toolCalls) {
+        messages.push(
+            new ToolMessage({
+                tool_call_id: tc.id,
+                name: tc.name,
+                content: JSON.stringify({ pending: true, message: 'Awaiting user confirmation.' }),
+            })
+        );
+    }
+
+    messages.push(
+        new HumanMessage(
+            'Do NOT execute any actions. Instead, list exactly what you are about to do in a short bullet-point summary so the user can confirm. Start with "I\'d like to:"'
+        )
+    );
+
+    const summaryResponse = await llm.invoke(messages);
+    const description =
+        (summaryResponse.content as string) || plannedTools.map((t) => `• ${t}`).join('\n');
+
+    return { description, tools: [...new Set(plannedTools)] };
 }
