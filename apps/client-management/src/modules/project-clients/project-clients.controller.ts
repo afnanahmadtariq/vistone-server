@@ -15,7 +15,13 @@ export async function createProjectClientHandler(req: Request, res: Response) {
 
 export async function getAllProjectClientsHandler(req: Request, res: Response) {
     try {
-    const projectClients = await prisma.projectClient.findMany();
+    const { clientId, projectId } = req.query;
+    const where: Record<string, unknown> = {};
+
+    if (clientId) where.clientId = clientId as string;
+    if (projectId) where.projectId = projectId as string;
+
+    const projectClients = await prisma.projectClient.findMany({ where });
     res.json(projectClients);
     } catch (error) {
     console.error(error);

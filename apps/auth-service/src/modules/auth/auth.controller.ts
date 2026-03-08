@@ -650,6 +650,18 @@ export async function acceptInviteHandler(req: Request, res: Response) {
             reports: ['read'],
             notifications: ['read', 'update'],
           },
+          client: {
+            users: [],
+            teams: [],
+            projects: ['read'],
+            tasks: ['read'],
+            clients: [],
+            wiki: [],
+            channels: ['read', 'update'],
+            settings: [],
+            reports: ['read'],
+            notifications: ['read'],
+          },
         };
 
         const normalizedRole = fallbackRole.toLowerCase();

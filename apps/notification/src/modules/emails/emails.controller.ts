@@ -9,7 +9,7 @@ export async function sendOrganizationMemberInvitationEmailHandler(req: Request,
       organizationName,
       inviteToken,
       recipientName,
-      role,
+      role = 'Contributor' // Default to Contributor if not provided
     } = req.body;
 
     if (!email || !inviterName || !organizationName || !inviteToken) {
@@ -19,7 +19,7 @@ export async function sendOrganizationMemberInvitationEmailHandler(req: Request,
       return;
     }
 
-    const inviteLink = `${process.env.FRONTEND_URL || 'https://vistone-app.vercel.app'}/invite/accept?token=${inviteToken}`;
+    const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/onboarding?token=${inviteToken}&role=${encodeURIComponent(role)}`;
 
     const template = emailTemplates.organizationInvite({
       inviterName,
@@ -56,6 +56,7 @@ export async function sendClientPortalInvitationEmailHandler(req: Request, res: 
       projectName,
       inviteToken,
       recipientName,
+      role = 'Client' // Default role for client
     } = req.body;
 
     if (!email || !inviterName || !organizationName || !inviteToken) {
@@ -65,7 +66,7 @@ export async function sendClientPortalInvitationEmailHandler(req: Request, res: 
       return;
     }
 
-    const inviteLink = `${process.env.FRONTEND_URL || 'https://vistone-app.vercel.app'}/client/invite?token=${inviteToken}`;
+    const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/onboarding?token=${inviteToken}&role=${encodeURIComponent(role)}`;
 
     const template = emailTemplates.clientInvite({
       inviterName,
@@ -102,6 +103,7 @@ export async function sendTeamInvitationEmailHandler(req: Request, res: Response
       organizationName,
       inviteToken,
       recipientName,
+      role = 'Contributor'
     } = req.body;
 
     if (!email || !inviterName || !teamName || !organizationName) {
@@ -111,7 +113,7 @@ export async function sendTeamInvitationEmailHandler(req: Request, res: Response
       return;
     }
 
-    const inviteLink = `${process.env.FRONTEND_URL || 'https://vistone-app.vercel.app'}/teams/${inviteToken || ''}`;
+    const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/onboarding?token=${inviteToken || ''}&role=${encodeURIComponent(role)}`;
 
     const template = emailTemplates.teamInvite({
       inviterName,
