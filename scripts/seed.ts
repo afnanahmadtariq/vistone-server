@@ -438,73 +438,10 @@ async function seedKnowledge() {
 }
 
 // ─── 6. COMMUNICATION ───────────────────────────────────────────────────────────
+
 async function seedCommunication() {
-  console.log('\n💬 Seeding Communication Service...');
-
-  const channelDefs = [
-    { name: 'general', type: 'public' },
-    { name: 'engineering', type: 'public', teamId: id.teams[0] },
-    { name: 'design', type: 'public', teamId: id.teams[1] },
-    { name: 'ecommerce-project', type: 'project', projectId: id.projects[0] },
-    { name: 'random', type: 'public' },
-  ];
-
-  for (const ch of channelDefs) {
-    const created = await post(SVC.communication, '/chat-channels', ch);
-    id.channels.push(created.id);
-    console.log(`  ✅ Channel: #${ch.name}`);
-  }
-
-  // Add all users to general & random; relevant users to others
-  for (const uid of id.users) {
-    await post(SVC.communication, '/channel-members', { channelId: id.channels[0], userId: uid, role: 'member' });
-    await post(SVC.communication, '/channel-members', { channelId: id.channels[4], userId: uid, role: 'member' });
-  }
-  for (const ui of [2, 4, 5, 7]) {
-    await post(SVC.communication, '/channel-members', { channelId: id.channels[1], userId: id.users[ui], role: 'member' });
-  }
-  for (const ui of [3, 6]) {
-    await post(SVC.communication, '/channel-members', { channelId: id.channels[2], userId: id.users[ui], role: 'member' });
-  }
-  for (const ui of [2, 4, 5, 6, 8]) {
-    await post(SVC.communication, '/channel-members', { channelId: id.channels[3], userId: id.users[ui], role: 'member' });
-  }
-  console.log('  ✅ Channel members');
-
-  // Messages
-  const msgDefs = [
-    [0, 0, 'Welcome to Vistone Digital! 🎉 Excited to have everyone on board.'],
-    [0, 1, 'Thanks Sarah! Looking forward to building great things together.'],
-    [0, 4, 'Happy to be here! When is our first sprint planning?'],
-    [0, 2, 'Sprint planning is tomorrow at 10 AM. See you all there!'],
-    [1, 4, 'Has anyone tried the new Prisma 6 features? The typed SQL looks amazing.'],
-    [1, 5, 'Yes! The performance improvements are significant too.'],
-    [1, 7, 'I benchmarked it — 40% faster queries with the new engine.'],
-    [3, 2, 'Sprint 3 starts Monday. @Aisha please update the backlog priorities.'],
-    [3, 4, 'On it! I\'ll have everything ready by Friday EOD.'],
-    [3, 6, 'The product detail page mockups are ready for review 🎨'],
-    [4, 9, 'Anyone up for virtual coffee? ☕'],
-    [4, 8, 'Count me in! 3 PM works for me.'],
-  ];
-
-  const messageIds: string[] = [];
-  for (const [ci, ui, content] of msgDefs) {
-    const created = await post(SVC.communication, '/chat-messages', {
-      channelId: id.channels[ci as number], senderId: id.users[ui as number], content,
-    });
-    messageIds.push(created.id);
-  }
-  console.log(`  ✅ Messages (${msgDefs.length})`);
-
-  // Mentions & attachments
-  await post(SVC.communication, '/message-mentions', { messageId: messageIds[7], userId: id.users[4] });
-  await post(SVC.communication, '/message-attachments', { messageId: messageIds[9], url: '/uploads/product-detail-v3.fig', fileType: 'figma' });
-
-  // Communication log
-  await post(SVC.communication, '/communication-logs', {
-    type: 'email', details: { from: 'noreply@vistone.io', to: 'team@vistone.io', subject: 'Sprint 2 Recap', status: 'sent' },
-  });
-  console.log('  ✅ Mentions, attachments, logs');
+  console.log('\n💬 Skipping Communication (chat) seeding.');
+  return;
 }
 
 // ─── 7. MONITORING & REPORTING ──────────────────────────────────────────────────
@@ -709,8 +646,8 @@ async function main() {
     await seedWorkforce();
     await seedProjects();
     await seedClients();
-    await seedKnowledge();
-    await seedCommunication();
+    console.log('\n📚 Skipping Knowledge Hub (wiki) seeding');
+    console.log('\n💬 Skipping Communication (chat) seeding');
     await seedMonitoring();
     await seedNotifications();
 
