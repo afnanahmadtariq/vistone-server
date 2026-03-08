@@ -43,10 +43,12 @@ export async function createActivityLogHandler(req: Request, res: Response) {
 
 export async function getAllActivityLogsHandler(req: Request, res: Response) {
   try {
-    const { userId, action } = req.query;
+    const { userId, action, entityType, entityId } = req.query;
     const where: Record<string, unknown> = {};
     if (userId) where.userId = userId as string;
     if (action) where.action = action as string;
+    if (entityType) where.entityType = entityType as string;
+    if (entityId) where.entityId = entityId as string;
     const activityLogs = await prisma.activityLog.findMany({
       where,
       orderBy: { createdAt: 'desc' },

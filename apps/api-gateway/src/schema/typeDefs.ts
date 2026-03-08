@@ -34,6 +34,7 @@ export const typeDefs = gql`
     lastName: String
     email: String!
     role: String
+    jobTitle: String
     avatar: String
     status: String
     skills: [String]
@@ -75,11 +76,13 @@ export const typeDefs = gql`
     firstName: String
     lastName: String
     role: String
+    jobTitle: String
     avatar: String
     status: String
     skills: [String]
     teamId: ID
     joinedAt: DateTime
+    permissions: JSON
     createdAt: DateTime!
     updatedAt: DateTime!
     deletedAt: DateTime
@@ -168,6 +171,7 @@ export const typeDefs = gql`
     id: ID!
     name: String
     role: String
+    jobTitle: String
     email: String
     status: String
     avatar: String
@@ -832,9 +836,19 @@ export const typeDefs = gql`
     myProjects: [Project!]!
     analyticsOverview(organizationId: ID!, dateRange: DateRangeInput!): AnalyticsOverview!
     dashboardStats(organizationId: ID!): DashboardStats!
+    clientDashboardStats: ClientDashboardStats!
 
     # AI Engine
     aiChatStats(organizationId: String!): AiIndexingStats!
+  }
+
+  type ClientDashboardStats {
+    totalProjects: Int!
+    ongoingProjects: Int!
+    completedProjects: Int!
+    pendingApprovals: Int!
+    totalContractValue: Float!
+    recentActivities: [ActivityItem!]!
   }
 
   # Mutation Type
@@ -1122,6 +1136,7 @@ export const typeDefs = gql`
     firstName: String
     lastName: String
     role: String
+    jobTitle: String
     teamId: ID
     organizationId: ID!
   }
@@ -1157,6 +1172,8 @@ export const typeDefs = gql`
     name: String!
     company: String
     phone: String
+    address: String
+    industry: String
     projectId: ID
     organizationId: ID!
   }

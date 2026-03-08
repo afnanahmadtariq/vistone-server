@@ -45,11 +45,19 @@ export async function createProjectHandler(req: Request, res: Response) {
 
 export async function getAllProjectsHandler(req: Request, res: Response) {
   try {
-    const { status, search, organizationId } = req.query;
+    const { status, search, organizationId, managerId, clientId } = req.query;
     const where: Record<string, unknown> = {};
 
     if (organizationId) {
       where.organizationId = organizationId as string;
+    }
+
+    if (managerId) {
+      where.managerId = managerId as string;
+    }
+
+    if (clientId) {
+      where.clientId = clientId as string;
     }
 
     if (status) {
