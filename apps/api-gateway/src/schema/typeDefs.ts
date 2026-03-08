@@ -422,8 +422,25 @@ export const typeDefs = gql`
 
   # 5. Documentation & Knowledge Types
 
+  type Wiki {
+    id: ID!
+    organizationId: String!
+    name: String!
+    description: String
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  type WikiProjectLink {
+    id: ID!
+    wikiId: String!
+    projectId: String!
+    createdAt: DateTime!
+  }
+
   type WikiPage {
     id: ID!
+    wikiId: String!
     title: String!
     content: String
     parentId: String
@@ -441,7 +458,7 @@ export const typeDefs = gql`
 
   type DocumentFolder {
     id: ID!
-    organizationId: String!
+    wikiId: String!
     name: String!
     parentId: String
     createdAt: DateTime!
@@ -450,9 +467,8 @@ export const typeDefs = gql`
 
   type Document {
     id: ID!
-    organizationId: String!
+    wikiId: String!
     folderId: String
-    projectId: String
     name: String!
     url: String!
     version: Int!
@@ -470,24 +486,18 @@ export const typeDefs = gql`
     createdAt: DateTime!
     updatedAt: DateTime!
   }
-
-  type DocumentLink {
-    id: ID!
-    documentId: String!
-    entityType: String!
-    entityId: String!
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
   # 6. Communication Types
 
   type ChatChannel {
     id: ID!
+    organizationId: String!
     name: String
+    description: String
     type: String!
-    teamId: String
     projectId: String
+    createdBy: String!
+    isArchived: Boolean!
+    members: [ChannelMember!]
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -496,41 +506,9 @@ export const typeDefs = gql`
     id: ID!
     channelId: String!
     userId: String!
-    role: String
+    role: String!
     createdAt: DateTime!
     updatedAt: DateTime!
-  }
-
-  type ChatMessage {
-    id: ID!
-    channelId: String!
-    senderId: String!
-    content: String!
-    aiFlags: JSON
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  type MessageMention {
-    id: ID!
-    messageId: String!
-    userId: String!
-    createdAt: DateTime!
-  }
-
-  type MessageAttachment {
-    id: ID!
-    messageId: String!
-    url: String!
-    fileType: String!
-    createdAt: DateTime!
-  }
-
-  type CommunicationLog {
-    id: ID!
-    type: String!
-    details: JSON!
-    createdAt: DateTime!
   }
 
   # 7. AI & Automation Types
@@ -797,32 +775,22 @@ export const typeDefs = gql`
     proposal(id: ID!): Proposal
 
     # Documentation
-    wikiPages: [WikiPage!]!
+    wikis(organizationId: ID!): [Wiki!]!
+    wiki(id: ID!): Wiki
+    wikiProjectLinks(projectId: String, wikiId: String): [WikiProjectLink!]!
+    wikiPages(wikiId: ID!): [WikiPage!]!
     wikiPage(id: ID!): WikiPage
-    wikiPageVersions: [WikiPageVersion!]!
-    wikiPageVersion(id: ID!): WikiPageVersion
-    documentFolders: [DocumentFolder!]!
+    wikiPageVersions(wikiPageId: ID!): [WikiPageVersion!]!
+    documentFolders(wikiId: ID!): [DocumentFolder!]!
     documentFolder(id: ID!): DocumentFolder
-    documents: [Document!]!
+    documents(wikiId: ID!, folderId: ID): [Document!]!
     document(id: ID!): Document
-    documentPermissions: [DocumentPermission!]!
-    documentPermission(id: ID!): DocumentPermission
-    documentLinks: [DocumentLink!]!
-    documentLink(id: ID!): DocumentLink
+    documentPermissions(documentId: ID!): [DocumentPermission!]!
 
     # Communication
-    chatChannels: [ChatChannel!]!
+    chatChannels(organizationId: ID!, userId: ID, type: String, projectId: ID): [ChatChannel!]!
     chatChannel(id: ID!): ChatChannel
-    channelMembers: [ChannelMember!]!
-    channelMember(id: ID!): ChannelMember
-    chatMessages: [ChatMessage!]!
-    chatMessage(id: ID!): ChatMessage
-    messageMentions: [MessageMention!]!
-    messageMention(id: ID!): MessageMention
-    messageAttachments: [MessageAttachment!]!
-    messageAttachment(id: ID!): MessageAttachment
-    communicationLogs: [CommunicationLog!]!
-    communicationLog(id: ID!): CommunicationLog
+    channelMembers(channelId: ID!): [ChannelMember!]!
 
     # AI & Automation
     aiConversations: [AiConversation!]!
@@ -990,6 +958,11 @@ export const typeDefs = gql`
     deleteProposal(id: ID!): DeleteResponse!
 
     # Documentation
+    createWiki(input: JSON!): Wiki!
+    updateWiki(id: ID!, input: JSON!): Wiki!
+    deleteWiki(id: ID!): DeleteResponse!
+    createWikiProjectLink(input: JSON!): WikiProjectLink!
+    deleteWikiProjectLink(id: ID!): DeleteResponse!
     createWikiPage(input: JSON!): WikiPage!
     updateWikiPage(id: ID!, input: JSON!): WikiPage!
     deleteWikiPage(id: ID!): DeleteResponse!
@@ -1003,23 +976,13 @@ export const typeDefs = gql`
     createDocumentPermission(input: JSON!): DocumentPermission!
     updateDocumentPermission(id: ID!, input: JSON!): DocumentPermission!
     deleteDocumentPermission(id: ID!): DeleteResponse!
-    createDocumentLink(input: JSON!): DocumentLink!
-    updateDocumentLink(id: ID!, input: JSON!): DocumentLink!
-    deleteDocumentLink(id: ID!): DeleteResponse!
 
     # Communication
     createChatChannel(input: JSON!): ChatChannel!
     updateChatChannel(id: ID!, input: JSON!): ChatChannel!
     deleteChatChannel(id: ID!): DeleteResponse!
     createChannelMember(input: JSON!): ChannelMember!
-    updateChannelMember(id: ID!, input: JSON!): ChannelMember!
     deleteChannelMember(id: ID!): DeleteResponse!
-    createChatMessage(input: JSON!): ChatMessage!
-    updateChatMessage(id: ID!, input: JSON!): ChatMessage!
-    deleteChatMessage(id: ID!): DeleteResponse!
-    createMessageMention(input: JSON!): MessageMention!
-    createMessageAttachment(input: JSON!): MessageAttachment!
-    createCommunicationLog(input: JSON!): CommunicationLog!
 
     # AI & Automation
     createAiConversation(input: JSON!): AiConversation!

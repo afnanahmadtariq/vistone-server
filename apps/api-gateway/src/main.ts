@@ -5,6 +5,7 @@ import { expressMiddleware } from '@as-integrations/express5';
 import dotenv from 'dotenv';
 import { typeDefs } from './schema/typeDefs';
 import { resolvers } from './schema/resolvers';
+import uploadRouter from './routes/upload';
 
 dotenv.config();
 
@@ -14,16 +15,16 @@ const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 // Parse CORS origins from environment variable (comma-separated)
 function getCorsOrigins(): string | string[] | boolean {
   const corsOrigin = process.env.CORS_ORIGIN;
-  
+
   if (!corsOrigin || corsOrigin === '*') {
     return true; // Allow all origins
   }
-  
+
   // Support comma-separated origins
   if (corsOrigin.includes(',')) {
     return corsOrigin.split(',').map(origin => origin.trim());
   }
-  
+
   return corsOrigin;
 }
 
@@ -40,7 +41,7 @@ async function startServer() {
 
   // Enable CORS for all routes
   app.use(cors(corsOptions));
-  
+
   // Handle preflight requests explicitly
   app.options('*', cors(corsOptions));
 
@@ -63,6 +64,9 @@ async function startServer() {
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
+
+  // File upload route
+  app.use('/upload', uploadRouter);
 
   // Mount GraphQL at /graphql
   app.use('/graphql', expressMiddleware(apolloServer, { context: apolloContext }));

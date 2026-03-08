@@ -433,58 +433,8 @@ async function seedClients() {
 // ─── 5. KNOWLEDGE HUB ──────────────────────────────────────────────────────────
 async function seedKnowledge() {
   console.log('\n📚 Seeding Knowledge Hub...');
-
-  // Folders
-  const folderDefs = ['Engineering', 'Design System', 'Policies & HR', 'Project Docs'];
-  for (const name of folderDefs) {
-    const created = await post(SVC.knowledge, '/document-folders', { organizationId: id.org, name });
-    id.folders.push(created.id);
-    console.log(`  ✅ Folder: ${name}`);
-  }
-
-  // Documents
-  const docDefs = [
-    [0, 'API Design Guidelines', '/docs/api-guidelines.pdf'],
-    [0, 'Database Schema Reference', '/docs/db-schema.md'],
-    [0, 'Git Branching Strategy', '/docs/git-workflow.md'],
-    [1, 'Brand Color Palette', '/docs/brand-colors.pdf'],
-    [1, 'Component Library Specs', '/docs/components.pdf'],
-    [2, 'Remote Work Policy', '/docs/remote-policy.pdf'],
-    [2, 'Employee Handbook', '/docs/handbook.pdf'],
-    [3, 'E-Commerce PRD', '/docs/ecommerce-prd.pdf'],
-  ];
-  for (const [fi, name, url] of docDefs) {
-    const created = await post(SVC.knowledge, '/documents', {
-      organizationId: id.org, folderId: id.folders[fi as number],
-      name, url, metadata: { type: (url as string).endsWith('.pdf') ? 'pdf' : 'markdown' },
-    });
-    id.documents.push(created.id);
-  }
-  console.log(`  ✅ Documents (${docDefs.length})`);
-
-  // Document permissions
-  await post(SVC.knowledge, '/document-permissions', { documentId: id.documents[0], userId: id.users[4], permission: 'edit' });
-  await post(SVC.knowledge, '/document-permissions', { documentId: id.documents[5], roleId: id.roles.contributor, permission: 'read' });
-
-  // Document links
-  await post(SVC.knowledge, '/document-links', { documentId: id.documents[7], entityType: 'project', entityId: id.projects[0] });
-
-  // Wiki pages
-  const wikiDefs = [
-    ['Getting Started at Vistone', '# Welcome to Vistone Digital!\n\nThis guide helps new team members get set up quickly.\n\n## First Day\n1. Set up your development environment\n2. Join Slack channels\n3. Review the codebase\n\n## Key Contacts\n- Sarah Chen (Admin)\n- Omar Khalid (Organizer)'],
-    ['Development Environment Setup', '# Development Setup\n\n## Prerequisites\n- Node.js 20+\n- Docker Desktop\n- VS Code with ESLint & Prettier\n- PostgreSQL 15\n\n## Steps\n```bash\ngit clone https://github.com/vistone/server.git\nnpm install\nnx run-many -t serve\n```'],
-    ['Coding Standards', '# Coding Standards\n\n## TypeScript\n- Use strict mode\n- Prefer interfaces over types\n- Use barrel exports\n\n## Git\n- Conventional commits\n- Feature branches from `develop`\n- Squash merge to `main`'],
-    ['Deployment Guide', '# Deployment Process\n\n## Environments\n- `staging` — auto-deploy from `develop`\n- `production` — manual promotion from staging\n\n## CI/CD\nWe use GitHub Actions for all pipelines.'],
-  ];
-  for (const [title, content] of wikiDefs) {
-    const created = await post(SVC.knowledge, '/wiki-pages', { title, content });
-    id.wikis.push(created.id);
-    console.log(`  ✅ Wiki: ${title}`);
-  }
-
-  // Wiki version
-  await post(SVC.knowledge, '/wiki-page-versions', { wikiPageId: id.wikis[1], content: wikiDefs[1][1] + '\n\n## Troubleshooting\n- Port 3000 in use? Kill the process.', version: 2 });
-  console.log('  ✅ Wiki version');
+  // Knowledge Hub seeding has been removed. 
+  // Wikis, Folders and Documents will be created by the user to avoid nonsense seed data.
 }
 
 // ─── 6. COMMUNICATION ───────────────────────────────────────────────────────────

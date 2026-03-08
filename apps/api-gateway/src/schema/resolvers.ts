@@ -452,103 +452,72 @@ export const resolvers = {
     },
 
     // Documentation (Knowledge Hub Service) â€” require wiki:read
-    wikiPages: async (_: unknown, _args: unknown, context: Context) => {
+    wikis: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.get('/wiki-pages');
+      return knowledgeClient.get(`/wikis?organizationId=${organizationId}`);
+    },
+    wiki: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.getById('/wikis', id);
+    },
+    wikiProjectLinks: async (_: unknown, { projectId, wikiId }: { projectId?: string; wikiId?: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      const params = new URLSearchParams();
+      if (projectId) params.append('projectId', projectId);
+      if (wikiId) params.append('wikiId', wikiId);
+      return knowledgeClient.get(`/wiki-project-links?${params.toString()}`);
+    },
+    wikiPages: async (_: unknown, { wikiId }: { wikiId: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'read');
+      return knowledgeClient.get(`/wiki-pages?wikiId=${wikiId}`);
     },
     wikiPage: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
       return knowledgeClient.getById('/wiki-pages', id);
     },
-    wikiPageVersions: async (_: unknown, _args: unknown, context: Context) => {
+    wikiPageVersions: async (_: unknown, { wikiPageId }: { wikiPageId: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.get('/wiki-page-versions');
+      return knowledgeClient.get(`/wiki-page-versions?wikiPageId=${wikiPageId}`);
     },
-    wikiPageVersion: async (_: unknown, { id }: { id: string }, context: Context) => {
+    documentFolders: async (_: unknown, { wikiId }: { wikiId: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.getById('/wiki-page-versions', id);
-    },
-    documentFolders: async (_: unknown, _args: unknown, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.get('/document-folders');
+      return knowledgeClient.get(`/document-folders?wikiId=${wikiId}`);
     },
     documentFolder: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
       return knowledgeClient.getById('/document-folders', id);
     },
-    documents: async (_: unknown, _args: unknown, context: Context) => {
+    documents: async (_: unknown, { wikiId, folderId }: { wikiId: string; folderId?: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.get('/documents');
+      const params = new URLSearchParams({ wikiId });
+      if (folderId) params.append('folderId', folderId);
+      return knowledgeClient.get(`/documents?${params.toString()}`);
     },
     document: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
       return knowledgeClient.getById('/documents', id);
     },
-    documentPermissions: async (_: unknown, _args: unknown, context: Context) => {
+    documentPermissions: async (_: unknown, { documentId }: { documentId: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.get('/document-permissions');
-    },
-    documentPermission: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.getById('/document-permissions', id);
-    },
-    documentLinks: async (_: unknown, _args: unknown, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.get('/document-links');
-    },
-    documentLink: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.getById('/document-links', id);
+      return knowledgeClient.get(`/document-permissions?documentId=${documentId}`);
     },
 
-    // Communication (Communication Service) â€” require channels:read
-    chatChannels: async (_: unknown, _args: unknown, context: Context) => {
+    // Communication (Communication Service) â€" require channels:read
+    chatChannels: async (_: unknown, { organizationId, userId, type, projectId }: { organizationId: string; userId?: string; type?: string; projectId?: string }, context: Context) => {
       await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/chat-channels');
+      const params = new URLSearchParams({ organizationId });
+      if (userId) params.append('userId', userId);
+      if (type) params.append('type', type);
+      if (projectId) params.append('projectId', projectId);
+      return communicationClient.get(`/chat-channels?${params.toString()}`);
     },
     chatChannel: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'channels', 'read');
       return communicationClient.getById('/chat-channels', id);
     },
-    channelMembers: async (_: unknown, _args: unknown, context: Context) => {
+    channelMembers: async (_: unknown, { channelId }: { channelId: string }, context: Context) => {
       await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/channel-members');
-    },
-    channelMember: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.getById('/channel-members', id);
-    },
-    chatMessages: async (_: unknown, _args: unknown, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/chat-messages');
-    },
-    chatMessage: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.getById('/chat-messages', id);
-    },
-    messageMentions: async (_: unknown, _args: unknown, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/message-mentions');
-    },
-    messageMention: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.getById('/message-mentions', id);
-    },
-    messageAttachments: async (_: unknown, _args: unknown, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/message-attachments');
-    },
-    messageAttachment: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.getById('/message-attachments', id);
-    },
-    communicationLogs: async (_: unknown, _args: unknown, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.get('/communication-logs');
-    },
-    communicationLog: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'read');
-      return communicationClient.getById('/communication-logs', id);
+      return communicationClient.get(`/channel-members?channelId=${channelId}`);
     },
 
     // AI & Automation (Monitoring Service) â€” require reports:read
@@ -2423,6 +2392,26 @@ export const resolvers = {
     },
 
     // Documentation (Knowledge Hub Service)
+    createWiki: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'create');
+      return knowledgeClient.post('/wikis', input);
+    },
+    updateWiki: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'update');
+      return knowledgeClient.put('/wikis', id, input);
+    },
+    deleteWiki: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'delete');
+      return knowledgeClient.delete('/wikis', id);
+    },
+    createWikiProjectLink: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'wiki', 'update');
+      return knowledgeClient.post('/wiki-project-links', input);
+    },
+    deleteWikiProjectLink: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'wiki', 'delete');
+      return knowledgeClient.delete('/wiki-project-links', id);
+    },
     createWikiPage: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'wiki', 'create');
       return knowledgeClient.post('/wiki-pages', input);
@@ -2475,18 +2464,6 @@ export const resolvers = {
       await requirePermission(context, 'wiki', 'delete');
       return knowledgeClient.delete('/document-permissions', id);
     },
-    createDocumentLink: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'update');
-      return knowledgeClient.post('/document-links', input);
-    },
-    updateDocumentLink: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'update');
-      return knowledgeClient.put('/document-links', id, input);
-    },
-    deleteDocumentLink: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'delete');
-      return knowledgeClient.delete('/document-links', id);
-    },
 
     // Communication (Communication Service)
     createChatChannel: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
@@ -2505,37 +2482,9 @@ export const resolvers = {
       await requirePermission(context, 'channels', 'update');
       return communicationClient.post('/channel-members', input);
     },
-    updateChannelMember: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.put('/channel-members', id, input);
-    },
     deleteChannelMember: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'channels', 'delete');
       return communicationClient.delete('/channel-members', id);
-    },
-    createChatMessage: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.post('/chat-messages', input);
-    },
-    updateChatMessage: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.put('/chat-messages', id, input);
-    },
-    deleteChatMessage: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'channels', 'delete');
-      return communicationClient.delete('/chat-messages', id);
-    },
-    createMessageMention: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.post('/message-mentions', input);
-    },
-    createMessageAttachment: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.post('/message-attachments', input);
-    },
-    createCommunicationLog: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'update');
-      return communicationClient.post('/communication-logs', input);
     },
 
     // AI & Automation (Monitoring Service)
