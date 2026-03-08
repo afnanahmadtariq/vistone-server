@@ -2545,16 +2545,20 @@ export const resolvers = {
 
     // Communication (Communication Service)
     createChatChannel: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      const user = await requirePermission(context, 'channels', 'create');
+      let user;
+      if (input.type === 'dm') {
+        // Any authenticated user can create a DM conversation
+        user = await requireAuth(context);
+      } else {
+        // Group/project channels require channels:create permission
+        user = await requirePermission(context, 'channels', 'create');
+      }
       // Enrich the input with the authenticated user's organizationId and id
       const enrichedInput = {
         ...input,
         organizationId: input.organizationId || getOrgId(user),
         createdBy: input.createdBy || user.id,
-        // For DMs, ensure the current user is included in memberIds
-        ...(input.type === 'dm' && {
-          memberIds: input.memberIds || [],
-        }),
+        memberIds: input.memberIds || [],
       };
       return communicationClient.post('/chat-channels', enrichedInput);
     },

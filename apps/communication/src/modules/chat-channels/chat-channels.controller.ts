@@ -10,14 +10,20 @@ export async function createChatChannelHandler(req: Request, res: Response) {
       return;
     }
 
+    // Ensure the creator is always included in memberIds
+    const finalMemberIds: string[] = Array.isArray(memberIds) ? [...memberIds] : [];
+    if (!finalMemberIds.includes(createdBy)) {
+      finalMemberIds.push(createdBy);
+    }
+
     // For DMs, exactly 2 members
     if (type === 'dm') {
-      if (!memberIds || memberIds.length !== 2) {
+      if (!finalMemberIds || finalMemberIds.length !== 2) {
         res.status(400).json({ error: 'DM channels require exactly 2 member IDs' });
         return;
       }
       // Check if DM already exists between these 2 users in this org
-      const sortedIds = [...memberIds].sort();
+      const sortedIds = [...finalMemberIds].sort();
       const existing = await prisma.chatChannel.findFirst({
         where: {
           organizationId,
@@ -44,7 +50,7 @@ export async function createChatChannelHandler(req: Request, res: Response) {
         projectId: type === 'project' ? projectId : null,
         createdBy,
         members: {
-          create: (memberIds as string[]).map((userId: string) => ({
+          create: finalMemberIds.map((userId: string) => ({
             userId,
             role: userId === createdBy ? 'admin' : 'member',
           })),

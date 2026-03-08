@@ -15,7 +15,11 @@ export async function createChannelMemberHandler(req: Request, res: Response) {
 
 export async function getAllChannelMembersHandler(req: Request, res: Response) {
     try {
-    const channelMembers = await prisma.channelMember.findMany();
+    const { channelId, userId } = req.query;
+    const where: Record<string, unknown> = {};
+    if (channelId) where.channelId = channelId as string;
+    if (userId) where.userId = userId as string;
+    const channelMembers = await prisma.channelMember.findMany({ where });
     res.json(channelMembers);
     } catch (error) {
     console.error(error);
