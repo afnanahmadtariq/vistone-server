@@ -290,7 +290,7 @@ export const typeDefs = gql`
     title: String!
     description: String
     status: String!
-    priority: String!
+    priority: String
     dueDate: DateTime
     startDate: DateTime
     estimatedHours: Float

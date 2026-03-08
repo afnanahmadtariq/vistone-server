@@ -177,9 +177,9 @@ export function getAllToolDefs(): ToolDef[] {
             description: 'Create a milestone for a project.',
             schema: z.object({
                 projectId: z.string(),
-                name: z.string(),
+                title: z.string().describe('Milestone title'),
                 description: z.string().optional(),
-                dueDate: z.string().optional(),
+                dueDate: z.string().optional().describe('Due date (YYYY-MM-DD)'),
                 status: z.enum(['pending', 'in_progress', 'completed', 'missed']).optional().default('pending'),
             }),
             func: async (input) => {
@@ -213,8 +213,11 @@ export function getAllToolDefs(): ToolDef[] {
                 phone: z.string().optional(),
                 company: z.string().optional(),
                 industry: z.string().optional(),
+                address: z.string().optional(),
                 status: z.enum(['active', 'inactive', 'prospect', 'churned']).optional().default('active'),
-                notes: z.string().optional(),
+                portalAccess: z.boolean().optional(),
+                contactPersonId: z.string().optional(),
+                contactInfo: z.any().optional().describe('Additional contact info (JSON)'),
             }),
             func: async (input) => {
                 // POST /clients
@@ -242,8 +245,11 @@ export function getAllToolDefs(): ToolDef[] {
                 phone: z.string().optional(),
                 company: z.string().optional(),
                 industry: z.string().optional(),
+                address: z.string().optional(),
                 status: z.enum(['active', 'inactive', 'prospect', 'churned']).optional(),
-                notes: z.string().optional(),
+                portalAccess: z.boolean().optional(),
+                contactPersonId: z.string().optional(),
+                contactInfo: z.any().optional().describe('Additional contact info (JSON)'),
             }),
             func: async ({ clientId, ...updates }) => {
                 // PUT /clients/:id
@@ -274,13 +280,9 @@ export function getAllToolDefs(): ToolDef[] {
             description: 'Create a proposal for a client.',
             schema: z.object({
                 clientId: z.string(),
-                organizationId: z.string(),
                 title: z.string(),
-                description: z.string().optional(),
-                amount: z.number().optional(),
+                content: z.string().optional().describe('Proposal body/content'),
                 status: z.enum(['draft', 'sent', 'accepted', 'rejected', 'expired']).optional().default('draft'),
-                validUntil: z.string().optional(),
-                createdById: z.string().optional(),
             }),
             func: async (input) => {
                 // POST /proposals
@@ -318,7 +320,7 @@ export function getAllToolDefs(): ToolDef[] {
                 organizationId: z.string(),
                 name: z.string(),
                 description: z.string().optional(),
-                leaderId: z.string().optional(),
+                managerId: z.string().optional().describe('User ID of the team manager'),
             }),
             func: async (input) => {
                 // POST /teams
@@ -392,8 +394,7 @@ export function getAllToolDefs(): ToolDef[] {
             schema: z.object({
                 userId: z.string(),
                 skillName: z.string(),
-                proficiencyLevel: z.enum(['beginner', 'intermediate', 'advanced', 'expert']).optional(),
-                yearsOfExperience: z.number().optional(),
+                proficiency: z.number().int().min(1).max(10).optional().describe('Proficiency level from 1 to 10'),
             }),
             func: async (input) => {
                 // POST /user-skills
@@ -413,7 +414,7 @@ export function getAllToolDefs(): ToolDef[] {
                 channelId: z.string(),
                 senderId: z.string(),
                 content: z.string(),
-                messageType: z.enum(['text', 'file', 'image', 'system']).optional().default('text'),
+                type: z.enum(['text', 'file', 'image', 'system']).optional().default('text').describe('Message type'),
             }),
             func: async (input) => {
                 // POST /chat-messages
@@ -443,9 +444,10 @@ export function getAllToolDefs(): ToolDef[] {
                 organizationId: z.string(),
                 name: z.string(),
                 description: z.string().optional(),
-                channelType: z.enum(['general', 'project', 'team', 'direct']).optional().default('general'),
-                isPrivate: z.boolean().optional().default(false),
-                createdById: z.string(),
+                type: z.enum(['project', 'group', 'dm']).optional().default('group').describe('Channel type'),
+                projectId: z.string().optional().describe('Project ID (required when type is "project")'),
+                createdBy: z.string().describe('User ID of the channel creator'),
+                memberIds: z.array(z.string()).optional().default([]).describe('User IDs to add as members'),
             }),
             func: async (input) => {
                 // POST /chat-channels
@@ -479,11 +481,8 @@ export function getAllToolDefs(): ToolDef[] {
             description: 'Send a notification to a user.',
             schema: z.object({
                 userId: z.string(),
-                type: z.enum(['info', 'success', 'warning', 'error', 'task', 'mention', 'reminder']),
-                title: z.string(),
-                message: z.string(),
-                priority: z.enum(['low', 'normal', 'high']).optional().default('normal'),
-                actionUrl: z.string().optional(),
+                content: z.string().describe('Notification message content'),
+                type: z.enum(['info', 'success', 'warning', 'error', 'task', 'mention', 'reminder']).optional(),
             }),
             func: async (input) => {
                 // POST /notifications
@@ -511,7 +510,7 @@ export function getAllToolDefs(): ToolDef[] {
             func: async ({ notificationId }) => {
                 // PUT /notifications/:id
                 const r = await safeCall(() =>
-                    notificationClient().put(`/notifications/${notificationId}`, { read: true })
+                    notificationClient().put(`/notifications/${notificationId}`, { isRead: true })
                 );
                 return JSON.stringify(r);
             },
@@ -535,14 +534,13 @@ export function getAllToolDefs(): ToolDef[] {
         // ═══════════════════════════════════════════════════════════
         {
             name: 'create_document',
-            description: 'Create a document in the knowledge hub.',
+            description: 'Create a document (file reference) in a wiki. Requires a wikiId, document name, and a URL pointing to the file.',
             schema: z.object({
-                organizationId: z.string(),
-                title: z.string(),
-                content: z.string(),
-                category: z.string().optional(),
-                tags: z.array(z.string()).optional(),
-                createdById: z.string(),
+                wikiId: z.string().describe('ID of the wiki this document belongs to'),
+                name: z.string().describe('Document name'),
+                url: z.string().describe('URL of the document file'),
+                folderId: z.string().optional().describe('Folder ID within the wiki'),
+                metadata: z.any().optional().describe('Additional metadata (JSON)'),
             }),
             func: async (input) => {
                 // POST /documents
@@ -572,11 +570,10 @@ export function getAllToolDefs(): ToolDef[] {
             name: 'create_wiki_page',
             description: 'Create a wiki page.',
             schema: z.object({
-                organizationId: z.string(),
+                wikiId: z.string().describe('ID of the wiki this page belongs to'),
                 title: z.string(),
-                content: z.string(),
-                parentId: z.string().optional(),
-                createdById: z.string(),
+                content: z.string().optional(),
+                parentId: z.string().optional().describe('Parent page ID for nesting'),
             }),
             func: async (input) => {
                 // POST /wiki-pages
