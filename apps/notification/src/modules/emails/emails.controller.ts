@@ -26,6 +26,7 @@ export async function sendOrganizationMemberInvitationEmailHandler(req: Request,
       organizationName,
       inviteLink,
       recipientName,
+      role,
     });
 
     const sent = await sendEmail({

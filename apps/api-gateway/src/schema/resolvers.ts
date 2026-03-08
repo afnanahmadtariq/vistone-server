@@ -229,8 +229,11 @@ export const resolvers = {
       }
       return authClient.postWithAuth('/auth/me', {}, context.token);
     },
+    getInviteDetails: async (_: unknown, { token }: { token: string }) => {
+      return authClient.get(`/auth/invite-details/${token}`);
+    },
 
-    // Users & Organizations (Auth Service) â€” org-scoped
+    // Users & Organizations (Auth Service) — org-scoped
     users: async (_: unknown, { organizationId }: { organizationId?: string }, context: Context) => {
       const user = await requireAuth(context);
       const orgId = organizationId || getOrgId(user);
@@ -1766,8 +1769,23 @@ export const resolvers = {
         const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
         const recipientName = `${input.firstName || ''} ${input.lastName || ''}`.trim() || undefined;
 
-        // Generate invite token (user ID can be used as token for simplicity)
-        const inviteToken = user.id;
+        // Generate invite token by calling the new auth service invitations endpoint
+        let inviteToken = '';
+        try {
+          const invData = await authClient.post('/invitations', {
+            email: input.email,
+            role: input.role,
+            organizationId,
+          });
+          if (invData && invData.token) {
+            inviteToken = invData.token;
+          } else {
+            throw new Error('No token returned from auth service');
+          }
+        } catch (invErr) {
+          console.error('Failed to create invitation record:', invErr);
+          throw new Error('Failed to generate secure invitation token');
+        }
 
         if (input.teamId && teamName) {
           // Send team invitation
@@ -2692,7 +2710,8 @@ export const resolvers = {
     // AI Engine
     aiChat: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await validateAiRequest(context, input.organizationId, input.userId);
-      return aiEngineClient.postWithAuth('/api/chat', input, context.token || '');
+      const result = await aiEngineClient.postWithAuth('/api/chat', input, context.token || '');
+      return { success: true, data: result };
     },
     aiClearHistory: async (_: unknown, { sessionId }: { sessionId: string }, context: Context) => {
       await requireAuth(context);

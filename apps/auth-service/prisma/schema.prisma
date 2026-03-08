@@ -132,3 +132,17 @@ model ActivityLog {
   @@map("activity_logs")
   @@schema("auth")
 }
+
+model Invitation {
+  id             String   @id @default(uuid())
+  email          String
+  role           String
+  token          String   @unique
+  organizationId String
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime @default(now())
+  
+  @@map("invitations")
+  @@schema("auth")
+}

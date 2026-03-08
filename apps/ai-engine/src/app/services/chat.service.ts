@@ -16,42 +16,6 @@ import {
 } from './rag.service';
 import { v4 as uuidv4 } from 'uuid';
 
-// ── Lazy LLM (loaded only on first chat) ────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _ChatMistralAI: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _HumanMessage: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _SystemMessage: any = null;
-
-async function loadChatModules() {
-    if (_ChatMistralAI) return;
-    const [mistral, messages] = await Promise.all([
-        import('@langchain/mistralai'),
-        import('@langchain/core/messages'),
-    ]);
-    _ChatMistralAI = mistral.ChatMistralAI;
-    _HumanMessage = messages.HumanMessage;
-    _SystemMessage = messages.SystemMessage;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _chatLLM: any = null;
-
-async function getChatLLM() {
-    await loadChatModules();
-    if (!_chatLLM) {
-        _chatLLM = new _ChatMistralAI({
-            apiKey: config.mistral.apiKey,
-            model: config.mistral.chatModel,
-            temperature: config.mistral.temperature,
-            maxTokens: config.mistral.maxTokens,
-        });
-    }
-    return _chatLLM;
-}
-
 // ── Action Detection ────────────────────────────────────────────
 
 const ACTION_KEYWORDS = [
@@ -61,6 +25,8 @@ const ACTION_KEYWORDS = [
     'assign', 'reassign', 'transfer',
     'send', 'notify', 'message', 'announce',
     'mark', 'complete', 'close', 'reopen',
+    // 'yes/ok' still trigger agent so it can continue a multi-step write action
+    'yes', 'ok', 'sure', 'proceed', 'go ahead', 'do it',
 ];
 
 function isActionQuery(query: string): boolean {
@@ -130,7 +96,7 @@ export async function chat(
 
     // 4. Detect mode: action or information
     if (isActionQuery(queryText)) {
-        return handleAction(user, queryText, sid, context, sources);
+        return handleAction(user, queryText, sid, context, sources, history);
     }
 
     return handleInfoQuery(user, queryText, sid, context, sources, history);
@@ -146,60 +112,20 @@ async function handleInfoQuery(
     sources: ChatResponse['sources'],
     history: { role: string; content: string }[]
 ): Promise<ChatResponse> {
-    await loadChatModules();
-    const llm = await getChatLLM();
-
-    const systemPrompt = buildSystemPrompt(user, context);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const messages: any[] = [new _SystemMessage(systemPrompt)];
-
-    // Add conversation history
-    for (const h of history) {
-        if (h.role === 'user') {
-            messages.push(new _HumanMessage(h.content));
-        } else {
-            // Use a simple object for assistant messages from history
-            messages.push({ role: 'assistant', content: h.content });
-        }
-    }
-
-    messages.push(new _HumanMessage(queryText));
-
-    const response = await llm.invoke(messages);
-    const answer = response.content || "I couldn't generate a response.";
-
-    // Save to history
-    await saveToHistory(user.organizationId, user.id, sessionId, 'user', queryText);
-    await saveToHistory(user.organizationId, user.id, sessionId, 'assistant', answer, {
-        sources,
-    });
-
-    return { answer, sessionId, sources, isActionResponse: false };
-}
-
-// ── Action Query (Agent) ────────────────────────────────────────
-
-async function handleAction(
-    user: AuthenticatedUser,
-    queryText: string,
-    sessionId: string,
-    context: string,
-    sources: ChatResponse['sources']
-): Promise<ChatResponse> {
-    // Lazy import the agent runner
+    // We use the Agent runner in ReadOnly mode.
+    // This allows the LLM to fetch missing data (e.g., project lists) while strictly preventing state changes.
     const { runAgent } = await import('../agent/runner.js');
 
-    const systemPrompt = buildSystemPrompt(user, context) + `
+    const systemPrompt =
+        buildSystemPrompt(user, context) +
+        `
 
-AGENT MODE:
-You have access to tools to perform actions. Use them to fulfill the user's request.
-- The user's ID is: ${user.id}
-- The organization ID is: ${user.organizationId}
-- Only use tools that match the user's permissions.
-- After completing actions, summarize what you did clearly.`;
+INFO MODE (Read-Only):
+You have access to data-retrieval tools. If the retrieved context doesn't contain the answer (e.g., user asks for counts or lists not in snippets), use a 'list_...' or 'get_...' tool to find it. 
+- You MUST NOT use any tools that create, update, or delete resources.
+- Answer the user's question accurately based on context and tool results.`;
 
-    const result = await runAgent(user, queryText, systemPrompt);
+    const result = await runAgent(user, queryText, systemPrompt, history, true);
 
     // Save to history
     await saveToHistory(user.organizationId, user.id, sessionId, 'user', queryText);
@@ -216,6 +142,56 @@ You have access to tools to perform actions. Use them to fulfill the user's requ
         answer: result.response,
         sessionId,
         sources,
+        isOutOfScope: false,
+        isActionResponse: false, // UI remains in "Informational" mode
+        actionResult: {
+            success: result.success,
+            toolsUsed: result.toolsUsed,
+            iterations: result.iterations,
+        },
+    };
+}
+
+// ── Action Query (Agent) ────────────────────────────────────────
+
+async function handleAction(
+    user: AuthenticatedUser,
+    queryText: string,
+    sessionId: string,
+    context: string,
+    sources: ChatResponse['sources'],
+    history: { role: string; content: string }[] = []
+): Promise<ChatResponse> {
+    // Lazy import the agent runner
+    const { runAgent } = await import('../agent/runner.js');
+
+    const systemPrompt = buildSystemPrompt(user, context) + `
+
+AGENT MODE:
+You have access to tools to perform actions. Use them to fulfill the user's request.
+- The user's ID is: ${user.id}
+- The organization ID is: ${user.organizationId}
+- Only use tools that match the user's permissions.
+- After completing actions, summarize what you did clearly.`;
+
+    const result = await runAgent(user, queryText, systemPrompt, history);
+
+    // Save to history
+    await saveToHistory(user.organizationId, user.id, sessionId, 'user', queryText);
+    await saveToHistory(user.organizationId, user.id, sessionId, 'assistant', result.response, {
+        sources,
+        actionResult: {
+            success: result.success,
+            toolsUsed: result.toolsUsed,
+            iterations: result.iterations,
+        },
+    });
+
+    return {
+        answer: result.response,
+        sessionId,
+        sources,
+        isOutOfScope: false,
         isActionResponse: true,
         actionResult: {
             success: result.success,

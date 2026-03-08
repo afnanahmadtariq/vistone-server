@@ -14,6 +14,14 @@ export const typeDefs = gql`
     isNewUser: Boolean
   }
 
+  type InviteDetails {
+    role: String
+    organizationName: String
+    email: String
+    firstName: String
+    lastName: String
+  }
+
   type TokenPayload {
     accessToken: String!
     refreshToken: String!
@@ -34,7 +42,14 @@ export const typeDefs = gql`
     joinedAt: DateTime
     organizationId: ID
     organization: AuthOrganization
+    organizations: [AuthOrganizationMembership!]
     permissions: JSON
+  }
+
+  type AuthOrganizationMembership {
+    id: ID!
+    role: String
+    organization: AuthOrganization!
   }
 
   type AuthOrganization {
@@ -726,6 +741,7 @@ export const typeDefs = gql`
   type Query {
     # Authentication
     me: AuthUser
+    getInviteDetails(token: String!): InviteDetails
 
     # Users & Organizations
     users(organizationId: ID): [User!]!
