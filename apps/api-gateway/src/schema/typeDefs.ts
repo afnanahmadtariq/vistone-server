@@ -511,6 +511,24 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
+  type ChannelMediaItem {
+    url: String!
+    fileType: String!
+    fileName: String
+    fileSize: Int
+    thumbnailUrl: String
+    messageId: String!
+    senderId: String!
+    channelId: String!
+    sentAt: String!
+  }
+
+  type ChannelMediaResponse {
+    media: [ChannelMediaItem!]!
+    hasMore: Boolean!
+    nextCursor: String
+  }
+
   # 7. AI & Automation Types
 
   type AiConversation {
@@ -798,6 +816,7 @@ export const typeDefs = gql`
     chatChannels(organizationId: ID!, userId: ID, type: String, projectId: ID): [ChatChannel!]!
     chatChannel(id: ID!): ChatChannel
     channelMembers(channelId: ID!): [ChannelMember!]!
+    channelMedia(channelId: ID!, cursor: String, limit: Int, fileType: String): ChannelMediaResponse!
 
     # AI & Automation
     aiConversations: [AiConversation!]!

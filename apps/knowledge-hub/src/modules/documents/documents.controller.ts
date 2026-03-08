@@ -3,8 +3,11 @@ import prisma from "../../lib/prisma";
 
 export async function createDocumentHandler(req: Request, res: Response) {
     try {
+    // Strip organizationId from body — it's required by validation for auth
+    // but the Document model doesn't have this field in the DB schema.
+    const { organizationId, ...documentData } = req.body;
     const document = await prisma.document.create({
-      data: req.body,
+      data: documentData,
     });
     res.json(document);
     } catch (error) {

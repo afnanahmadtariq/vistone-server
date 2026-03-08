@@ -523,8 +523,16 @@ export const resolvers = {
       await requirePermission(context, 'channels', 'read');
       return communicationClient.get(`/channel-members?channelId=${channelId}`);
     },
+    channelMedia: async (_: unknown, { channelId, cursor, limit, fileType }: { channelId: string; cursor?: string; limit?: number; fileType?: string }, context: Context) => {
+      await requirePermission(context, 'channels', 'read');
+      const params = new URLSearchParams({ channelId });
+      if (cursor) params.append('cursor', cursor);
+      if (limit) params.append('limit', String(limit));
+      if (fileType) params.append('fileType', fileType);
+      return communicationClient.get(`/messages/media?${params.toString()}`);
+    },
 
-    // AI & Automation (Monitoring Service) â€” require reports:read
+    // AI & Automation (Monitoring Service)
     aiConversations: async (_: unknown, _args: unknown, context: Context) => {
       await requireAuth(context);
       return monitoringClient.get('/ai-conversations');
@@ -2517,8 +2525,18 @@ export const resolvers = {
 
     // Communication (Communication Service)
     createChatChannel: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'channels', 'create');
-      return communicationClient.post('/chat-channels', input);
+      const user = await requirePermission(context, 'channels', 'create');
+      // Enrich the input with the authenticated user's organizationId and id
+      const enrichedInput = {
+        ...input,
+        organizationId: input.organizationId || getOrgId(user),
+        createdBy: input.createdBy || user.id,
+        // For DMs, ensure the current user is included in memberIds
+        ...(input.type === 'dm' && {
+          memberIds: input.memberIds || [],
+        }),
+      };
+      return communicationClient.post('/chat-channels', enrichedInput);
     },
     updateChatChannel: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'channels', 'update');

@@ -430,19 +430,6 @@ async function seedClients() {
   }
 }
 
-// ─── 5. KNOWLEDGE HUB ──────────────────────────────────────────────────────────
-async function seedKnowledge() {
-  console.log('\n📚 Seeding Knowledge Hub...');
-  // Knowledge Hub seeding has been removed. 
-  // Wikis, Folders and Documents will be created by the user to avoid nonsense seed data.
-}
-
-// ─── 6. COMMUNICATION ───────────────────────────────────────────────────────────
-
-async function seedCommunication() {
-  console.log('\n💬 Skipping Communication (chat) seeding.');
-  return;
-}
 
 // ─── 7. MONITORING & REPORTING ──────────────────────────────────────────────────
 async function seedMonitoring() {
