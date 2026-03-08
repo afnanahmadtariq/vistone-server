@@ -2393,9 +2393,29 @@ export const resolvers = {
         }
       }
 
+      // Generate invite token by calling the auth service invitations endpoint
+      let inviteToken = '';
+      try {
+        const invData = await authClient.post('/auth/invitations', {
+          email: input.email,
+          role: 'Client',
+          organizationId,
+          senderId: currentUser.id,
+        });
+        if (invData && invData.token) {
+          inviteToken = invData.token;
+        } else {
+          // Fallback to user.id if token is not returned (unlikely)
+          inviteToken = user.id;
+        }
+      } catch (invErr) {
+        console.error('Failed to create invitation record for client:', invErr);
+        // Fallback to user.id to at least try sending the invite
+        inviteToken = user.id;
+      }
+
       try {
         const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
-        const inviteToken = user.id;
         await notificationClient.post('/emails/invite/client', {
           email: input.email,
           inviterName,
