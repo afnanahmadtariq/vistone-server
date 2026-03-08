@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { ServiceError } from '../lib/errors';
 
 /** Generic record type representing data from REST microservices */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -19,19 +20,77 @@ class ServiceClient {
     });
   }
 
+  /**
+   * Extracts a detailed, human-readable error message and any validation
+   * details from a downstream microservice HTTP error response.
+   *
+   * All services return at least `{ error: string }`.
+   * Some also return `{ message, details, validRoles, validTypes }`.
+   */
   private handleError(error: unknown, operation: string): never {
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError;
+
+      // ── Connection refused — service is down ──
       if (axiosError.code === 'ECONNREFUSED') {
-        throw new Error(`${this.serviceName} is not available. Please ensure the service is running.`);
+        throw new ServiceError(
+          `${this.serviceName} is not available. Please ensure the service is running.`,
+          503,
+          this.serviceName,
+          operation,
+        );
       }
+
+      // ── Timeout ──
+      if (axiosError.code === 'ECONNABORTED' || axiosError.code === 'ETIMEDOUT') {
+        throw new ServiceError(
+          `${this.serviceName} request timed out. Please try again.`,
+          504,
+          this.serviceName,
+          operation,
+        );
+      }
+
+      // ── HTTP error response from the service ──
       if (axiosError.response) {
+        const status = axiosError.response.status;
         const data = axiosError.response.data as ServiceRecord | undefined;
-        const message = data?.error || axiosError.message;
-        throw new Error(`${this.serviceName} ${operation} failed: ${message}`);
+
+        // Extract the most specific message available.
+        // Services may return: { error, message, details, validRoles, validTypes }
+        const primaryMessage: string =
+          data?.message ||
+          data?.error ||
+          (typeof data === 'string' ? data : null) ||
+          axiosError.message ||
+          `Request failed with status ${status}`;
+
+        // Extract validation details (Zod issues array)
+        const details =
+          data?.details ||
+          data?.errors ||
+          data?.issues ||
+          undefined;
+
+        throw new ServiceError(
+          primaryMessage,
+          status,
+          this.serviceName,
+          operation,
+          details,
+        );
       }
-      throw new Error(`${this.serviceName} ${operation} failed: ${axiosError.message}`);
+
+      // ── Network error without a response ──
+      throw new ServiceError(
+        `${this.serviceName} request failed: ${axiosError.message}`,
+        502,
+        this.serviceName,
+        operation,
+      );
     }
+
+    // ── Non-Axios error — re-throw as-is ──
     throw error;
   }
 

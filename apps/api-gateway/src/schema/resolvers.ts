@@ -1,4 +1,4 @@
-﻿import { GraphQLScalarType, Kind } from 'graphql';
+﻿import { GraphQLScalarType, Kind, GraphQLError } from 'graphql';
 import {
   authClient,
   workforceClient,
@@ -32,7 +32,9 @@ async function validateAiRequest(
 
   // If userId is provided, it must match the authenticated user
   if (userId && userId !== user.id) {
-    throw new Error('Forbidden: userId must match the authenticated user');
+    throw new GraphQLError('Forbidden: userId must match the authenticated user', {
+      extensions: { code: 'FORBIDDEN', statusCode: 403 },
+    });
   }
 }
 
@@ -225,7 +227,9 @@ export const resolvers = {
     // Authentication
     me: async (_: unknown, _args: unknown, context: Context) => {
       if (!context.token) {
-        throw new Error('Not authenticated');
+        throw new GraphQLError('Not authenticated', {
+          extensions: { code: 'UNAUTHENTICATED', statusCode: 401 },
+        });
       }
       return authClient.postWithAuth('/auth/me', {}, context.token);
     },
@@ -1245,7 +1249,9 @@ export const resolvers = {
 
       const isValid = await verifyTurnstileToken(turnstileToken, ip);
       if (!isValid) {
-        throw new Error('Invalid CAPTCHA');
+        throw new GraphQLError('Invalid CAPTCHA verification. Please try again.', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
       }
 
       return authClient.post('/auth/login', { email, password });
@@ -1257,7 +1263,9 @@ export const resolvers = {
 
       const isValid = await verifyTurnstileToken(turnstileToken, ip);
       if (!isValid) {
-        throw new Error('Invalid CAPTCHA');
+        throw new GraphQLError('Invalid CAPTCHA verification. Please try again.', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
       }
 
       return authClient.post('/auth/register', { name, email, password, organizationName });
@@ -1470,7 +1478,9 @@ export const resolvers = {
         return true;
       } catch (error) {
         console.error('[deleteMyAccount] Failed to delete user:', error);
-        throw new Error('Failed to delete account. Please try again or contact support.');
+        throw new GraphQLError('Failed to delete account. Please try again or contact support.', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+        });
       }
     },
 
@@ -1496,13 +1506,17 @@ export const resolvers = {
       const organizationId = currentUser.organizationId;
 
       if (!organizationId) {
-        throw new Error('Organization ID is required');
+        throw new GraphQLError('Organization ID is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
       }
 
       // Find the user's organization membership
       const memberships = await authClient.get(`/organization-members?userId=${userId}&organizationId=${organizationId}`);
       if (!Array.isArray(memberships) || memberships.length === 0) {
-        throw new Error('User is not a member of this organization');
+        throw new GraphQLError('User is not a member of this organization', {
+          extensions: { code: 'NOT_FOUND', statusCode: 404 },
+        });
       }
       const membership = memberships[0];
 
@@ -1568,7 +1582,9 @@ export const resolvers = {
             isSystem: true,
           });
         } else {
-          throw new Error(`Unknown role: ${role}`);
+          throw new GraphQLError(`Unknown role: ${role}. Valid roles are: Organizer, Manager, Contributor`, {
+            extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+          });
         }
       }
 
@@ -1594,7 +1610,9 @@ export const resolvers = {
       // Use organizationId from input or current user
       const organizationId = input.organizationId || currentUser.organizationId;
       if (!organizationId) {
-        throw new Error('Organization ID is required');
+        throw new GraphQLError('Organization ID is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
       }
 
       // Get organization details for the email
@@ -1602,7 +1620,9 @@ export const resolvers = {
       try {
         organization = await authClient.getById('/organizations', organizationId);
       } catch {
-        throw new Error('Organization not found');
+        throw new GraphQLError('Organization not found', {
+          extensions: { code: 'NOT_FOUND', statusCode: 404 },
+        });
       }
 
       // Create user if doesn't exist, or get existing user
@@ -1622,7 +1642,9 @@ export const resolvers = {
           });
         }
       } catch {
-        throw new Error('Failed to create or find user');
+        throw new GraphQLError('Failed to create or find user. The email address may be invalid or the service is unavailable.', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+        });
       }
 
       // Look up the role by name for this organization, or create it if needed
@@ -1749,11 +1771,15 @@ export const resolvers = {
           if (invData && invData.token) {
             inviteToken = invData.token;
           } else {
-            throw new Error('No token returned from auth service');
+            throw new GraphQLError('No token returned from auth service', {
+              extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+            });
           }
         } catch (invErr) {
           console.error('Failed to create invitation record:', invErr);
-          throw new Error('Failed to generate secure invitation token');
+          throw new GraphQLError('Failed to generate secure invitation token. Please try again.', {
+            extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+          });
         }
 
         if (input.teamId && teamName) {
@@ -1862,7 +1888,9 @@ export const resolvers = {
       // Get target user's membership to check their role
       const memberships = await authClient.get(`/organization-members?userId=${userId}&organizationId=${orgId}`);
       if (!Array.isArray(memberships) || memberships.length === 0) {
-        throw new Error('User is not a member of this organization');
+        throw new GraphQLError('User is not a member of this organization', {
+          extensions: { code: 'NOT_FOUND', statusCode: 404 },
+        });
       }
       const targetMembership = memberships[0];
       let targetRoleName = 'Contributor';
@@ -1881,7 +1909,9 @@ export const resolvers = {
         return authClient.put('/users', userId, { status: 'paused' });
       }
 
-      throw new Error('Forbidden: You do not have permission to pause this user');
+      throw new GraphQLError('Forbidden: You do not have permission to pause this user', {
+        extensions: { code: 'FORBIDDEN', statusCode: 403 },
+      });
     },
     unpauseUser: async (_: unknown, { userId }: { userId: string }, context: Context) => {
       const currentUser = await requireAuth(context);
@@ -1889,7 +1919,9 @@ export const resolvers = {
 
       const memberships = await authClient.get(`/organization-members?userId=${userId}&organizationId=${orgId}`);
       if (!Array.isArray(memberships) || memberships.length === 0) {
-        throw new Error('User is not a member of this organization');
+        throw new GraphQLError('User is not a member of this organization', {
+          extensions: { code: 'NOT_FOUND', statusCode: 404 },
+        });
       }
       const targetMembership = memberships[0];
       let targetRoleName = 'Contributor';
@@ -1906,7 +1938,9 @@ export const resolvers = {
         return authClient.put('/users', userId, { status: 'active' });
       }
 
-      throw new Error('Forbidden: You do not have permission to unpause this user');
+      throw new GraphQLError('Forbidden: You do not have permission to unpause this user', {
+        extensions: { code: 'FORBIDDEN', statusCode: 403 },
+      });
     },
     updateMemberPermissions: async (_: unknown, { userId, permissions }: { userId: string; permissions: ServiceRecord }, context: Context) => {
       const currentUser = await requireAuth(context);
@@ -1915,7 +1949,9 @@ export const resolvers = {
       // Get target user's membership
       const memberships = await authClient.get(`/organization-members?userId=${userId}&organizationId=${orgId}`);
       if (!Array.isArray(memberships) || memberships.length === 0) {
-        throw new Error('User is not a member of this organization');
+        throw new GraphQLError('User is not a member of this organization', {
+          extensions: { code: 'NOT_FOUND', statusCode: 404 },
+        });
       }
       const targetMembership = memberships[0];
       let targetRoleName = 'Contributor';
@@ -1926,7 +1962,9 @@ export const resolvers = {
 
       if (isOrganizer(currentUser)) {
         if (targetRoleName === 'Organizer') {
-          throw new Error('Cannot modify another Organizer\'s permissions');
+          throw new GraphQLError('Cannot modify another Organizer\'s permissions', {
+            extensions: { code: 'FORBIDDEN', statusCode: 403 },
+          });
         }
         // Update the role's permissions
         if (targetMembership.roleId) {
@@ -1943,7 +1981,9 @@ export const resolvers = {
         return authClient.getById('/organization-members', targetMembership.id);
       }
 
-      throw new Error('Forbidden: You do not have permission to manage this user\'s permissions');
+      throw new GraphQLError('Forbidden: You do not have permission to manage this user\'s permissions', {
+        extensions: { code: 'FORBIDDEN', statusCode: 403 },
+      });
     },
 
     // Teams - Enhanced
@@ -2027,7 +2067,9 @@ export const resolvers = {
 
       const organizationId = input.organizationId || currentUser.organizationId;
       if (!organizationId) {
-        throw new Error('Organization ID is required');
+        throw new GraphQLError('Organization ID is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
       }
 
       const projectData: ServiceRecord = {
@@ -2218,14 +2260,18 @@ export const resolvers = {
 
       const organizationId = input.organizationId || currentUser.organizationId;
       if (!organizationId) {
-        throw new Error('Organization ID is required');
+        throw new GraphQLError('Organization ID is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
       }
 
       let organization;
       try {
         organization = await authClient.getById('/organizations', organizationId);
       } catch {
-        throw new Error('Organization not found');
+        throw new GraphQLError('Organization not found', {
+          extensions: { code: 'NOT_FOUND', statusCode: 404 },
+        });
       }
 
       let user;
@@ -2244,7 +2290,9 @@ export const resolvers = {
           });
         }
       } catch {
-        throw new Error('Failed to create or find user');
+        throw new GraphQLError('Failed to create or find user. The email address may be invalid or the service is unavailable.', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+        });
       }
 
       // Find or create 'Client' role
@@ -2318,7 +2366,9 @@ export const resolvers = {
           });
         }
       } catch {
-        throw new Error('Failed to create or find client');
+        throw new GraphQLError('Failed to create or find client record. Please try again.', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+        });
       }
 
       let projectName;

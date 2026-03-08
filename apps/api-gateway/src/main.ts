@@ -5,6 +5,7 @@ import { expressMiddleware } from '@as-integrations/express5';
 import dotenv from 'dotenv';
 import { typeDefs } from './schema/typeDefs';
 import { resolvers } from './schema/resolvers';
+import { formatGraphQLError } from './lib/errors';
 import uploadRouter from './routes/upload';
 
 dotenv.config();
@@ -50,6 +51,7 @@ async function startServer() {
   const apolloServer = new ApolloServer({
     typeDefs,
     resolvers,
+    formatError: formatGraphQLError,
   });
 
   await apolloServer.start();

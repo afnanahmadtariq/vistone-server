@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql';
 import { authClient } from '../services/backendClient';
 
 export interface AuthUser {
@@ -69,11 +70,15 @@ export async function getCurrentUser(context: AuthContext): Promise<AuthUser | n
 export async function requireAuth(context: AuthContext): Promise<AuthUser> {
   const user = await getCurrentUser(context);
   if (!user) {
-    throw new Error('Not authenticated');
+    throw new GraphQLError('Not authenticated', {
+      extensions: { code: 'UNAUTHENTICATED', statusCode: 401 },
+    });
   }
   // Check if user is paused
   if (user.status === 'paused') {
-    throw new Error('Account is paused. Contact your organization administrator.');
+    throw new GraphQLError('Account is paused. Contact your organization administrator.', {
+      extensions: { code: 'FORBIDDEN', statusCode: 403 },
+    });
   }
   return user;
 }
@@ -137,7 +142,9 @@ export function hasMetaPermission(user: AuthUser, metaPermission: string): boole
 export async function requireOrganizer(context: AuthContext): Promise<AuthUser> {
   const user = await requireAuth(context);
   if (!isOrganizer(user)) {
-    throw new Error('Forbidden: Organizer access required');
+    throw new GraphQLError('Forbidden: Organizer access required', {
+      extensions: { code: 'FORBIDDEN', statusCode: 403 },
+    });
   }
   return user;
 }
@@ -159,7 +166,9 @@ export async function requireMinRole(context: AuthContext, minRole: string): Pro
   const requiredLevel = roleLevels[minRole.toLowerCase()] || 0;
 
   if (userLevel < requiredLevel) {
-    throw new Error(`Forbidden: ${minRole} access required`);
+    throw new GraphQLError(`Forbidden: ${minRole} access required`, {
+      extensions: { code: 'FORBIDDEN', statusCode: 403 },
+    });
   }
 
   return user;
@@ -176,7 +185,9 @@ export async function requirePermission(
   const user = await requireAuth(context);
 
   if (!hasPermission(user, resource, action)) {
-    throw new Error(`Forbidden: Missing permission ${resource}:${action}`);
+    throw new GraphQLError(`Forbidden: Missing permission ${resource}:${action}`, {
+      extensions: { code: 'FORBIDDEN', statusCode: 403 },
+    });
   }
 
   return user;
@@ -199,7 +210,9 @@ export async function requireOrganization(
   const user = await requireAuth(context);
 
   if (!isSameOrganization(user, organizationId)) {
-    throw new Error('Forbidden: Access denied to this organization');
+    throw new GraphQLError('Forbidden: Access denied to this organization', {
+      extensions: { code: 'FORBIDDEN', statusCode: 403 },
+    });
   }
 
   return user;
@@ -211,7 +224,9 @@ export async function requireOrganization(
  */
 export function getOrgId(user: AuthUser): string {
   if (!user.organizationId) {
-    throw new Error('User does not belong to an organization');
+    throw new GraphQLError('User does not belong to an organization', {
+      extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+    });
   }
   return user.organizationId;
 }
