@@ -1790,7 +1790,7 @@ export const resolvers = {
         // Generate invite token by calling the new auth service invitations endpoint
         let inviteToken = '';
         try {
-          const invData = await authClient.post('/invitations', {
+          const invData = await authClient.post('/auth/invitations', {
             email: input.email,
             role: input.role,
             organizationId,
