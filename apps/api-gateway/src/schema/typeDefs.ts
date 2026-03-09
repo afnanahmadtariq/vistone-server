@@ -136,10 +136,12 @@ export const typeDefs = gql`
     action: String!
     entityType: String!
     entityId: String
+    description: String
     metadata: JSON
     ipAddress: String
     userAgent: String
     createdAt: DateTime!
+    user: User
   }
 
   # 2. Team & Workforce Types
@@ -760,7 +762,7 @@ export const typeDefs = gql`
     kycDataById(id: ID!): KycData
     mfaSettings: [MfaSetting!]!
     mfaSetting(id: ID!): MfaSetting
-    activityLogs: [ActivityLog!]!
+    activityLogs(userId: String, action: String, entityType: String, limit: Int, offset: Int): [ActivityLog!]!
     activityLog(id: ID!): ActivityLog
 
     # Teams

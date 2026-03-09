@@ -145,6 +145,45 @@ async function getEnrichedUser(userId: string): Promise<ServiceRecord | null> {
 // Clear cache periodically (simple approach)
 setInterval(() => userCache.clear(), 60000); // Clear every minute
 
+// Helper: build human-readable description from an activity log record
+function describeActivity(log: ServiceRecord): string {
+  const action = String(log.action || '').toUpperCase();
+  const entity = String(log.entityType || '').toLowerCase();
+  const meta = (log.metadata || log.details || {}) as Record<string, unknown>;
+  const name = meta.name || meta.title || '';
+
+  switch (action) {
+    case 'CREATE':
+      return `Created ${entity}${name ? ` "${name}"` : ''}`;
+    case 'UPDATE':
+      return `Updated ${entity}${name ? ` "${name}"` : ''}`;
+    case 'DELETE':
+      return `Deleted ${entity}${name ? ` "${name}"` : ''}`;
+    case 'INVITE':
+      return `Invited a new ${entity === 'user' ? 'member' : entity}${name ? ` (${name})` : ''}`;
+    case 'LOGIN':
+      return 'Logged in';
+    case 'LOGOUT':
+      return 'Logged out';
+    case 'REGISTER':
+      return 'New account registered';
+    case 'ASSIGN':
+      return `Assigned ${entity}${name ? ` "${name}"` : ''}`;
+    case 'COMPLETE':
+      return `Completed ${entity}${name ? ` "${name}"` : ''}`;
+    case 'ARCHIVE':
+      return `Archived ${entity}${name ? ` "${name}"` : ''}`;
+    case 'UPLOAD':
+      return `Uploaded ${entity === 'document' ? 'document' : 'file'}${name ? ` "${name}"` : ''}`;
+    case 'LINK':
+      return `Linked ${entity}${name ? ` "${name}"` : ''}`;
+    case 'UNLINK':
+      return `Unlinked ${entity}${name ? ` "${name}"` : ''}`;
+    default:
+      return `${action.charAt(0) + action.slice(1).toLowerCase()} ${entity}${name ? ` "${name}"` : ''}`;
+  }
+}
+
 /**
  * Helper function to delete a user's data across all services.
  * This is used for both individual user deletion and organization-wide cleanup.
@@ -300,9 +339,32 @@ export const resolvers = {
       await requireAuth(context);
       return authClient.getById('/mfa-settings', id);
     },
-    activityLogs: async (_: unknown, _args: unknown, context: Context) => {
+    activityLogs: async (_: unknown, { userId, action, entityType, limit, offset }: { userId?: string; action?: string; entityType?: string; limit?: number; offset?: number }, context: Context) => {
       await requirePermission(context, 'settings', 'read');
-      return authClient.get('/activity-logs');
+      const params = new URLSearchParams();
+      if (userId) params.append('userId', userId);
+      if (action) params.append('action', action);
+      if (entityType) params.append('entityType', entityType);
+      const logs = await authClient.get(`/activity-logs?${params.toString()}`);
+      if (!Array.isArray(logs)) return [];
+      // Apply offset and limit in-memory (backend returns all matching)
+      const start = offset || 0;
+      const end = limit ? start + limit : undefined;
+      const sliced = logs.slice(start, end);
+      // Enrich each log with description and user info
+      return Promise.all(
+        sliced.map(async (log: ServiceRecord) => {
+          let user = null;
+          if (log.userId) {
+            try { user = await getEnrichedUser(String(log.userId)); } catch { /* ignore */ }
+          }
+          return {
+            ...log,
+            description: describeActivity(log),
+            user,
+          };
+        })
+      );
     },
     activityLog: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'settings', 'read');
@@ -836,21 +898,30 @@ export const resolvers = {
             dueDate: m.dueDate,
           }));
 
-        // Get recent activity logs
+        // Get recent activity logs (meaningful descriptions, exclude noise)
         let recentActivities: ServiceRecord[] = [];
         try {
           const activityLogs = await authClient.get('/activity-logs');
           if (Array.isArray(activityLogs)) {
-            recentActivities = activityLogs
-              .slice(0, 10)
-              .map((log: ServiceRecord) => ({
-                id: log.id,
-                type: log.action,
-                description: `${log.action} on ${log.entityType}`,
-                timestamp: log.createdAt,
-                user: null,
-                project: null,
-              }));
+            // Resolve user info for activities
+            recentActivities = await Promise.all(
+              activityLogs
+                .slice(0, 10)
+                .map(async (log: ServiceRecord) => {
+                  let user = null;
+                  if (log.userId) {
+                    try { user = await getEnrichedUser(String(log.userId)); } catch { /* ignore */ }
+                  }
+                  return {
+                    id: log.id,
+                    type: log.action,
+                    description: describeActivity(log),
+                    timestamp: log.createdAt,
+                    user,
+                    project: null,
+                  };
+                })
+            );
           }
         } catch { /* ignore */ }
 
