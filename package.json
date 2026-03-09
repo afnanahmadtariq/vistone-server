@@ -14,9 +14,9 @@
     "prisma:generate": "npx ts-node scripts/prisma-sync.ts generate",
     "prisma:validate": "npx ts-node scripts/prisma-sync.ts validate",
     "db:init": "psql -f scripts/init-schemas.sql && npm run db:sync",
-    "test": "nx run-many --target=test --all --parallel=5",
-    "test:ci": "nx run-many --target=test --all --parallel=5 --ci",
-    "test:coverage": "nx run-many --target=test --all --parallel=5 --coverage"
+    "test": "nx run-many --target=test --all --parallel=5 --output-style=stream",
+    "test:ci": "nx run-many --target=test --all --parallel=5 --ci --output-style=stream",
+    "test:coverage": "nx run-many --target=test --all --parallel=5 --coverage --output-style=stream"
   },
   "dependencies": {
     "@apollo/server": "^5.2.0",
