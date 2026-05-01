@@ -2245,6 +2245,40 @@ export const resolvers = {
           ...(input.notifyClient !== undefined && { notifyClient: input.notifyClient }),
         };
       }
+
+      if (input.contributors !== undefined) {
+        try {
+          // Get existing members for the project
+          const existingMembers = await projectClient.get(`/project-members?projectId=${id}`);
+          const existingMemberArray = Array.isArray(existingMembers) ? existingMembers : [];
+          
+          // Users that are currently members
+          const existingUserIds = existingMemberArray.map((m: any) => m.userId);
+          
+          // Determine which to delete
+          const membersToDelete = existingMemberArray.filter((m: any) => !input.contributors.includes(m.userId));
+          
+          // Determine which to add
+          const userIdsToAdd = input.contributors.filter((userId: string) => !existingUserIds.includes(userId));
+          
+          // Delete removed members
+          for (const member of membersToDelete) {
+            await projectClient.delete('/project-members', member.id);
+          }
+          
+          // Add new members
+          for (const userId of userIdsToAdd) {
+            await projectClient.post('/project-members', {
+              projectId: id,
+              userId: userId,
+              role: 'contributor'
+            });
+          }
+        } catch (error) {
+          console.error('[updateProject] Error updating contributors:', error);
+        }
+      }
+
       return projectClient.put('/projects', id, projectData);
     },
     deleteProject: async (_: unknown, { id }: { id: string }, context: Context) => {
