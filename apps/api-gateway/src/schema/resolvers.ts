@@ -1,4 +1,4 @@
-﻿import { GraphQLScalarType, Kind, GraphQLError } from 'graphql';
+import { GraphQLScalarType, Kind, GraphQLError } from 'graphql';
 import {
   authClient,
   workforceClient,
@@ -2265,7 +2265,21 @@ export const resolvers = {
     },
     createTask: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'tasks', 'create');
-      return projectClient.post('/tasks', input);
+      const task = await projectClient.post('/tasks', input);
+      
+      // Auto-update project status if Planning
+      if (input.projectId) {
+        try {
+          const project = await projectClient.getById('/projects', input.projectId);
+          if (project && project.status === 'Planning') {
+            await projectClient.put('/projects', input.projectId, { status: 'In Progress' });
+          }
+        } catch (e) {
+          console.error('Failed to auto-update project status:', e);
+        }
+      }
+      
+      return task;
     },
     updateTask: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'tasks', 'update');
@@ -2301,7 +2315,21 @@ export const resolvers = {
     },
     createMilestone: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'projects', 'update');
-      return projectClient.post('/milestones', input);
+      const milestone = await projectClient.post('/milestones', input);
+      
+      // Auto-update project status if Planning
+      if (input.projectId) {
+        try {
+          const project = await projectClient.getById('/projects', input.projectId);
+          if (project && project.status === 'Planning') {
+            await projectClient.put('/projects', input.projectId, { status: 'In Progress' });
+          }
+        } catch (e) {
+          console.error('Failed to auto-update project status:', e);
+        }
+      }
+      
+      return milestone;
     },
     updateMilestone: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'projects', 'update');
