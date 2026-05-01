@@ -727,7 +727,7 @@ export const resolvers = {
       const projectIds = new Set<string>();
 
       try {
-        // 1. As Member/Manager
+        // 1. As Member/Manager (direct project membership or assigned manager)
         const projectMembers = await projectClient.get(`/project-members?userId=${user.id}`);
         if (Array.isArray(projectMembers)) {
           projectMembers.forEach((pm: ServiceRecord) => projectIds.add(pm.projectId));
@@ -738,7 +738,26 @@ export const resolvers = {
           managedProjects.forEach((p: ServiceRecord) => projectIds.add(p.id));
         }
 
-        // 2. As Client contact person
+        // 2. Via team membership — projects with this user's team in their teamIds
+        try {
+          const teamMemberships = await workforceClient.get(`/team-members?userId=${user.id}`);
+          if (Array.isArray(teamMemberships) && teamMemberships.length > 0) {
+            // Fetch all projects for the org and filter those whose teamIds include the manager's teams
+            const orgId = getOrgId(user);
+            const allOrgProjects = await projectClient.get(`/projects?organizationId=${orgId}`);
+            if (Array.isArray(allOrgProjects)) {
+              const userTeamIds = new Set(teamMemberships.map((tm: ServiceRecord) => tm.teamId));
+              allOrgProjects.forEach((p: ServiceRecord) => {
+                const projectTeamIds: string[] = Array.isArray(p.teamIds) ? p.teamIds : [];
+                if (projectTeamIds.some((tid) => userTeamIds.has(tid))) {
+                  projectIds.add(p.id);
+                }
+              });
+            }
+          }
+        } catch { /* ignore if workforce service unavailable */ }
+
+        // 3. As Client contact person
         const clients = await clientMgmtClient.get(`/clients?contactPersonId=${user.id}`);
         if (Array.isArray(clients)) {
           for (const client of clients) {
