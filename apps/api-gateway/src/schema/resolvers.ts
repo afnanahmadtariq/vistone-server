@@ -1711,6 +1711,35 @@ export const resolvers = {
 
       // Return the updated user with the new role
       const user = await authClient.getById('/users', userId);
+
+      try {
+        const currentUserData = await authClient.getById('/users', currentUser.id);
+        const inviterName = `${currentUserData?.firstName || ''} ${currentUserData?.lastName || ''}`.trim() || currentUser.email;
+        let organizationName = 'our organization';
+        try {
+          const org = await authClient.getById('/organizations', organizationId);
+          if (org?.name) organizationName = org.name;
+        } catch { /* ignore */ }
+
+        await notificationClient.post('/emails/send', {
+          to: user.email,
+          subject: `Your role has been updated on Vistone`,
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f5;">
+              <div style="background-color: #ffffff; padding: 30px; border-radius: 8px; text-align: center;">
+                <h2 style="color: #18181b; margin-top: 0;">Role Update 🔄</h2>
+                <p style="color: #52525b; font-size: 16px;">Hi ${user.firstName || ''},</p>
+                <p style="color: #52525b; font-size: 16px;">
+                  <strong>${inviterName}</strong> has updated your role in <strong>${organizationName}</strong> to <strong>${targetRole.name}</strong>.
+                </p>
+              </div>
+            </div>
+          `
+        });
+      } catch (err) {
+        console.error("Failed to send role update notification:", err);
+      }
+
       return {
         ...user,
         role: targetRole.name,
@@ -2129,9 +2158,37 @@ export const resolvers = {
       return workforceClient.delete('/teams', id);
     },
     addTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }, context: Context) => {
-      await requireAuth(context);
+      const currentUser = await requireAuth(context);
       await workforceClient.post('/team-members', { teamId, userId, role: 'member' });
-      return workforceClient.getById('/teams', teamId);
+      const team = await workforceClient.getById('/teams', teamId);
+      
+      try {
+        const user = await authClient.getById('/users', userId);
+        if (user?.email && team?.name) {
+          const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
+          let organizationName = 'our organization';
+          if (currentUser.organizationId) {
+            try {
+              const org = await authClient.getById('/organizations', currentUser.organizationId);
+              if (org?.name) organizationName = org.name;
+            } catch { /* ignore */ }
+          }
+
+          await notificationClient.post('/emails/invite/team', {
+            email: user.email,
+            inviterName,
+            teamName: team.name,
+            organizationName,
+            inviteToken: 'internal-add',
+            recipientName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+            role: 'Member'
+          });
+        }
+      } catch (err) {
+        console.error("Failed to send team addition email:", err);
+      }
+
+      return team;
     },
     removeTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }, context: Context) => {
       await requireAuth(context);
@@ -2142,8 +2199,39 @@ export const resolvers = {
       return workforceClient.getById('/teams', teamId);
     },
     createTeamMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requireAuth(context);
-      return workforceClient.post('/team-members', input);
+      const currentUser = await requireAuth(context);
+      const teamMember = await workforceClient.post('/team-members', input);
+      
+      try {
+        if (input.userId && input.teamId) {
+          const user = await authClient.getById('/users', input.userId);
+          const team = await workforceClient.getById('/teams', input.teamId);
+          if (user?.email && team?.name) {
+            const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
+            let organizationName = 'our organization';
+            if (currentUser.organizationId) {
+              try {
+                const org = await authClient.getById('/organizations', currentUser.organizationId);
+                if (org?.name) organizationName = org.name;
+              } catch { /* ignore */ }
+            }
+  
+            await notificationClient.post('/emails/invite/team', {
+              email: user.email,
+              inviterName,
+              teamName: team.name,
+              organizationName,
+              inviteToken: 'internal-add',
+              recipientName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+              role: input.role || 'Member'
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to send team addition email:", err);
+      }
+      
+      return teamMember;
     },
     updateTeamMember: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
       await requireAuth(context);
