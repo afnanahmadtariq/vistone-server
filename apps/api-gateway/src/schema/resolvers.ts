@@ -2236,6 +2236,84 @@ export const resolvers = {
         }
       }
 
+      // Send notification emails
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const projectLink = `${frontendUrl}/organizer/projects/${project.id}`;
+      const organizerName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
+
+      // Fetch organization name for email context
+      let organizationName = 'our organization';
+      try {
+        const org = await authClient.getById('/organizations', organizationId);
+        if (org?.name) organizationName = org.name;
+      } catch { /* non-critical */ }
+
+      // Notify team members
+      if (input.notifyTeam) {
+        try {
+          const emailTargets: { email: string; firstName?: string; lastName?: string }[] = [];
+
+          // Team members
+          if (input.teamId) {
+            const teamMembers = await workforceClient.get(`/team-members?teamId=${input.teamId}`);
+            if (Array.isArray(teamMembers)) {
+              for (const tm of teamMembers) {
+                const u = await authClient.getById('/users', tm.userId).catch(() => null);
+                if (u?.email) emailTargets.push({ email: u.email, firstName: u.firstName, lastName: u.lastName });
+              }
+            }
+          }
+
+          // Extra contributors
+          if (input.contributors && input.contributors.length > 0) {
+            for (const uid of input.contributors) {
+              const u = await authClient.getById('/users', uid).catch(() => null);
+              if (u?.email && !emailTargets.find(t => t.email === u.email)) {
+                emailTargets.push({ email: u.email, firstName: u.firstName, lastName: u.lastName });
+              }
+            }
+          }
+
+          for (const target of emailTargets) {
+            try {
+              await notificationClient.post('/emails/project-assigned', {
+                email: target.email,
+                recipientName: `${target.firstName || ''} ${target.lastName || ''}`.trim() || undefined,
+                organizerName,
+                organizationName,
+                projectName: project.name,
+                projectLink,
+                role: 'team',
+              });
+            } catch (e) {
+              console.error(`Failed to send project notification to team member ${target.email}:`, e);
+            }
+          }
+        } catch (e) {
+          console.error('[createProject] Failed to send team notifications:', e);
+        }
+      }
+
+      // Notify client
+      if (input.notifyClient && input.clientId) {
+        try {
+          const client = await clientMgmtClient.getById('/clients', input.clientId).catch(() => null);
+          if (client?.email) {
+            await notificationClient.post('/emails/project-assigned', {
+              email: client.email,
+              recipientName: client.name || undefined,
+              organizerName,
+              organizationName,
+              projectName: project.name,
+              projectLink: `${frontendUrl}/client/projects/${project.id}`,
+              role: 'client',
+            });
+          }
+        } catch (e) {
+          console.error('[createProject] Failed to send client notification:', e);
+        }
+      }
+
       return project;
     },
     updateProject: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
