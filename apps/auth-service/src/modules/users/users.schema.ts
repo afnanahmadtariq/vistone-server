@@ -8,6 +8,8 @@ export const userSchema = z.object({
         password: z.string().nullable().optional(),
         googleId: z.string().nullable().optional(),
         avatarUrl: z.string().nullable().optional(),
+        status: z.string().optional(),
+        jobTitle: z.string().nullable().optional(),
       })
     });
 export const updateUserSchema = z.object({

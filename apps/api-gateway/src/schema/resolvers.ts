@@ -108,7 +108,7 @@ async function enrichUserWithWorkforceData(user: ServiceRecord | null): Promise<
       joinedAt: teamMember?.createdAt || user.createdAt,
       skills,
       avatar: null,
-      status: 'active',
+      status: user.status || 'active',
     };
   } catch {
     // If workforce service is unavailable, return user with default enriched fields
@@ -118,7 +118,7 @@ async function enrichUserWithWorkforceData(user: ServiceRecord | null): Promise<
       joinedAt: user.createdAt,
       skills: [],
       avatar: null,
-      status: 'active',
+      status: user.status || 'active',
     };
   }
 }
