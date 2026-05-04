@@ -1074,10 +1074,10 @@ export const resolvers = {
         return [];
       }
     },
-    client: async (parent: ServiceRecord) => {
+    client: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       if (!parent.clientId) return null;
       try {
-        return await clientMgmtClient.getById('/clients', parent.clientId);
+        return await context.loaders.clientById.load(parent.clientId);
       } catch {
         return null;
       }
@@ -1088,11 +1088,9 @@ export const resolvers = {
     },
     members: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       try {
-        // Get project members
-        const projectMembers = await projectClient.get(`/project-members?projectId=${parent.id}`);
-        if (!Array.isArray(projectMembers) || projectMembers.length === 0) return [];
+        const projectMembers = await context.loaders.projectMembersByProjectId.load(parent.id);
+        if (projectMembers.length === 0) return [];
 
-        // Batch-resolve users via per-request DataLoader (dedupes shared user IDs)
         const members = await Promise.all(
           projectMembers.map((pm: ServiceRecord) => context.loaders.enrichedUser.load(pm.userId))
         );
@@ -1101,19 +1099,19 @@ export const resolvers = {
         return [];
       }
     },
-    memberIds: async (parent: ServiceRecord) => {
+    memberIds: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       try {
-        const projectMembers = await projectClient.get(`/project-members?projectId=${parent.id}`);
-        return Array.isArray(projectMembers) ? projectMembers.map((pm: ServiceRecord) => pm.userId) : [];
+        const projectMembers = await context.loaders.projectMembersByProjectId.load(parent.id);
+        return projectMembers.map((pm: ServiceRecord) => pm.userId);
       } catch {
         return [];
       }
     },
-    teams: async (parent: ServiceRecord) => {
+    teams: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       if (!parent.teamIds || parent.teamIds.length === 0) return [];
       try {
         const teams = await Promise.all(
-          parent.teamIds.map((teamId: string) => workforceClient.getById('/teams', teamId))
+          parent.teamIds.map((teamId: string) => context.loaders.teamById.load(teamId))
         );
         return teams.filter(Boolean);
       } catch {
@@ -1123,7 +1121,12 @@ export const resolvers = {
     activities: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       try {
         // Get activity logs related to this project
-        const activityLogs = await authClient.get(`/activity-logs?entityType=project&entityId=${parent.id}`);
+        const orgQuery = parent.organizationId
+          ? `&organizationId=${encodeURIComponent(String(parent.organizationId))}`
+          : '';
+        const activityLogs = await authClient.get(
+          `/activity-logs?entityType=project&entityId=${parent.id}${orgQuery}`
+        );
         if (!Array.isArray(activityLogs)) return [];
 
         // Transform activity logs to ProjectActivity format
@@ -1246,12 +1249,14 @@ export const resolvers = {
         return null;
       }
     },
-    projects: async (parent: ServiceRecord) => {
+    projects: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       try {
         const projectClients = await clientMgmtClient.get(`/project-clients?clientId=${parent.id}`);
         if (!Array.isArray(projectClients) || projectClients.length === 0) return [];
         const projects = await Promise.all(
-          projectClients.map((pc: ServiceRecord) => projectClient.getById('/projects', pc.projectId).catch(() => null))
+          projectClients.map((pc: ServiceRecord) =>
+            context.loaders.projectById.load(pc.projectId).catch(() => null)
+          )
         );
         return projects.filter(Boolean);
       } catch {
@@ -1270,14 +1275,13 @@ export const resolvers = {
 
   // User resolver to handle enrichment for any User type returned
   User: {
-    role: async (parent: ServiceRecord) => {
+    role: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       // If role is explicitly provided and is not 'member' (team fallback), use it
       if (parent.role && parent.role !== 'member') return parent.role;
-      // Look up role from organization membership
       try {
-        const memberships = await authClient.get(`/organization-members?userId=${parent.id}`);
-        if (Array.isArray(memberships) && memberships.length > 0 && memberships[0].roleId) {
-          const role = await authClient.getById('/roles', memberships[0].roleId);
+        const memberships = await context.loaders.organizationMembersByUserId.load(parent.id);
+        if (memberships.length > 0 && memberships[0].roleId) {
+          const role = await context.loaders.authRoleById.load(memberships[0].roleId);
           if (role?.name) return role.name;
         }
       } catch {
@@ -1290,15 +1294,13 @@ export const resolvers = {
     skills: (parent: ServiceRecord) => parent.skills ?? [],
     teamId: (parent: ServiceRecord) => parent.teamId ?? null,
     joinedAt: (parent: ServiceRecord) => parent.joinedAt ?? parent.createdAt,
-    permissions: async (parent: ServiceRecord) => {
-      // If permissions already present on the parent (e.g. from enrichment), return them
+    permissions: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       if (parent.permissions) return parent.permissions;
 
-      // Otherwise, look up from org membership -> role
       try {
-        const memberships = await authClient.get(`/organization-members?userId=${parent.id}`);
-        if (Array.isArray(memberships) && memberships.length > 0 && memberships[0].roleId) {
-          const role = await authClient.getById('/roles', memberships[0].roleId);
+        const memberships = await context.loaders.organizationMembersByUserId.load(parent.id);
+        if (memberships.length > 0 && memberships[0].roleId) {
+          const role = await context.loaders.authRoleById.load(memberships[0].roleId);
           return role?.permissions ?? null;
         }
       } catch {
@@ -1306,14 +1308,13 @@ export const resolvers = {
       }
       return null;
     },
-    team: async (parent: ServiceRecord) => {
+    team: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       const teamId = parent.teamId;
       if (!teamId) {
-        // Try to find team from team members
         try {
-          const teamMembers = await workforceClient.get(`/team-members?userId=${parent.id}`);
-          if (Array.isArray(teamMembers) && teamMembers.length > 0) {
-            return workforceClient.getById('/teams', teamMembers[0].teamId);
+          const teamMembers = await context.loaders.teamMembersByUserId.load(parent.id);
+          if (teamMembers.length > 0) {
+            return await context.loaders.teamById.load(teamMembers[0].teamId);
           }
         } catch {
           return null;
@@ -1321,7 +1322,7 @@ export const resolvers = {
         return null;
       }
       try {
-        return await workforceClient.getById('/teams', teamId);
+        return await context.loaders.teamById.load(teamId);
       } catch {
         return null;
       }
@@ -1337,11 +1338,11 @@ export const resolvers = {
         return null;
       }
     },
-    project: async (parent: ServiceRecord) => {
+    project: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       if (parent.project) return parent.project;
       if (!parent.projectId) return null;
       try {
-        return await projectClient.getById('/projects', parent.projectId);
+        return await context.loaders.projectById.load(parent.projectId);
       } catch {
         return null;
       }

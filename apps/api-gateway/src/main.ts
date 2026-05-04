@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@as-integrations/express5';
@@ -47,7 +48,10 @@ async function startServer() {
   // Handle preflight requests explicitly
   app.options('*', cors(corsOptions));
 
-  app.use(express.json());
+  // Compress JSON / GraphQL responses (major win vs raw microservice aggregation payloads)
+  app.use(compression({ threshold: 512 }));
+
+  app.use(express.json({ limit: '12mb' }));
 
   const apolloServer = new ApolloServer({
     typeDefs,
