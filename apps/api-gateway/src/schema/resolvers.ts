@@ -226,14 +226,11 @@ export const resolvers = {
     users: async (_: unknown, { organizationId }: { organizationId?: string }, context: Context) => {
       const user = await requireAuth(context);
       const orgId = organizationId || getOrgId(user);
-      // Filter users by organization membership (parallel reads)
-      const [members, users] = await Promise.all([
-        authClient.get(`/organization-members?organizationId=${orgId}`),
-        authClient.get('/users'),
-      ]);
-      const memberUserIds = new Set(members.map((m: ServiceRecord) => m.userId));
-      const filteredUsers = users.filter((u: ServiceRecord) => memberUserIds.has(u.id));
-      return Promise.all(filteredUsers.map(enrichUserWithWorkforceData));
+      const users = await authClient.get(
+        `/users?organizationId=${encodeURIComponent(orgId)}`
+      );
+      const list = Array.isArray(users) ? users : [];
+      return Promise.all(list.map(enrichUserWithWorkforceData));
     },
     user: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requireAuth(context);
@@ -877,9 +874,11 @@ export const resolvers = {
         // Get recent activity logs (meaningful descriptions, exclude noise)
         let recentActivities: ServiceRecord[] = [];
         try {
-          const activityLogs = await authClient.get('/activity-logs');
+          const activityLogs = await authClient.get(
+            `/activity-logs?organizationId=${encodeURIComponent(organizationId)}`
+          );
           if (Array.isArray(activityLogs)) {
-            // Resolve user info for activities
+            // Resolve user info for activities (org-scoped logs only)
             recentActivities = await Promise.all(
               activityLogs
                 .slice(0, 10)
@@ -1740,9 +1739,11 @@ export const resolvers = {
       // Create user if doesn't exist, or get existing user
       let user;
       try {
-        // Try to find existing user by email
-        const users = await authClient.get('/users');
-        user = users.find((u: ServiceRecord) => u.email === input.email);
+        // Try to find existing user by email (indexed lookup, not full user table)
+        const byEmail = await authClient.get(
+          `/users?email=${encodeURIComponent(input.email)}`
+        );
+        user = Array.isArray(byEmail) && byEmail.length > 0 ? byEmail[0] : null;
 
         if (!user) {
           // Create new user with pending status
@@ -2588,9 +2589,11 @@ export const resolvers = {
 
       let user;
       try {
-        const users = await authClient.get('/users');
-        user = users.find((u: ServiceRecord) => u.email === input.email);
-        
+        const byEmail = await authClient.get(
+          `/users?email=${encodeURIComponent(input.email)}`
+        );
+        user = Array.isArray(byEmail) && byEmail.length > 0 ? byEmail[0] : null;
+
         if (!user) {
           const nameParts = input.name.trim().split(' ');
           const firstName = nameParts[0] || '';

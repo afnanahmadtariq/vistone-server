@@ -14,13 +14,35 @@ export async function createUserHandler(req: Request, res: Response) {
 }
 
 export async function getAllUsersHandler(req: Request, res: Response) {
-    try {
+  try {
+    const email = req.query?.email;
+    if (typeof email === "string" && email.trim() !== "") {
+      const user = await prisma.user.findFirst({
+        where: { email: { equals: email.trim(), mode: "insensitive" } },
+      });
+      res.json(user ? [user] : []);
+      return;
+    }
+
+    const organizationId = req.query?.organizationId;
+    if (typeof organizationId === "string" && organizationId.trim() !== "") {
+      const users = await prisma.user.findMany({
+        where: {
+          organizationMemberships: {
+            some: { organizationId: organizationId.trim() },
+          },
+        },
+      });
+      res.json(users);
+      return;
+    }
+
     const users = await prisma.user.findMany();
     res.json(users);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to fetch users' });
-    }
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
 }
 
 export async function getUserByIdHandler(req: Request, res: Response) {

@@ -12,6 +12,7 @@ jest.mock('../../lib/prisma', () => ({
     user: {
       create: jest.fn(),
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -69,18 +70,57 @@ describe('Users Controller – Unit Tests', () => {
     it('returns all users', async () => {
       const users = [sampleUser];
       (prisma.user.findMany as jest.Mock).mockResolvedValue(users);
-      const req: any = {};
+      const req: any = { query: {} };
       const res = mockRes();
 
       await getAllUsersHandler(req, res);
 
-      expect(prisma.user.findMany).toHaveBeenCalled();
+      expect(prisma.user.findMany).toHaveBeenCalledWith();
       expect(res.json).toHaveBeenCalledWith(users);
+    });
+
+    it('returns org members when organizationId is set', async () => {
+      const users = [sampleUser];
+      (prisma.user.findMany as jest.Mock).mockResolvedValue(users);
+      const req: any = { query: { organizationId: 'org-1' } };
+      const res = mockRes();
+
+      await getAllUsersHandler(req, res);
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: {
+          organizationMemberships: { some: { organizationId: 'org-1' } },
+        },
+      });
+      expect(res.json).toHaveBeenCalledWith(users);
+    });
+
+    it('returns user array by email (case-insensitive lookup)', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue(sampleUser);
+      const req: any = { query: { email: 'Alice@Example.com' } };
+      const res = mockRes();
+
+      await getAllUsersHandler(req, res);
+
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: { email: { equals: 'Alice@Example.com', mode: 'insensitive' } },
+      });
+      expect(res.json).toHaveBeenCalledWith([sampleUser]);
+    });
+
+    it('returns empty array when email not found', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+      const req: any = { query: { email: 'missing@example.com' } };
+      const res = mockRes();
+
+      await getAllUsersHandler(req, res);
+
+      expect(res.json).toHaveBeenCalledWith([]);
     });
 
     it('returns 500 on database error', async () => {
       (prisma.user.findMany as jest.Mock).mockRejectedValue(new Error('DB error'));
-      const req: any = {};
+      const req: any = { query: {} };
       const res = mockRes();
 
       await getAllUsersHandler(req, res);
