@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { typeDefs } from './schema/typeDefs';
 import { resolvers } from './schema/resolvers';
 import { formatGraphQLError } from './lib/errors';
+import { createGraphQLLoaders } from './lib/graphqlLoaders';
 import uploadRouter from './routes/upload';
 
 dotenv.config();
@@ -60,6 +61,7 @@ async function startServer() {
   const apolloContext = async ({ req }: { req: express.Request }) => ({
     headers: req.headers,
     token: req.headers.authorization?.replace('Bearer ', ''),
+    loaders: createGraphQLLoaders(),
   });
 
   // Health check endpoint (must be before GraphQL middleware)

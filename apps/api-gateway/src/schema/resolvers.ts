@@ -13,10 +13,12 @@ import {
 } from '../services/backendClient';
 import { requireAuth, requireOrganizer, requireOrganization, requirePermission, hasMetaPermission, isOrganizer, getOrgId, AuthContext } from '../lib/auth';
 import { verifyTurnstileToken } from '../lib/turnstile';
+import { enrichUserWithWorkforceData, type GraphQLLoaders } from '../lib/graphqlLoaders';
 
 interface Context extends AuthContext {
   headers: Record<string, string | string[] | undefined>;
   token?: string;
+  loaders: GraphQLLoaders;
 }
 
 /**
@@ -88,62 +90,6 @@ const decimalScalar = new GraphQLScalarType({
     return null;
   },
 });
-
-// Helper function to enrich user with workforce data
-async function enrichUserWithWorkforceData(user: ServiceRecord | null): Promise<ServiceRecord | null> {
-  if (!user) return null;
-
-  try {
-    // Get team membership for this user
-    const teamMembers = await workforceClient.get(`/team-members?userId=${user.id}`);
-    const teamMember = Array.isArray(teamMembers) ? teamMembers[0] : null;
-
-    // Get skills for this user
-    const userSkills = await workforceClient.get(`/user-skills?userId=${user.id}`);
-    const skills = Array.isArray(userSkills) ? userSkills.map((s: ServiceRecord) => s.skillName) : [];
-
-    return {
-      ...user,
-      teamId: teamMember?.teamId || null,
-      joinedAt: teamMember?.createdAt || user.createdAt,
-      skills,
-      avatar: null,
-      status: user.status || 'active',
-    };
-  } catch {
-    // If workforce service is unavailable, return user with default enriched fields
-    return {
-      ...user,
-      teamId: null,
-      joinedAt: user.createdAt,
-      skills: [],
-      avatar: null,
-      status: user.status || 'active',
-    };
-  }
-}
-
-// Cache for enriched users to avoid repeated calls during a single request
-const userCache = new Map<string, ServiceRecord | null>();
-
-// Helper to get enriched user by ID (with caching)
-async function getEnrichedUser(userId: string): Promise<ServiceRecord | null> {
-  if (userCache.has(userId)) {
-    return userCache.get(userId) ?? null;
-  }
-
-  try {
-    const user = await authClient.getById('/users', userId);
-    const enrichedUser = await enrichUserWithWorkforceData(user);
-    userCache.set(userId, enrichedUser);
-    return enrichedUser;
-  } catch {
-    return null;
-  }
-}
-
-// Clear cache periodically (simple approach)
-setInterval(() => userCache.clear(), 60000); // Clear every minute
 
 // Helper: build human-readable description from an activity log record
 function describeActivity(log: ServiceRecord): string {
@@ -280,10 +226,12 @@ export const resolvers = {
     users: async (_: unknown, { organizationId }: { organizationId?: string }, context: Context) => {
       const user = await requireAuth(context);
       const orgId = organizationId || getOrgId(user);
-      // Filter users by organization membership
-      const members = await authClient.get(`/organization-members?organizationId=${orgId}`);
+      // Filter users by organization membership (parallel reads)
+      const [members, users] = await Promise.all([
+        authClient.get(`/organization-members?organizationId=${orgId}`),
+        authClient.get('/users'),
+      ]);
       const memberUserIds = new Set(members.map((m: ServiceRecord) => m.userId));
-      const users = await authClient.get('/users');
       const filteredUsers = users.filter((u: ServiceRecord) => memberUserIds.has(u.id));
       return Promise.all(filteredUsers.map(enrichUserWithWorkforceData));
     },
@@ -356,7 +304,9 @@ export const resolvers = {
         sliced.map(async (log: ServiceRecord) => {
           let user = null;
           if (log.userId) {
-            try { user = await getEnrichedUser(String(log.userId)); } catch { /* ignore */ }
+            try {
+              user = await context.loaders.enrichedUser.load(String(log.userId));
+            } catch { /* ignore */ }
           }
           return {
             ...log,
@@ -797,32 +747,27 @@ export const resolvers = {
         const projects = await projectClient.get(`/projects?organizationId=${organizationId}`);
         const projectArray = Array.isArray(projects) ? projects : [];
 
-        // Get all tasks for these projects
-        const allTasks: ServiceRecord[] = [];
-        for (const project of projectArray) {
-          try {
-            const tasks = await projectClient.get(`/tasks?projectId=${project.id}`);
-            if (Array.isArray(tasks)) allTasks.push(...tasks);
-          } catch { /* ignore */ }
-        }
-
-        // Get all milestones
-        const allMilestones: ServiceRecord[] = [];
-        for (const project of projectArray) {
-          try {
-            const milestones = await projectClient.get(`/milestones?projectId=${project.id}`);
-            if (Array.isArray(milestones)) allMilestones.push(...milestones);
-          } catch { /* ignore */ }
-        }
-
-        // Get risk registers
-        const allRisks: ServiceRecord[] = [];
-        for (const project of projectArray) {
-          try {
-            const risks = await projectClient.get(`/risk-register?projectId=${project.id}`);
-            if (Array.isArray(risks)) allRisks.push(...risks);
-          } catch { /* ignore */ }
-        }
+        // Get all tasks, milestones, and risks in parallel (per-project fan-out)
+        const [taskGroups, milestoneGroups, riskGroups] = await Promise.all([
+          Promise.all(
+            projectArray.map((p: ServiceRecord) =>
+              projectClient.get(`/tasks?projectId=${p.id}`).catch(() => [] as ServiceRecord[])
+            )
+          ),
+          Promise.all(
+            projectArray.map((p: ServiceRecord) =>
+              projectClient.get(`/milestones?projectId=${p.id}`).catch(() => [] as ServiceRecord[])
+            )
+          ),
+          Promise.all(
+            projectArray.map((p: ServiceRecord) =>
+              projectClient.get(`/risk-register?projectId=${p.id}`).catch(() => [] as ServiceRecord[])
+            )
+          ),
+        ]);
+        const allTasks: ServiceRecord[] = (taskGroups as ServiceRecord[][]).flat();
+        const allMilestones: ServiceRecord[] = (milestoneGroups as ServiceRecord[][]).flat();
+        const allRisks: ServiceRecord[] = (riskGroups as ServiceRecord[][]).flat();
 
         // Calculate stats
         const totalProjects = projectArray.length;
@@ -871,6 +816,7 @@ export const resolvers = {
 
     dashboardStats: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
       await requireOrganization(context, organizationId);
+      const { loaders } = context;
 
       try {
         // Get all projects for the organization
@@ -880,27 +826,38 @@ export const resolvers = {
         const totalProjects = projectArray.length;
         const activeProjects = projectArray.filter((p: ServiceRecord) => p.status === 'Active' || p.status === 'In Progress').length;
 
-        // Get all tasks
+        // Tasks + milestones per project in parallel (avoid sequential N round-trips)
+        const perProjectStats = await Promise.all(
+          projectArray.map(async (project: ServiceRecord) => {
+            try {
+              const [tasks, milestones] = await Promise.all([
+                projectClient.get(`/tasks?projectId=${project.id}`).catch(() => []),
+                projectClient.get(`/milestones?projectId=${project.id}`).catch(() => []),
+              ]);
+              return { project, tasks, milestones };
+            } catch {
+              return { project, tasks: [], milestones: [] };
+            }
+          })
+        );
+
         let totalTasks = 0;
         let completedTasks = 0;
         const allMilestones: ServiceRecord[] = [];
-
-        for (const project of projectArray) {
-          try {
-            const tasks = await projectClient.get(`/tasks?projectId=${project.id}`);
-            if (Array.isArray(tasks)) {
-              totalTasks += tasks.length;
-              completedTasks += tasks.filter((t: ServiceRecord) => t.status === 'Completed' || t.status === 'Done').length;
-            }
-            const milestones = await projectClient.get(`/milestones?projectId=${project.id}`);
-            if (Array.isArray(milestones)) {
-              allMilestones.push(...milestones.map((m: ServiceRecord) => ({
+        for (const { project, tasks, milestones } of perProjectStats) {
+          if (Array.isArray(tasks)) {
+            totalTasks += tasks.length;
+            completedTasks += tasks.filter((t: ServiceRecord) => t.status === 'Completed' || t.status === 'Done').length;
+          }
+          if (Array.isArray(milestones)) {
+            allMilestones.push(
+              ...milestones.map((m: ServiceRecord) => ({
                 ...m,
                 projectId: project.id,
                 projectName: project.name,
-              })));
-            }
-          } catch { /* ignore */ }
+              }))
+            );
+          }
         }
 
         // Get upcoming milestones (not completed, due in the future)
@@ -929,7 +886,9 @@ export const resolvers = {
                 .map(async (log: ServiceRecord) => {
                   let user = null;
                   if (log.userId) {
-                    try { user = await getEnrichedUser(String(log.userId)); } catch { /* ignore */ }
+                    try {
+                      user = await loaders.enrichedUser.load(String(log.userId));
+                    } catch { /* ignore */ }
                   }
                   return {
                     id: log.id,
@@ -987,24 +946,27 @@ export const resolvers = {
         // Get all projects for this client user
         const projectIds = new Set<string>();
         
-        // Find Client entities where this user is the contact person
+        // Find Client entities where this user is the contact person (parallel per client)
         const clients = await clientMgmtClient.get(`/clients?contactPersonId=${user.id}`);
-        if (Array.isArray(clients)) {
-          for (const client of clients) {
-            // Check project-clients link table
-            const pcs = await clientMgmtClient.get(`/project-clients?clientId=${client.id}`);
-            if (Array.isArray(pcs)) {
-              pcs.forEach((pc: ServiceRecord) => projectIds.add(pc.projectId));
-            }
-
-            // Also directly query projects that have clientId assigned as a fallback
-            try {
-              const clientAssignedProjects = await projectClient.get(`/projects?clientId=${client.id}`);
-              if (Array.isArray(clientAssignedProjects)) {
-                clientAssignedProjects.forEach((p: ServiceRecord) => projectIds.add(p.id));
+        if (Array.isArray(clients) && clients.length > 0) {
+          await Promise.all(
+            clients.map(async (client: ServiceRecord) => {
+              const pcs = await clientMgmtClient
+                .get(`/project-clients?clientId=${client.id}`)
+                .catch(() => []);
+              if (Array.isArray(pcs)) {
+                pcs.forEach((pc: ServiceRecord) => projectIds.add(pc.projectId));
               }
-            } catch { /* ignore if not found */ }
-          }
+              try {
+                const clientAssignedProjects = await projectClient
+                  .get(`/projects?clientId=${client.id}`)
+                  .catch(() => []);
+                if (Array.isArray(clientAssignedProjects)) {
+                  clientAssignedProjects.forEach((p: ServiceRecord) => projectIds.add(p.id));
+                }
+              } catch { /* ignore if not found */ }
+            })
+          );
         }
         
         // Fetch Projects
@@ -1020,27 +982,30 @@ export const resolvers = {
         
         const totalContractValue = projects.reduce((sum, p) => sum + (Number(p.budget) || 0), 0);
         
-        // Fetch Activities for these projects
+        // Fetch Activities for these projects in parallel
+        const activityBatches = await Promise.all(
+          projects.map((project) =>
+            authClient
+              .get(`/activity-logs?entityType=project&entityId=${project.id}`)
+              .catch(() => [])
+          )
+        );
         const activities: ServiceRecord[] = [];
-        for (const project of projects) {
-          try {
-            const logs = await authClient.get(`/activity-logs?entityType=project&entityId=${project.id}`);
-            if (Array.isArray(logs)) {
-              logs.forEach(log => {
-                activities.push({
-                  id: log.id,
-                  type: log.action || 'update',
-                  description: log.description || `${log.action} on project ${project.name}`,
-                  timestamp: log.createdAt,
-                  userId: log.userId,
-                  projectId: project.id,
-                  // We'll return the project object directly to help the resolver if we add one
-                  project: project
-                });
-              });
-            }
-          } catch { /* ignore */ }
-        }
+        activityBatches.forEach((logs, idx) => {
+          const project = projects[idx];
+          if (!Array.isArray(logs)) return;
+          logs.forEach((log: ServiceRecord) => {
+            activities.push({
+              id: log.id,
+              type: log.action || 'update',
+              description: log.description || `${log.action} on project ${project.name}`,
+              timestamp: log.createdAt,
+              userId: log.userId,
+              projectId: project.id,
+              project,
+            });
+          });
+        });
         
         // Sort and limit activities
         const recentActivities = activities
@@ -1092,19 +1057,19 @@ export const resolvers = {
         return null;
       }
     },
-    manager: async (parent: ServiceRecord) => {
+    manager: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       if (!parent.managerId) return null;
-      return getEnrichedUser(parent.managerId);
+      return context.loaders.enrichedUser.load(parent.managerId);
     },
-    members: async (parent: ServiceRecord) => {
+    members: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       try {
         // Get project members
         const projectMembers = await projectClient.get(`/project-members?projectId=${parent.id}`);
         if (!Array.isArray(projectMembers) || projectMembers.length === 0) return [];
 
-        // Get user details for each member
+        // Batch-resolve users via per-request DataLoader (dedupes shared user IDs)
         const members = await Promise.all(
-          projectMembers.map((pm: ServiceRecord) => getEnrichedUser(pm.userId))
+          projectMembers.map((pm: ServiceRecord) => context.loaders.enrichedUser.load(pm.userId))
         );
         return members.filter(Boolean);
       } catch {
@@ -1130,7 +1095,7 @@ export const resolvers = {
         return [];
       }
     },
-    activities: async (parent: ServiceRecord) => {
+    activities: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       try {
         // Get activity logs related to this project
         const activityLogs = await authClient.get(`/activity-logs?entityType=project&entityId=${parent.id}`);
@@ -1142,7 +1107,7 @@ export const resolvers = {
             let user = null;
             if (log.userId) {
               try {
-                user = await getEnrichedUser(log.userId);
+                user = await context.loaders.enrichedUser.load(log.userId);
               } catch { /* ignore */ }
             }
             return {
@@ -1162,7 +1127,7 @@ export const resolvers = {
         return [];
       }
     },
-    documents: async (parent: ServiceRecord) => {
+    documents: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       try {
         // Get documents linked to this project from knowledge hub
         const documents = await knowledgeClient.get(`/documents?projectId=${parent.id}`);
@@ -1174,7 +1139,9 @@ export const resolvers = {
             let uploadedBy = null;
             if (doc.createdById || doc.uploadedById) {
               try {
-                uploadedBy = await getEnrichedUser(doc.createdById || doc.uploadedById);
+                uploadedBy = await context.loaders.enrichedUser.load(
+                  String(doc.createdById || doc.uploadedById)
+                );
               } catch { /* ignore */ }
             }
             return {
@@ -1206,17 +1173,17 @@ export const resolvers = {
 
   Task: {
     priority: (parent: ServiceRecord) => parent.priority ?? 'medium',
-    assignees: async (parent: ServiceRecord) => {
+    assignees: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       // If there's an assigneeId, return that user as a single-element array
       if (parent.assigneeId) {
-        const user = await getEnrichedUser(parent.assigneeId);
+        const user = await context.loaders.enrichedUser.load(parent.assigneeId);
         return user ? [user] : [];
       }
       return [];
     },
-    creator: async (parent: ServiceRecord) => {
+    creator: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       if (!parent.creatorId) return null;
-      return getEnrichedUser(parent.creatorId);
+      return context.loaders.enrichedUser.load(parent.creatorId);
     },
   },
 
@@ -1270,9 +1237,9 @@ export const resolvers = {
       // Contracts are not implemented yet - return empty array
       return [];
     },
-    contactPerson: async (parent: ServiceRecord) => {
+    contactPerson: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       if (!parent.contactPersonId) return null;
-      return getEnrichedUser(parent.contactPersonId);
+      return context.loaders.enrichedUser.load(parent.contactPersonId);
     },
   },
 
@@ -1337,10 +1304,10 @@ export const resolvers = {
   },
 
   ActivityItem: {
-    user: async (parent: ServiceRecord) => {
+    user: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       if (!parent.userId) return null;
       try {
-        return await getEnrichedUser(parent.userId);
+        return await context.loaders.enrichedUser.load(parent.userId);
       } catch {
         return null;
       }

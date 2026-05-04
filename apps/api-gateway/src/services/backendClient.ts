@@ -1,5 +1,11 @@
+import http from 'http';
+import https from 'https';
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { ServiceError } from '../lib/errors';
+
+/** Reuse TCP connections to microservices (major latency win vs. one socket per request). */
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 100 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 100 });
 
 /** Generic record type representing data from REST microservices */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -14,6 +20,8 @@ class ServiceClient {
     this.client = axios.create({
       baseURL,
       timeout: 30000,
+      httpAgent,
+      httpsAgent,
       headers: {
         'Content-Type': 'application/json',
       },
