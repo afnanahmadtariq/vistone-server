@@ -28,6 +28,7 @@ const sampleLog = {
   id: 'log-1',
   userId: 'user-1',
   action: 'LOGIN',
+  entityType: 'auth',
   resource: 'auth',
   resourceId: null,
   metadata: null,
@@ -40,7 +41,7 @@ describe('ActivityLogs Controller – Unit Tests', () => {
   describe('createActivityLogHandler', () => {
     it('creates and returns an activity log', async () => {
       (prisma.activityLog.create as jest.Mock).mockResolvedValue(sampleLog);
-      const req: any = { body: { userId: 'user-1', action: 'LOGIN' } };
+      const req: any = { body: { userId: 'user-1', action: 'LOGIN', entityType: 'auth' } };
       const res = mockRes();
 
       await createActivityLogHandler(req, res);

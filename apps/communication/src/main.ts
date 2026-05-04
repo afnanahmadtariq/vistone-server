@@ -1,5 +1,7 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { bearerAuthMiddleware, defaultInternalAuthSkip } from '@vistone-server/shared-internal-auth';
 import { createServer } from 'http';
 import { connectMongo } from './lib/mongodb';
 import { initSocketServer } from './lib/socket';
@@ -16,6 +18,13 @@ const httpServer = createServer(app);
 // Enable CORS
 app.use(cors());
 app.use(express.json());
+
+app.use(
+  bearerAuthMiddleware({
+    authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
+    skip: defaultInternalAuthSkip,
+  })
+);
 
 app.get('/', (_req, res) => {
   res.send({ message: 'Communication Service API' });

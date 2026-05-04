@@ -16,5 +16,10 @@
     "eslint.config.js",
     "eslint.config.cjs",
     "eslint.config.mjs"
+  ],
+  "references": [
+    {
+      "path": "../../libs/shared-internal-auth/tsconfig.lib.json"
+    }
   ]
 }

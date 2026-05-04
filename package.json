@@ -31,6 +31,7 @@
     "@langchain/textsplitters": "^1.0.1",
     "@prisma/adapter-pg": "^6.16.3",
     "@prisma/client": "^7.4.2",
+    "@vistone-server/shared-internal-auth": "*",
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/cors": "^2.8.19",
     "@types/uuid": "^10.0.0",
@@ -97,6 +98,7 @@
     "typescript-eslint": "^8.40.0"
   },
   "workspaces": [
-    "apps/*"
+    "apps/*",
+    "libs/*"
   ]
 }

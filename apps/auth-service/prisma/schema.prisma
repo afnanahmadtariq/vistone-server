@@ -117,7 +117,7 @@ model MfaSetting {
 
 model ActivityLog {
   id          String   @id @default(uuid())
-  userId      String?
+  userId      String
   action      String
   entityType  String
   entityId    String?

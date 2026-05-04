@@ -4,6 +4,9 @@
   "include": [],
   "references": [
     {
+      "path": "../../libs/shared-internal-auth"
+    },
+    {
       "path": "./tsconfig.app.json"
     },
     {

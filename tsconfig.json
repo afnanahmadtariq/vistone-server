@@ -62,6 +62,9 @@
     },
     {
       "path": "./apps/auth-service"
+    },
+    {
+      "path": "./libs/shared-internal-auth"
     }
   ]
 }

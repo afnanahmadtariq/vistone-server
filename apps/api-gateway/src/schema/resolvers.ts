@@ -2017,8 +2017,15 @@ export const resolvers = {
       return authClient.delete('/mfa-settings', id);
     },
     createActivityLog: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requireAuth(context);
-      return authClient.post('/activity-logs', input);
+      const me = await requireAuth(context);
+      const actorId =
+        input.userId && input.userId !== me.id && isOrganizer(me)
+          ? String(input.userId)
+          : me.id;
+      return authClient.post('/activity-logs', {
+        ...input,
+        userId: actorId,
+      });
     },
 
     // RBAC Management

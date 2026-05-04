@@ -6,6 +6,19 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
+
+const PROJECT_SERVICE_URL = process.env.PROJECT_SERVICE_URL || 'http://localhost:3003';
+const WORKFORCE_SERVICE_URL = process.env.WORKFORCE_SERVICE_URL || 'http://localhost:3002';
+
+async function fetchJson<T>(url: string): Promise<T | null> {
+    try {
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        return (await res.json()) as T;
+    } catch {
+        return null;
+    }
+}
 import {
     ROLE_NAMES,
     hasPermission,
@@ -156,10 +169,28 @@ export function requireTeamManager(getTeamId: (req: AuthenticatedRequest) => str
             return;
         }
 
-        // Check if user is manager of this specific team
-        // This would need to be implemented with actual database check
-        // For now, we'll pass through and let the route handler verify
-        // TODO: Implement team manager verification via workforce service
+        const orgId = user.organizationId;
+        if (!orgId) {
+            res.status(403).json({ error: 'Organization context required' });
+            return;
+        }
+
+        const team = await fetchJson<{ organizationId?: string; managerId?: string | null }>(
+            `${WORKFORCE_SERVICE_URL.replace(/\/$/, '')}/teams/${teamId}`
+        );
+        if (!team) {
+            res.status(404).json({ error: 'Team not found' });
+            return;
+        }
+        if (team.organizationId !== orgId) {
+            res.status(403).json({ error: 'Access denied to this team' });
+            return;
+        }
+        if (team.managerId !== user.id) {
+            res.status(403).json({ error: 'Only the team manager can perform this action' });
+            return;
+        }
+
         next();
     };
 }
@@ -193,11 +224,24 @@ export function requireProjectAccess(
             return;
         }
 
-        // For other roles, verify project access
-        // This would need to be implemented with actual database check
-        // Contributors and Clients should only see projects they're assigned to
-        // Managers should only see projects their teams are assigned to
-        // TODO: Implement project access verification via project service
+        const orgId = user.organizationId;
+        if (!orgId) {
+            res.status(403).json({ error: 'Organization context required' });
+            return;
+        }
+
+        const project = await fetchJson<{ organizationId?: string }>(
+            `${PROJECT_SERVICE_URL.replace(/\/$/, '')}/projects/${projectId}`
+        );
+        if (!project?.organizationId) {
+            res.status(404).json({ error: 'Project not found' });
+            return;
+        }
+        if (project.organizationId !== orgId) {
+            res.status(403).json({ error: 'Access denied to this project' });
+            return;
+        }
+
         next();
     };
 }
@@ -229,10 +273,32 @@ export function requireTaskAccess(getTaskId: (req: AuthenticatedRequest) => stri
             return;
         }
 
-        // For other roles, verify task access based on assignment
-        // Contributors can only see tasks assigned to them
-        // Managers can see tasks assigned to their teams
-        // TODO: Implement task access verification via project service
+        const orgId = user.organizationId;
+        if (!orgId) {
+            res.status(403).json({ error: 'Organization context required' });
+            return;
+        }
+
+        const task = await fetchJson<{ projectId?: string }>(
+            `${PROJECT_SERVICE_URL.replace(/\/$/, '')}/tasks/${taskId}`
+        );
+        if (!task?.projectId) {
+            res.status(404).json({ error: 'Task not found' });
+            return;
+        }
+
+        const project = await fetchJson<{ organizationId?: string }>(
+            `${PROJECT_SERVICE_URL.replace(/\/$/, '')}/projects/${task.projectId}`
+        );
+        if (!project?.organizationId) {
+            res.status(404).json({ error: 'Project not found' });
+            return;
+        }
+        if (project.organizationId !== orgId) {
+            res.status(403).json({ error: 'Access denied to this task' });
+            return;
+        }
+
         next();
     };
 }

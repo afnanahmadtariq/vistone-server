@@ -2,6 +2,7 @@ import http from 'http';
 import https from 'https';
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { ServiceError } from '../lib/errors';
+import { gatewayAuthStore } from '../lib/requestAuthContext';
 
 /** Reuse TCP connections to microservices (major latency win vs. one socket per request). */
 const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 100 });
@@ -25,6 +26,14 @@ class ServiceClient {
       headers: {
         'Content-Type': 'application/json',
       },
+    });
+
+    this.client.interceptors.request.use((config) => {
+      const token = gatewayAuthStore.getStore()?.bearerToken;
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
     });
   }
 

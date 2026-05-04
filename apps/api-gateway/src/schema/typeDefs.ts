@@ -132,7 +132,7 @@ export const typeDefs = gql`
 
   type ActivityLog {
     id: ID!
-    userId: String
+    userId: String!
     action: String!
     entityType: String!
     entityId: String

@@ -1,5 +1,7 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { bearerAuthMiddleware, defaultInternalAuthSkip } from '@vistone-server/shared-internal-auth';
 import wikiPageRoutes from './modules/wiki-pages/wiki-pages.routes';
 import wikiPageVersionRoutes from './modules/wiki-page-versions/wiki-page-versions.routes';
 import documentFolderRoutes from './modules/document-folders/document-folders.routes';
@@ -15,6 +17,13 @@ const app = express();
 // Enable CORS
 app.use(cors());
 app.use(express.json());
+
+app.use(
+  bearerAuthMiddleware({
+    authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
+    skip: defaultInternalAuthSkip,
+  })
+);
 
 app.get('/', (req, res) => {
   res.send({ message: 'Knowledge Hub Service API' });

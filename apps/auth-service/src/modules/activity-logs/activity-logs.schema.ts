@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const activityLogSchema = z.object({
       body: z.object({
-        userId: z.string().nullable().optional(),
+        userId: z.string().min(1),
         action: z.string().min(1),
         entityType: z.string().min(1),
         entityId: z.string().nullable().optional(),

@@ -1,5 +1,7 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { bearerAuthMiddleware, defaultInternalAuthSkip } from '@vistone-server/shared-internal-auth';
 import projectRoutes from './modules/projects/projects.routes';
 import projectMemberRoutes from './modules/project-members/project-members.routes';
 import taskRoutes from './modules/tasks/tasks.routes';
@@ -17,6 +19,13 @@ const app = express();
 // Enable CORS
 app.use(cors());
 app.use(express.json());
+
+app.use(
+  bearerAuthMiddleware({
+    authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
+    skip: defaultInternalAuthSkip,
+  })
+);
 
 app.get('/', (req, res) => {
   res.send({ message: 'Project Management Service API' });

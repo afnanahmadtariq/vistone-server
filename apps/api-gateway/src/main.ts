@@ -8,6 +8,7 @@ import { typeDefs } from './schema/typeDefs';
 import { resolvers } from './schema/resolvers';
 import { formatGraphQLError } from './lib/errors';
 import { createGraphQLLoaders } from './lib/graphqlLoaders';
+import { gatewayAuthStore } from './lib/requestAuthContext';
 import uploadRouter from './routes/upload';
 
 dotenv.config();
@@ -47,6 +48,16 @@ async function startServer() {
 
   // Handle preflight requests explicitly
   app.options('*', cors(corsOptions));
+
+  // Forward caller JWT to downstream microservices (AsyncLocalStorage + axios interceptor in backendClient)
+  app.use((req, _res, next) => {
+    const raw = req.headers.authorization;
+    const bearerToken =
+      typeof raw === 'string' && /^Bearer\s+/i.test(raw.trim())
+        ? raw.replace(/^Bearer\s+/i, '').trim()
+        : undefined;
+    gatewayAuthStore.run({ bearerToken }, () => next());
+  });
 
   // Compress JSON / GraphQL responses (major win vs raw microservice aggregation payloads)
   app.use(compression({ threshold: 512 }));

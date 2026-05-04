@@ -13,25 +13,76 @@ interface AuthenticatedSocket extends Socket {
 
 let io: Server;
 
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+function attachRedisErrorHandler(client: Redis, label: string): void {
+    client.on('error', (err: Error) => {
+        console.warn(`[Socket.IO] Redis ${label}: ${err.message}`);
+    });
+}
+
 export function getIO(): Server {
     if (!io) throw new Error('Socket.IO not initialized');
     return io;
 }
 
-// ─── Auth middleware: extract userId from handshake ───
+// ─── Auth: validate JWT via auth-service (same contract as API gateway) ───
 async function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
     try {
-        // The frontend will pass userId and organizationId in the handshake auth
-        // In production, this should validate a JWT token
-        const { userId, organizationId } = socket.handshake.auth;
-        if (!userId || !organizationId) {
-            return next(new Error('Authentication required: userId and organizationId must be provided'));
+        const auth = socket.handshake.auth as Record<string, unknown>;
+        const headerAuth = socket.handshake.headers.authorization;
+        let token: string | undefined;
+
+        if (typeof auth?.token === 'string') {
+            token = auth.token;
+        } else if (typeof headerAuth === 'string' && /^Bearer\s+/i.test(headerAuth)) {
+            token = headerAuth.replace(/^Bearer\s+/i, '').trim();
         }
-        // Attach to socket for later use
-        (socket as AuthenticatedSocket).userId = userId;
-        (socket as AuthenticatedSocket).organizationId = organizationId;
+
+        if (!token) {
+            return next(
+                new Error(
+                    'Authentication required: pass handshake.auth.token (JWT) or Authorization: Bearer'
+                )
+            );
+        }
+
+        const orgHint = typeof auth?.organizationId === 'string' ? auth.organizationId : '';
+        const base = AUTH_SERVICE_URL.replace(/\/$/, '');
+        const res = await fetch(`${base}/auth/me`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ organizationId: orgHint || undefined }),
+        });
+
+        if (!res.ok) {
+            return next(new Error('Authentication failed: invalid or expired token'));
+        }
+
+        const data = (await res.json()) as Record<string, unknown>;
+        if (data.status === 'paused') {
+            return next(new Error('Account paused'));
+        }
+
+        const uid = data.id;
+        const oid = data.organizationId;
+        if (typeof uid !== 'string') {
+            return next(new Error('Invalid token: missing user id'));
+        }
+        if (typeof oid !== 'string') {
+            return next(new Error('Invalid token: missing organization'));
+        }
+        if (orgHint && orgHint !== oid) {
+            return next(new Error('Organization mismatch'));
+        }
+
+        (socket as AuthenticatedSocket).userId = uid;
+        (socket as AuthenticatedSocket).organizationId = oid;
         next();
-    } catch (_err) {
+    } catch {
         next(new Error('Authentication failed'));
     }
 }
@@ -51,6 +102,8 @@ export function initSocketServer(httpServer: HttpServer): Server {
     try {
         const pubClient = new Redis(redisUrl);
         const subClient = pubClient.duplicate();
+        attachRedisErrorHandler(pubClient, 'pub');
+        attachRedisErrorHandler(subClient, 'sub');
         io.adapter(createAdapter(pubClient, subClient));
         console.log('[Socket.IO] Redis adapter connected');
     } catch (_err) {
