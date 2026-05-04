@@ -284,9 +284,35 @@ export const resolvers = {
       await requireAuth(context);
       return authClient.getById('/mfa-settings', id);
     },
-    activityLogs: async (_: unknown, { userId, action, entityType, limit, offset }: { userId?: string; action?: string; entityType?: string; limit?: number; offset?: number }, context: Context) => {
-      await requirePermission(context, 'settings', 'read');
+    activityLogs: async (
+      _: unknown,
+      {
+        organizationId: organizationIdArg,
+        userId,
+        action,
+        entityType,
+        limit,
+        offset,
+      }: {
+        organizationId?: string;
+        userId?: string;
+        action?: string;
+        entityType?: string;
+        limit?: number;
+        offset?: number;
+      },
+      context: Context
+    ) => {
+      const user = await requirePermission(context, 'settings', 'read');
+      let organizationId: string;
+      if (organizationIdArg) {
+        await requireOrganization(context, organizationIdArg);
+        organizationId = organizationIdArg;
+      } else {
+        organizationId = getOrgId(user);
+      }
       const params = new URLSearchParams();
+      params.append('organizationId', organizationId);
       if (userId) params.append('userId', userId);
       if (action) params.append('action', action);
       if (entityType) params.append('entityType', entityType);

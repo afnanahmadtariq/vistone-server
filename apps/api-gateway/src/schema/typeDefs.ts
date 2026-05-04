@@ -762,7 +762,7 @@ export const typeDefs = gql`
     kycDataById(id: ID!): KycData
     mfaSettings: [MfaSetting!]!
     mfaSetting(id: ID!): MfaSetting
-    activityLogs(userId: String, action: String, entityType: String, limit: Int, offset: Int): [ActivityLog!]!
+    activityLogs(organizationId: ID, userId: String, action: String, entityType: String, limit: Int, offset: Int): [ActivityLog!]!
     activityLog(id: ID!): ActivityLog
 
     # Teams
