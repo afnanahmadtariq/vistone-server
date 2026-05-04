@@ -250,6 +250,71 @@ export const emailTemplates = {
       </html>
     `,
   }),
+  projectAssignment: (data: {
+    recipientName?: string;
+    organizerName: string;
+    organizationName: string;
+    projectName: string;
+    projectLink: string;
+    role: 'team' | 'client';
+  }) => ({
+    subject: `You've been added to project "${data.projectName}" on Vistone`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Project Assignment</title>
+      </head>
+      <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f5;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+          <tr>
+            <td style="padding: 40px 30px; text-align: center; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);">
+              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600;">Vistone</h1>
+              <p style="margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 14px;">Project Notification</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 40px 30px;">
+              <h2 style="margin: 0 0 20px; color: #18181b; font-size: 24px; font-weight: 600;">
+                New Project Assignment 📋
+              </h2>
+              <p style="margin: 0 0 15px; color: #52525b; font-size: 16px; line-height: 1.6;">
+                Hi${data.recipientName ? ` ${data.recipientName}` : ''},
+              </p>
+              <p style="margin: 0 0 15px; color: #52525b; font-size: 16px; line-height: 1.6;">
+                <strong>${data.organizerName}</strong> from <strong>${data.organizationName}</strong> has ${data.role === 'client' ? 'assigned you as the client for' : 'added you to'} the project <strong>${data.projectName}</strong>.
+              </p>
+              <p style="margin: 0 0 30px; color: #52525b; font-size: 16px; line-height: 1.6;">
+                Click below to view the project:
+              </p>
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="text-align: center;">
+                    <a href="${data.projectLink}" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                      View Project
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin: 30px 0 0; color: #a1a1aa; font-size: 14px; line-height: 1.6;">
+                If you have any questions, contact ${data.organizerName} directly.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 30px; background-color: #f4f4f5; text-align: center;">
+              <p style="margin: 0; color: #71717a; font-size: 14px;">
+                © ${new Date().getFullYear()} Vistone. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `,
+  }),
 };
 
 export default transporter;

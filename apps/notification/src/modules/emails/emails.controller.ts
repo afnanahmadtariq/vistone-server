@@ -161,3 +161,48 @@ export async function genericEmailSendingEndpointHandler(req: Request, res: Resp
     res.status(500).json({ error: 'Failed to send email' });
   }
 }
+export async function sendProjectAssignmentEmailHandler(req: Request, res: Response) {
+  try {
+    const {
+      email,
+      recipientName,
+      organizerName,
+      organizationName,
+      projectName,
+      projectLink,
+      role = 'team', // 'team' or 'client'
+    } = req.body;
+
+    if (!email || !organizerName || !organizationName || !projectName || !projectLink) {
+      res.status(400).json({
+        error: 'Missing required fields: email, organizerName, organizationName, projectName, projectLink'
+      });
+      return;
+    }
+
+    const template = emailTemplates.projectAssignment({
+      recipientName,
+      organizerName,
+      organizationName,
+      projectName,
+      projectLink,
+      role,
+    });
+
+    const sent = await sendEmail({
+      to: email,
+      subject: template.subject,
+      html: template.html,
+    });
+
+    if (sent) {
+      console.log(`Project assignment email sent to ${email}`);
+      res.json({ success: true, message: 'Project assignment email sent successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to send project assignment email' });
+    }
+  } catch (error) {
+    console.error('Project assignment email error:', error);
+    res.status(500).json({ error: 'Failed to send project assignment email' });
+  }
+}

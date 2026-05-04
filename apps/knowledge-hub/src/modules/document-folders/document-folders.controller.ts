@@ -15,7 +15,11 @@ export async function createDocumentFolderHandler(req: Request, res: Response) {
 
 export async function getAllDocumentFoldersHandler(req: Request, res: Response) {
     try {
-    const documentFolders = await prisma.documentFolder.findMany();
+    const { wikiId, parentId } = req.query;
+    const where: Record<string, unknown> = {};
+    if (wikiId) where.wikiId = String(wikiId);
+    if (parentId) where.parentId = String(parentId);
+    const documentFolders = await prisma.documentFolder.findMany({ where, orderBy: { createdAt: 'desc' } });
     res.json(documentFolders);
     } catch (error) {
     console.error(error);
@@ -41,6 +45,11 @@ export async function getDocumentFolderByIdHandler(req: Request, res: Response) 
 
 export async function updateDocumentFolderHandler(req: Request, res: Response) {
     try {
+    const existing = await prisma.documentFolder.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Document folder not found' });
+      return;
+    }
     const documentFolder = await prisma.documentFolder.update({
       where: { id: req.params.id },
       data: req.body,
@@ -54,6 +63,13 @@ export async function updateDocumentFolderHandler(req: Request, res: Response) {
 
 export async function deleteDocumentFolderHandler(req: Request, res: Response) {
     try {
+    const existing = await prisma.documentFolder.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Document folder not found' });
+      return;
+    }
+    // Delete child documents first, then the folder
+    await prisma.document.deleteMany({ where: { folderId: req.params.id } });
     await prisma.documentFolder.delete({
       where: { id: req.params.id },
     });

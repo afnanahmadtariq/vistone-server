@@ -25,7 +25,7 @@ interface ProjectData {
   id: string;
   name: string;
   status: string;
-  teamId?: string;
+  teamIds?: string[];
   endDate?: Date;
   updatedAt?: Date;
 }
@@ -93,6 +93,9 @@ export async function getAllTeamsHandler(req: Request, res: Response) {
       },
     }) as TeamWithMembers[];
 
+    // Fetch all projects once to avoid multiple API calls
+    const allProjects = await fetchProjects();
+
     const enhancedTeams = await Promise.all(teams.map(async (team: TeamWithMembers) => {
       // Fetch manager data
       let manager = null;
@@ -124,9 +127,14 @@ export async function getAllTeamsHandler(req: Request, res: Response) {
         })
       );
 
+      // Filter projects for this team
+      const ongoingCount = allProjects.filter((p: ProjectData) => p.teamIds?.includes(team.id) && p.status !== 'completed' && p.status !== 'Completed').length;
+      const completedCount = allProjects.filter((p: ProjectData) => p.teamIds?.includes(team.id) && (p.status === 'completed' || p.status === 'Completed')).length;
+
       return {
         ...team,
         memberCount: team.members.length,
+        assignedProjects: ongoingCount + completedCount,
         manager,
         members,
       };
@@ -187,7 +195,7 @@ export async function getTeamByIdHandler(req: Request, res: Response) {
     const allProjects = await fetchProjects();
 
     const ongoingProjects = allProjects
-      .filter((p: ProjectData) => p.teamId === team.id && p.status !== 'completed' && p.status !== 'Completed')
+      .filter((p: ProjectData) => p.teamIds?.includes(team.id) && p.status !== 'completed' && p.status !== 'Completed')
       .slice(0, 5)
       .map((p: ProjectData) => ({
         id: p.id,
@@ -197,7 +205,7 @@ export async function getTeamByIdHandler(req: Request, res: Response) {
       }));
 
     const completedProjects = allProjects
-      .filter((p: ProjectData) => p.teamId === team.id && (p.status === 'completed' || p.status === 'Completed'))
+      .filter((p: ProjectData) => p.teamIds?.includes(team.id) && (p.status === 'completed' || p.status === 'Completed'))
       .slice(0, 5)
       .map((p: ProjectData) => ({
         id: p.id,

@@ -18,7 +18,11 @@ export async function createDocumentHandler(req: Request, res: Response) {
 
 export async function getAllDocumentsHandler(req: Request, res: Response) {
     try {
-    const documents = await prisma.document.findMany();
+    const { wikiId, folderId } = req.query;
+    const where: Record<string, unknown> = {};
+    if (wikiId) where.wikiId = String(wikiId);
+    if (folderId) where.folderId = String(folderId);
+    const documents = await prisma.document.findMany({ where, orderBy: { createdAt: 'desc' } });
     res.json(documents);
     } catch (error) {
     console.error(error);
@@ -44,6 +48,11 @@ export async function getDocumentByIdHandler(req: Request, res: Response) {
 
 export async function updateDocumentHandler(req: Request, res: Response) {
     try {
+    const existing = await prisma.document.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Document not found' });
+      return;
+    }
     const document = await prisma.document.update({
       where: { id: req.params.id },
       data: req.body,
@@ -57,8 +66,12 @@ export async function updateDocumentHandler(req: Request, res: Response) {
 
 export async function deleteDocumentHandler(req: Request, res: Response) {
     try {
+    const existing = await prisma.document.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Document not found' });
+      return;
+    }
     await prisma.documentPermission.deleteMany({ where: { documentId: req.params.id } });
-    await prisma.documentLink.deleteMany({ where: { documentId: req.params.id } });
     await prisma.document.delete({ where: { id: req.params.id } });
     res.json({ success: true, message: 'Document deleted' });
     } catch (error) {

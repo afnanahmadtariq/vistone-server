@@ -605,7 +605,13 @@ export async function acceptInviteHandler(req: Request, res: Response) {
             password: hashPassword(password),
             firstName: firstName || user.firstName,
             lastName: lastName || user.lastName,
+            status: 'active',
           },
+        });
+      } else if (user.status === 'pending') {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { status: 'active' },
         });
       }
     }

@@ -1,4 +1,4 @@
-﻿import { GraphQLScalarType, Kind, GraphQLError } from 'graphql';
+import { GraphQLScalarType, Kind, GraphQLError } from 'graphql';
 import {
   authClient,
   workforceClient,
@@ -108,7 +108,7 @@ async function enrichUserWithWorkforceData(user: ServiceRecord | null): Promise<
       joinedAt: teamMember?.createdAt || user.createdAt,
       skills,
       avatar: null,
-      status: 'active',
+      status: user.status || 'active',
     };
   } catch {
     // If workforce service is unavailable, return user with default enriched fields
@@ -118,7 +118,7 @@ async function enrichUserWithWorkforceData(user: ServiceRecord | null): Promise<
       joinedAt: user.createdAt,
       skills: [],
       avatar: null,
-      status: 'active',
+      status: user.status || 'active',
     };
   }
 }
@@ -144,6 +144,45 @@ async function getEnrichedUser(userId: string): Promise<ServiceRecord | null> {
 
 // Clear cache periodically (simple approach)
 setInterval(() => userCache.clear(), 60000); // Clear every minute
+
+// Helper: build human-readable description from an activity log record
+function describeActivity(log: ServiceRecord): string {
+  const action = String(log.action || '').toUpperCase();
+  const entity = String(log.entityType || '').toLowerCase();
+  const meta = (log.metadata || log.details || {}) as Record<string, unknown>;
+  const name = meta.name || meta.title || '';
+
+  switch (action) {
+    case 'CREATE':
+      return `Created ${entity}${name ? ` "${name}"` : ''}`;
+    case 'UPDATE':
+      return `Updated ${entity}${name ? ` "${name}"` : ''}`;
+    case 'DELETE':
+      return `Deleted ${entity}${name ? ` "${name}"` : ''}`;
+    case 'INVITE':
+      return `Invited a new ${entity === 'user' ? 'member' : entity}${name ? ` (${name})` : ''}`;
+    case 'LOGIN':
+      return 'Logged in';
+    case 'LOGOUT':
+      return 'Logged out';
+    case 'REGISTER':
+      return 'New account registered';
+    case 'ASSIGN':
+      return `Assigned ${entity}${name ? ` "${name}"` : ''}`;
+    case 'COMPLETE':
+      return `Completed ${entity}${name ? ` "${name}"` : ''}`;
+    case 'ARCHIVE':
+      return `Archived ${entity}${name ? ` "${name}"` : ''}`;
+    case 'UPLOAD':
+      return `Uploaded ${entity === 'document' ? 'document' : 'file'}${name ? ` "${name}"` : ''}`;
+    case 'LINK':
+      return `Linked ${entity}${name ? ` "${name}"` : ''}`;
+    case 'UNLINK':
+      return `Unlinked ${entity}${name ? ` "${name}"` : ''}`;
+    default:
+      return `${action.charAt(0) + action.slice(1).toLowerCase()} ${entity}${name ? ` "${name}"` : ''}`;
+  }
+}
 
 /**
  * Helper function to delete a user's data across all services.
@@ -300,9 +339,32 @@ export const resolvers = {
       await requireAuth(context);
       return authClient.getById('/mfa-settings', id);
     },
-    activityLogs: async (_: unknown, _args: unknown, context: Context) => {
+    activityLogs: async (_: unknown, { userId, action, entityType, limit, offset }: { userId?: string; action?: string; entityType?: string; limit?: number; offset?: number }, context: Context) => {
       await requirePermission(context, 'settings', 'read');
-      return authClient.get('/activity-logs');
+      const params = new URLSearchParams();
+      if (userId) params.append('userId', userId);
+      if (action) params.append('action', action);
+      if (entityType) params.append('entityType', entityType);
+      const logs = await authClient.get(`/activity-logs?${params.toString()}`);
+      if (!Array.isArray(logs)) return [];
+      // Apply offset and limit in-memory (backend returns all matching)
+      const start = offset || 0;
+      const end = limit ? start + limit : undefined;
+      const sliced = logs.slice(start, end);
+      // Enrich each log with description and user info
+      return Promise.all(
+        sliced.map(async (log: ServiceRecord) => {
+          let user = null;
+          if (log.userId) {
+            try { user = await getEnrichedUser(String(log.userId)); } catch { /* ignore */ }
+          }
+          return {
+            ...log,
+            description: describeActivity(log),
+            user,
+          };
+        })
+      );
     },
     activityLog: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'settings', 'read');
@@ -665,7 +727,7 @@ export const resolvers = {
       const projectIds = new Set<string>();
 
       try {
-        // 1. As Member/Manager
+        // 1. As Member/Manager (direct project membership or assigned manager)
         const projectMembers = await projectClient.get(`/project-members?userId=${user.id}`);
         if (Array.isArray(projectMembers)) {
           projectMembers.forEach((pm: ServiceRecord) => projectIds.add(pm.projectId));
@@ -676,14 +738,42 @@ export const resolvers = {
           managedProjects.forEach((p: ServiceRecord) => projectIds.add(p.id));
         }
 
-        // 2. As Client contact person
+        // 2. Via team membership — projects with this user's team in their teamIds
+        try {
+          const teamMemberships = await workforceClient.get(`/team-members?userId=${user.id}`);
+          if (Array.isArray(teamMemberships) && teamMemberships.length > 0) {
+            // Fetch all projects for the org and filter those whose teamIds include the manager's teams
+            const orgId = getOrgId(user);
+            const allOrgProjects = await projectClient.get(`/projects?organizationId=${orgId}`);
+            if (Array.isArray(allOrgProjects)) {
+              const userTeamIds = new Set(teamMemberships.map((tm: ServiceRecord) => tm.teamId));
+              allOrgProjects.forEach((p: ServiceRecord) => {
+                const projectTeamIds: string[] = Array.isArray(p.teamIds) ? p.teamIds : [];
+                if (projectTeamIds.some((tid) => userTeamIds.has(tid))) {
+                  projectIds.add(p.id);
+                }
+              });
+            }
+          }
+        } catch { /* ignore if workforce service unavailable */ }
+
+        // 3. As Client contact person
         const clients = await clientMgmtClient.get(`/clients?contactPersonId=${user.id}`);
         if (Array.isArray(clients)) {
           for (const client of clients) {
+            // Check project-clients link table
             const pcs = await clientMgmtClient.get(`/project-clients?clientId=${client.id}`);
             if (Array.isArray(pcs)) {
               pcs.forEach((pc: ServiceRecord) => projectIds.add(pc.projectId));
             }
+
+            // Also directly query projects that have clientId assigned as a fallback
+            try {
+              const clientAssignedProjects = await projectClient.get(`/projects?clientId=${client.id}`);
+              if (Array.isArray(clientAssignedProjects)) {
+                clientAssignedProjects.forEach((p: ServiceRecord) => projectIds.add(p.id));
+              }
+            } catch { /* ignore if not found */ }
           }
         }
 
@@ -827,21 +917,30 @@ export const resolvers = {
             dueDate: m.dueDate,
           }));
 
-        // Get recent activity logs
+        // Get recent activity logs (meaningful descriptions, exclude noise)
         let recentActivities: ServiceRecord[] = [];
         try {
           const activityLogs = await authClient.get('/activity-logs');
           if (Array.isArray(activityLogs)) {
-            recentActivities = activityLogs
-              .slice(0, 10)
-              .map((log: ServiceRecord) => ({
-                id: log.id,
-                type: log.action,
-                description: `${log.action} on ${log.entityType}`,
-                timestamp: log.createdAt,
-                user: null,
-                project: null,
-              }));
+            // Resolve user info for activities
+            recentActivities = await Promise.all(
+              activityLogs
+                .slice(0, 10)
+                .map(async (log: ServiceRecord) => {
+                  let user = null;
+                  if (log.userId) {
+                    try { user = await getEnrichedUser(String(log.userId)); } catch { /* ignore */ }
+                  }
+                  return {
+                    id: log.id,
+                    type: log.action,
+                    description: describeActivity(log),
+                    timestamp: log.createdAt,
+                    user,
+                    project: null,
+                  };
+                })
+            );
           }
         } catch { /* ignore */ }
 
@@ -892,10 +991,19 @@ export const resolvers = {
         const clients = await clientMgmtClient.get(`/clients?contactPersonId=${user.id}`);
         if (Array.isArray(clients)) {
           for (const client of clients) {
+            // Check project-clients link table
             const pcs = await clientMgmtClient.get(`/project-clients?clientId=${client.id}`);
             if (Array.isArray(pcs)) {
               pcs.forEach((pc: ServiceRecord) => projectIds.add(pc.projectId));
             }
+
+            // Also directly query projects that have clientId assigned as a fallback
+            try {
+              const clientAssignedProjects = await projectClient.get(`/projects?clientId=${client.id}`);
+              if (Array.isArray(clientAssignedProjects)) {
+                clientAssignedProjects.forEach((p: ServiceRecord) => projectIds.add(p.id));
+              }
+            } catch { /* ignore if not found */ }
           }
         }
         
@@ -1603,6 +1711,35 @@ export const resolvers = {
 
       // Return the updated user with the new role
       const user = await authClient.getById('/users', userId);
+
+      try {
+        const currentUserData = await authClient.getById('/users', currentUser.id);
+        const inviterName = `${currentUserData?.firstName || ''} ${currentUserData?.lastName || ''}`.trim() || currentUser.email;
+        let organizationName = 'our organization';
+        try {
+          const org = await authClient.getById('/organizations', organizationId);
+          if (org?.name) organizationName = org.name;
+        } catch { /* ignore */ }
+
+        await notificationClient.post('/emails/send', {
+          to: user.email,
+          subject: `Your role has been updated on Vistone`,
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f5;">
+              <div style="background-color: #ffffff; padding: 30px; border-radius: 8px; text-align: center;">
+                <h2 style="color: #18181b; margin-top: 0;">Role Update 🔄</h2>
+                <p style="color: #52525b; font-size: 16px;">Hi ${user.firstName || ''},</p>
+                <p style="color: #52525b; font-size: 16px;">
+                  <strong>${inviterName}</strong> has updated your role in <strong>${organizationName}</strong> to <strong>${targetRole.name}</strong>.
+                </p>
+              </div>
+            </div>
+          `
+        });
+      } catch (err) {
+        console.error("Failed to send role update notification:", err);
+      }
+
       return {
         ...user,
         role: targetRole.name,
@@ -1641,12 +1778,13 @@ export const resolvers = {
         user = users.find((u: ServiceRecord) => u.email === input.email);
 
         if (!user) {
-          // Create new user
+          // Create new user with pending status
           user = await authClient.post('/users', {
             email: input.email,
             firstName: input.firstName || '',
             lastName: input.lastName || '',
             jobTitle: input.jobTitle || '',
+            status: 'pending',
           });
         }
       } catch {
@@ -1771,7 +1909,7 @@ export const resolvers = {
         // Generate invite token by calling the new auth service invitations endpoint
         let inviteToken = '';
         try {
-          const invData = await authClient.post('/invitations', {
+          const invData = await authClient.post('/auth/invitations', {
             email: input.email,
             role: input.role,
             organizationId,
@@ -2020,9 +2158,37 @@ export const resolvers = {
       return workforceClient.delete('/teams', id);
     },
     addTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }, context: Context) => {
-      await requireAuth(context);
+      const currentUser = await requireAuth(context);
       await workforceClient.post('/team-members', { teamId, userId, role: 'member' });
-      return workforceClient.getById('/teams', teamId);
+      const team = await workforceClient.getById('/teams', teamId);
+      
+      try {
+        const user = await authClient.getById('/users', userId);
+        if (user?.email && team?.name) {
+          const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
+          let organizationName = 'our organization';
+          if (currentUser.organizationId) {
+            try {
+              const org = await authClient.getById('/organizations', currentUser.organizationId);
+              if (org?.name) organizationName = org.name;
+            } catch { /* ignore */ }
+          }
+
+          await notificationClient.post('/emails/invite/team', {
+            email: user.email,
+            inviterName,
+            teamName: team.name,
+            organizationName,
+            inviteToken: 'internal-add',
+            recipientName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+            role: 'Member'
+          });
+        }
+      } catch (err) {
+        console.error("Failed to send team addition email:", err);
+      }
+
+      return team;
     },
     removeTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }, context: Context) => {
       await requireAuth(context);
@@ -2033,8 +2199,39 @@ export const resolvers = {
       return workforceClient.getById('/teams', teamId);
     },
     createTeamMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requireAuth(context);
-      return workforceClient.post('/team-members', input);
+      const currentUser = await requireAuth(context);
+      const teamMember = await workforceClient.post('/team-members', input);
+      
+      try {
+        if (input.userId && input.teamId) {
+          const user = await authClient.getById('/users', input.userId);
+          const team = await workforceClient.getById('/teams', input.teamId);
+          if (user?.email && team?.name) {
+            const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
+            let organizationName = 'our organization';
+            if (currentUser.organizationId) {
+              try {
+                const org = await authClient.getById('/organizations', currentUser.organizationId);
+                if (org?.name) organizationName = org.name;
+              } catch { /* ignore */ }
+            }
+  
+            await notificationClient.post('/emails/invite/team', {
+              email: user.email,
+              inviterName,
+              teamName: team.name,
+              organizationName,
+              inviteToken: 'internal-add',
+              recipientName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
+              role: input.role || 'Member'
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to send team addition email:", err);
+      }
+      
+      return teamMember;
     },
     updateTeamMember: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
       await requireAuth(context);
@@ -2127,6 +2324,84 @@ export const resolvers = {
         }
       }
 
+      // Send notification emails
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const projectLink = `${frontendUrl}/organizer/projects/${project.id}`;
+      const organizerName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
+
+      // Fetch organization name for email context
+      let organizationName = 'our organization';
+      try {
+        const org = await authClient.getById('/organizations', organizationId);
+        if (org?.name) organizationName = org.name;
+      } catch { /* non-critical */ }
+
+      // Notify team members
+      if (input.notifyTeam) {
+        try {
+          const emailTargets: { email: string; firstName?: string; lastName?: string }[] = [];
+
+          // Team members
+          if (input.teamId) {
+            const teamMembers = await workforceClient.get(`/team-members?teamId=${input.teamId}`);
+            if (Array.isArray(teamMembers)) {
+              for (const tm of teamMembers) {
+                const u = await authClient.getById('/users', tm.userId).catch(() => null);
+                if (u?.email) emailTargets.push({ email: u.email, firstName: u.firstName, lastName: u.lastName });
+              }
+            }
+          }
+
+          // Extra contributors
+          if (input.contributors && input.contributors.length > 0) {
+            for (const uid of input.contributors) {
+              const u = await authClient.getById('/users', uid).catch(() => null);
+              if (u?.email && !emailTargets.find(t => t.email === u.email)) {
+                emailTargets.push({ email: u.email, firstName: u.firstName, lastName: u.lastName });
+              }
+            }
+          }
+
+          for (const target of emailTargets) {
+            try {
+              await notificationClient.post('/emails/project-assigned', {
+                email: target.email,
+                recipientName: `${target.firstName || ''} ${target.lastName || ''}`.trim() || undefined,
+                organizerName,
+                organizationName,
+                projectName: project.name,
+                projectLink,
+                role: 'team',
+              });
+            } catch (e) {
+              console.error(`Failed to send project notification to team member ${target.email}:`, e);
+            }
+          }
+        } catch (e) {
+          console.error('[createProject] Failed to send team notifications:', e);
+        }
+      }
+
+      // Notify client
+      if (input.notifyClient && input.clientId) {
+        try {
+          const client = await clientMgmtClient.getById('/clients', input.clientId).catch(() => null);
+          if (client?.email) {
+            await notificationClient.post('/emails/project-assigned', {
+              email: client.email,
+              recipientName: client.name || undefined,
+              organizerName,
+              organizationName,
+              projectName: project.name,
+              projectLink: `${frontendUrl}/client/projects/${project.id}`,
+              role: 'client',
+            });
+          }
+        } catch (e) {
+          console.error('[createProject] Failed to send client notification:', e);
+        }
+      }
+
       return project;
     },
     updateProject: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
@@ -2155,6 +2430,40 @@ export const resolvers = {
           ...(input.notifyClient !== undefined && { notifyClient: input.notifyClient }),
         };
       }
+
+      if (input.contributors !== undefined) {
+        try {
+          // Get existing members for the project
+          const existingMembers = await projectClient.get(`/project-members?projectId=${id}`);
+          const existingMemberArray = Array.isArray(existingMembers) ? existingMembers : [];
+          
+          // Users that are currently members
+          const existingUserIds = existingMemberArray.map((m: any) => m.userId);
+          
+          // Determine which to delete
+          const membersToDelete = existingMemberArray.filter((m: any) => !input.contributors.includes(m.userId));
+          
+          // Determine which to add
+          const userIdsToAdd = input.contributors.filter((userId: string) => !existingUserIds.includes(userId));
+          
+          // Delete removed members
+          for (const member of membersToDelete) {
+            await projectClient.delete('/project-members', member.id);
+          }
+          
+          // Add new members
+          for (const userId of userIdsToAdd) {
+            await projectClient.post('/project-members', {
+              projectId: id,
+              userId: userId,
+              role: 'contributor'
+            });
+          }
+        } catch (error) {
+          console.error('[updateProject] Error updating contributors:', error);
+        }
+      }
+
       return projectClient.put('/projects', id, projectData);
     },
     deleteProject: async (_: unknown, { id }: { id: string }, context: Context) => {
@@ -2175,7 +2484,21 @@ export const resolvers = {
     },
     createTask: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'tasks', 'create');
-      return projectClient.post('/tasks', input);
+      const task = await projectClient.post('/tasks', input);
+      
+      // Auto-update project status if Planning
+      if (input.projectId) {
+        try {
+          const project = await projectClient.getById('/projects', input.projectId);
+          if (project && project.status === 'Planning') {
+            await projectClient.put('/projects', input.projectId, { status: 'In Progress' });
+          }
+        } catch (e) {
+          console.error('Failed to auto-update project status:', e);
+        }
+      }
+      
+      return task;
     },
     updateTask: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'tasks', 'update');
@@ -2211,7 +2534,21 @@ export const resolvers = {
     },
     createMilestone: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'projects', 'update');
-      return projectClient.post('/milestones', input);
+      const milestone = await projectClient.post('/milestones', input);
+      
+      // Auto-update project status if Planning
+      if (input.projectId) {
+        try {
+          const project = await projectClient.getById('/projects', input.projectId);
+          if (project && project.status === 'Planning') {
+            await projectClient.put('/projects', input.projectId, { status: 'In Progress' });
+          }
+        } catch (e) {
+          console.error('Failed to auto-update project status:', e);
+        }
+      }
+      
+      return milestone;
     },
     updateMilestone: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'projects', 'update');
