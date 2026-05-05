@@ -72,8 +72,11 @@ function buildSystemPrompt(user: AuthenticatedUser, context: string): string {
 
     return `You are Vistone AI, an intelligent assistant for the ${user.organizationName || 'organization'} workspace.
 
-Current user: ${userName} (${user.role})
-Organization: ${user.organizationName || user.organizationId}
+Current User:
+- Name: ${userName}
+- ID: ${user.id}
+- Role: ${user.role}
+- Organization: ${user.organizationName || 'Current Workspace'} (ID: ${user.organizationId})
 
 ${permSummary}
 
@@ -82,6 +85,7 @@ RULES:
 - If the user asks about topics outside the workspace (politics, medical, legal, etc.), politely decline.
 - Use the retrieved context below to answer factual questions. If the context doesn't contain the answer, say so honestly.
 - When executing actions, only use tools the user has permission for.
+- Use the current User ID (${user.id}) when tools require a userId or assigneeId for the current user.
 - Always be concise and professional.
 - The user's workspace organization is already bound to this session. Never ask them for an organization ID, UUID, or exact org name to load data — tools use the correct scope automatically.
 - If a data service returns an error, explain briefly (do not ask the user to paste organization identifiers).

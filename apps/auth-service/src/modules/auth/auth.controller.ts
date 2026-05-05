@@ -779,13 +779,11 @@ export async function getCurrentUserMeHandler(req: Request, res: Response) {
 
     const teamMember = await getTeamMembershipWithRole(user.id);
 
-    // Get user's organization and role
-    const membership = await prisma.organizationMember.findFirst({
-      where: { userId: user.id },
-      include: { organization: true, role: true },
-    });
+    // Get user's organization and role, respecting requested organizationId
+    const requestedOrgId = (req.body?.organizationId || req.headers['x-organization-id']) as string;
+    const { memberships, activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
 
-    res.json(formatAuthUser(user, teamMember, membership?.organization, membership?.role));
+    res.json(formatAuthUser(user, teamMember, activeMembership?.organization, activeMembership?.role, memberships));
   } catch (error) {
     console.error('Get me error:', error);
     res.status(500).json({ error: 'Failed to get user' });

@@ -123,8 +123,9 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 estimatedHours: z.number().optional(),
             }),
             func: async (input) => {
-                // POST /tasks
-                const r = await safeCall(() => projectClient().post('/tasks', input));
+                // Inject current user as creator if not specified
+                const taskData = { ...input, creatorId: input.creatorId || user.id };
+                const r = await safeCall(() => projectClient().post('/tasks', taskData));
                 return JSON.stringify(r);
             },
         },
@@ -168,6 +169,7 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
             }),
             func: async (input) => {
                 const params = new URLSearchParams();
+                params.set('organizationId', orgId);
                 if (input.projectId) params.set('projectId', input.projectId);
                 if (input.assigneeId) params.set('assigneeId', input.assigneeId);
                 if (input.status) params.set('status', input.status);
@@ -187,7 +189,6 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 status: z.enum(['pending', 'in_progress', 'completed', 'missed']).optional().default('pending'),
             }),
             func: async (input) => {
-                // POST /milestones
                 const r = await safeCall(() => projectClient().post('/milestones', input));
                 return JSON.stringify(r);
             },
@@ -197,8 +198,10 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
             description: 'List milestones for a project.',
             schema: z.object({ projectId: z.string() }),
             func: async ({ projectId }) => {
-                // GET /milestones?projectId=...
-                const r = await safeCall(() => projectClient().get(`/milestones?projectId=${projectId}`));
+                // GET /milestones?projectId=...&organizationId=...
+                const r = await safeCall(() =>
+                    projectClient().get(`/milestones?projectId=${projectId}&organizationId=${orgId}`)
+                );
                 return JSON.stringify(r);
             },
         },
@@ -560,7 +563,7 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 if (!orgId) return noOrg();
                 if (wikiId) {
                     const r = await safeCall(() =>
-                        knowledgeClient().get(`/documents?wikiId=${encodeURIComponent(wikiId)}`)
+                        knowledgeClient().get(`/documents?wikiId=${encodeURIComponent(wikiId)}&includeAll=true`)
                     );
                     return JSON.stringify(r);
                 }
@@ -575,7 +578,7 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 const all: unknown[] = [];
                 for (const w of wikis) {
                     const dr = await safeCall(() =>
-                        knowledgeClient().get(`/documents?wikiId=${encodeURIComponent(w.id)}`)
+                        knowledgeClient().get(`/documents?wikiId=${encodeURIComponent(w.id)}&includeAll=true`)
                     );
                     if (dr.success && Array.isArray(dr.data)) {
                         all.push(...dr.data);

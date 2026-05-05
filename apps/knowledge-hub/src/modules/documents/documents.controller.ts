@@ -26,15 +26,26 @@ export async function createDocumentHandler(req: Request, res: Response) {
 
 export async function getAllDocumentsHandler(req: Request, res: Response) {
     try {
-    const { wikiId, folderId } = req.query;
+    const { wikiId, folderId, includeAll } = req.query;
+    const wikiIdValue = Array.isArray(wikiId) ? wikiId[0] : wikiId;
+    const folderIdValue = Array.isArray(folderId) ? folderId[0] : folderId;
+    const includeAllValue = Array.isArray(includeAll) ? includeAll[0] : includeAll;
+    const resolvedWikiIdInput = typeof wikiIdValue === 'string' && wikiIdValue.trim()
+      ? wikiIdValue.trim()
+      : undefined;
+    const resolvedFolderIdInput = typeof folderIdValue === 'string' && folderIdValue.trim()
+      ? folderIdValue.trim()
+      : undefined;
+    const includeAllDocs =
+      typeof includeAllValue === 'string' &&
+      ['true', '1', 'yes'].includes(includeAllValue.trim().toLowerCase());
     const caller = getCallerOrganizationId(req);
-    let resolvedWikiId: string | undefined =
-      typeof wikiId === 'string' && wikiId.trim() ? wikiId.trim() : undefined;
+    let resolvedWikiId: string | undefined = resolvedWikiIdInput;
 
     if (caller) {
-      if (folderId && !resolvedWikiId) {
+      if (resolvedFolderIdInput && !resolvedWikiId) {
         const folder = await prisma.documentFolder.findUnique({
-          where: { id: String(folderId) },
+          where: { id: String(resolvedFolderIdInput) },
           select: { wikiId: true },
         });
         if (!folder) {
@@ -51,8 +62,12 @@ export async function getAllDocumentsHandler(req: Request, res: Response) {
     }
 
     const where: Record<string, unknown> = {};
-    if (wikiId) where.wikiId = String(wikiId);
-    if (folderId) where.folderId = String(folderId);
+    if (resolvedWikiId) where.wikiId = resolvedWikiId;
+    if (resolvedFolderIdInput) {
+      where.folderId = resolvedFolderIdInput;
+    } else if (resolvedWikiId && !includeAllDocs) {
+      where.folderId = null;
+    }
     const documents = await prisma.document.findMany({ where, orderBy: { createdAt: 'desc' } });
     res.json(documents);
     } catch (error) {

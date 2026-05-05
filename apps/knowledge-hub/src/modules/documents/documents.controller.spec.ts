@@ -78,6 +78,27 @@ describe('Documents Controller – Unit Tests', () => {
       await getAllDocumentsHandler(req, res);
       expect(res.json).toHaveBeenCalledWith([sample]);
     });
+
+    it('defaults to root documents when wikiId is provided', async () => {
+      (prisma.document.findMany as jest.Mock).mockResolvedValue([sample]);
+      const req: any = { query: { wikiId: 'wiki-1' } };
+      const res = mockRes();
+      await getAllDocumentsHandler(req, res);
+      expect(prisma.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { wikiId: 'wiki-1', folderId: null },
+        })
+      );
+    });
+
+    it('allows includeAll to return all documents for a wiki', async () => {
+      (prisma.document.findMany as jest.Mock).mockResolvedValue([sample]);
+      const req: any = { query: { wikiId: 'wiki-1', includeAll: 'true' } };
+      const res = mockRes();
+      await getAllDocumentsHandler(req, res);
+      const call = (prisma.document.findMany as jest.Mock).mock.calls[0][0];
+      expect(call.where).toEqual({ wikiId: 'wiki-1' });
+    });
   });
 
   describe('getDocumentByIdHandler', () => {
