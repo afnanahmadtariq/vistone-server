@@ -41,9 +41,16 @@ describe('WikiPages Controller – Unit Tests', () => {
       await createWikiPageHandler(req, res);
       expect(res.json).toHaveBeenCalledWith(sample);
     });
+    it('returns 400 when wikiId is missing', async () => {
+      const req: any = { body: { title: 'X' } };
+      const res = mockRes();
+      await createWikiPageHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
     it('returns 500 on error', async () => {
       (prisma.wikiPage.create as jest.Mock).mockRejectedValue(new Error('DB'));
-      const req: any = { body: {} };
+      const req: any = { body: { wikiId: 'wiki-1', title: 'Getting Started' } };
       const res = mockRes();
       await createWikiPageHandler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
@@ -51,11 +58,27 @@ describe('WikiPages Controller – Unit Tests', () => {
   });
 
   describe('getAllWikiPagesHandler', () => {
-    it('returns all wiki pages', async () => {
+    it('returns wiki pages when no wikiId filter', async () => {
       (prisma.wikiPage.findMany as jest.Mock).mockResolvedValue([sample]);
       const req: any = { query: {} };
       const res = mockRes();
       await getAllWikiPagesHandler(req, res);
+      expect(prisma.wikiPage.findMany).toHaveBeenCalledWith({
+        where: {},
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(res.json).toHaveBeenCalledWith([sample]);
+    });
+
+    it('filters by wikiId when query param is set', async () => {
+      (prisma.wikiPage.findMany as jest.Mock).mockResolvedValue([sample]);
+      const req: any = { query: { wikiId: 'wiki-1' } };
+      const res = mockRes();
+      await getAllWikiPagesHandler(req, res);
+      expect(prisma.wikiPage.findMany).toHaveBeenCalledWith({
+        where: { wikiId: 'wiki-1' },
+        orderBy: { createdAt: 'asc' },
+      });
       expect(res.json).toHaveBeenCalledWith([sample]);
     });
   });

@@ -1,8 +1,16 @@
 import { Request, Response } from 'express';
 import prisma from '../../lib/prisma';
+import { ensureQueryOrgMatchesCaller, ensureWikiInCallerOrg } from '../../lib/org-scope';
 
 export async function createWiki(req: Request, res: Response): Promise<void> {
     try {
+        const orgId = req.body?.organizationId;
+        if (typeof orgId !== 'string' || !orgId.trim()) {
+            res.status(400).json({ error: 'organizationId is required' });
+            return;
+        }
+        if (!ensureQueryOrgMatchesCaller(req, orgId.trim(), res)) return;
+
         const wiki = await prisma.wiki.create({
             data: req.body,
             include: { pages: true, folders: true, documents: true }
@@ -20,8 +28,11 @@ export async function getWikis(req: Request, res: Response): Promise<void> {
             res.status(400).json({ error: 'organizationId query is required' });
             return;
         }
+        const oid = String(organizationId);
+        if (!ensureQueryOrgMatchesCaller(req, oid, res)) return;
+
         const wikis = await prisma.wiki.findMany({
-            where: { organizationId: String(organizationId) },
+            where: { organizationId: oid },
             include: {
                 pages: true,
                 folders: true,
@@ -37,8 +48,11 @@ export async function getWikis(req: Request, res: Response): Promise<void> {
 
 export async function getWikiById(req: Request, res: Response): Promise<void> {
     try {
+        const id = req.params.id;
+        if (!(await ensureWikiInCallerOrg(id, req, res))) return;
+
         const wiki = await prisma.wiki.findUnique({
-            where: { id: req.params.id },
+            where: { id },
             include: {
                 pages: true,
                 folders: true,
@@ -58,8 +72,14 @@ export async function getWikiById(req: Request, res: Response): Promise<void> {
 
 export async function updateWiki(req: Request, res: Response): Promise<void> {
     try {
+        const id = req.params.id;
+        if (!(await ensureWikiInCallerOrg(id, req, res))) return;
+
+        const nextOrg = req.body?.organizationId;
+        if (typeof nextOrg === 'string' && nextOrg.trim() && !ensureQueryOrgMatchesCaller(req, nextOrg.trim(), res)) return;
+
         const wiki = await prisma.wiki.update({
-            where: { id: req.params.id },
+            where: { id },
             data: req.body,
         });
         res.json(wiki);
@@ -70,8 +90,11 @@ export async function updateWiki(req: Request, res: Response): Promise<void> {
 
 export async function deleteWiki(req: Request, res: Response): Promise<void> {
     try {
+        const id = req.params.id;
+        if (!(await ensureWikiInCallerOrg(id, req, res))) return;
+
         await prisma.wiki.delete({
-            where: { id: req.params.id },
+            where: { id },
         });
         res.json({ success: true, message: 'Wiki deleted successfully' });
     } catch (error) {

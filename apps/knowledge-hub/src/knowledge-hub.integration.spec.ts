@@ -20,8 +20,8 @@ import prisma from './lib/prisma';
 
 const wiki = { id: 'wiki-1', organizationId: 'org-1', name: 'Company Wiki', createdAt: new Date().toISOString() };
 const wikiPage = { id: 'wp-1', wikiId: 'wiki-1', title: 'Getting Started', content: '...', authorId: 'user-1', createdAt: new Date().toISOString() };
-const document = { id: 'doc-1', folderId: 'folder-1', name: 'Architecture', content: '...', createdAt: new Date().toISOString() };
-const folder = { id: 'folder-1', name: 'Design', organizationId: 'org-1', createdAt: new Date().toISOString() };
+const document = { id: 'doc-1', wikiId: 'wiki-1', folderId: 'folder-1', name: 'Architecture', content: '...', createdAt: new Date().toISOString() };
+const folder = { id: 'folder-1', wikiId: 'wiki-1', name: 'Design', createdAt: new Date().toISOString() };
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -79,6 +79,17 @@ describe('GET /wiki-pages', () => {
     const res = await request(app).get('/wiki-pages');
     expect(res.status).toBe(200);
   });
+
+  it('passes wikiId to prisma when filtering', async () => {
+    (prisma.wikiPage.findMany as jest.Mock).mockResolvedValue([wikiPage]);
+    const res = await request(app).get('/wiki-pages').query({ wikiId: 'wiki-1' });
+    expect(res.status).toBe(200);
+    expect(prisma.wikiPage.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { wikiId: 'wiki-1' },
+      })
+    );
+  });
 });
 
 describe('POST /wiki-pages', () => {
@@ -107,7 +118,7 @@ describe('GET /wiki-pages/:id', () => {
 describe('GET /wiki-page-versions', () => {
   it('returns 200', async () => {
     (prisma.wikiPageVersion.findMany as jest.Mock).mockResolvedValue([]);
-    const res = await request(app).get('/wiki-page-versions');
+    const res = await request(app).get('/wiki-page-versions').query({ wikiPageId: 'wp-1' });
     expect(res.status).toBe(200);
   });
 });
@@ -134,6 +145,7 @@ describe('GET /documents/:id', () => {
     (prisma.document.findUnique as jest.Mock).mockResolvedValue(document);
     const res = await request(app).get('/documents/doc-1');
     expect(res.status).toBe(200);
+    expect(prisma.document.findUnique).toHaveBeenCalled();
   });
 });
 
@@ -157,8 +169,9 @@ describe('POST /document-folders', () => {
 // ── Document Permissions ──────────────────────────────────────
 describe('GET /document-permissions', () => {
   it('returns 200', async () => {
+    (prisma.document.findUnique as jest.Mock).mockResolvedValue(document);
     (prisma.documentPermission.findMany as jest.Mock).mockResolvedValue([]);
-    const res = await request(app).get('/document-permissions');
+    const res = await request(app).get('/document-permissions').query({ documentId: 'doc-1' });
     expect(res.status).toBe(200);
   });
 });

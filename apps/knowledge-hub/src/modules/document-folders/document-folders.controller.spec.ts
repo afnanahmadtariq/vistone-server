@@ -9,6 +9,9 @@ import {
 jest.mock('../../lib/prisma', () => ({
   __esModule: true,
   default: {
+    document: {
+      deleteMany: jest.fn(),
+    },
     documentFolder: {
       create: jest.fn(),
       findMany: jest.fn(),
@@ -28,7 +31,7 @@ const mockRes = () => {
   return res;
 };
 
-const sample = { id: 'df-1', name: 'Design Assets', organizationId: 'org-1', parentId: null, createdAt: new Date() };
+const sample = { id: 'df-1', wikiId: 'wiki-1', name: 'Design Assets', parentId: null, createdAt: new Date() };
 
 describe('DocumentFolders Controller – Unit Tests', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -36,7 +39,7 @@ describe('DocumentFolders Controller – Unit Tests', () => {
   describe('createDocumentFolderHandler', () => {
     it('creates and returns a folder', async () => {
       (prisma.documentFolder.create as jest.Mock).mockResolvedValue(sample);
-      const req: any = { body: { name: 'Design Assets', organizationId: 'org-1' } };
+      const req: any = { body: { name: 'Design Assets', wikiId: 'wiki-1' } };
       const res = mockRes();
       await createDocumentFolderHandler(req, res);
       expect(res.json).toHaveBeenCalledWith(sample);
@@ -73,6 +76,7 @@ describe('DocumentFolders Controller – Unit Tests', () => {
   describe('updateDocumentFolderHandler', () => {
     it('updates and returns folder', async () => {
       const updated = { ...sample, name: 'Updated Folder' };
+      (prisma.documentFolder.findUnique as jest.Mock).mockResolvedValue(sample);
       (prisma.documentFolder.update as jest.Mock).mockResolvedValue(updated);
       const req: any = { params: { id: 'df-1' }, body: { name: 'Updated Folder' } };
       const res = mockRes();
@@ -83,6 +87,8 @@ describe('DocumentFolders Controller – Unit Tests', () => {
 
   describe('deleteDocumentFolderHandler', () => {
     it('deletes folder and returns success', async () => {
+      (prisma.documentFolder.findUnique as jest.Mock).mockResolvedValue(sample);
+      (prisma.document.deleteMany as jest.Mock).mockResolvedValue({ count: 0 });
       (prisma.documentFolder.delete as jest.Mock).mockResolvedValue(sample);
       const req: any = { params: { id: 'df-1' } };
       const res = mockRes();

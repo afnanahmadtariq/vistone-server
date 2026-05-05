@@ -41,9 +41,16 @@ describe('Wikis Controller – Unit Tests', () => {
       await createWikiHandler(req, res);
       expect(res.json).toHaveBeenCalledWith(sample);
     });
+    it('returns 400 when organizationId is missing', async () => {
+      const req: any = { body: {} };
+      const res = mockRes();
+      await createWikiHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
     it('returns 500 on error', async () => {
       (prisma.wiki.create as jest.Mock).mockRejectedValue(new Error('DB'));
-      const req: any = { body: {} };
+      const req: any = { body: { organizationId: 'org-1', name: 'Company Wiki' } };
       const res = mockRes();
       await createWikiHandler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);

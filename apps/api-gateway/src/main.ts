@@ -40,7 +40,7 @@ async function startServer() {
     origin: getCorsOrigins(),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Apollo-Require-Preflight'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Apollo-Require-Preflight', 'x-organization-id', 'X-Organization-Id'],
   };
 
   // Enable CORS for all routes
@@ -49,14 +49,20 @@ async function startServer() {
   // Handle preflight requests explicitly
   app.options('*', cors(corsOptions));
 
-  // Forward caller JWT to downstream microservices (AsyncLocalStorage + axios interceptor in backendClient)
+  // Forward caller JWT + org header to downstream microservices (AsyncLocalStorage + axios interceptor in backendClient)
   app.use((req, _res, next) => {
     const raw = req.headers.authorization;
     const bearerToken =
       typeof raw === 'string' && /^Bearer\s+/i.test(raw.trim())
         ? raw.replace(/^Bearer\s+/i, '').trim()
         : undefined;
-    gatewayAuthStore.run({ bearerToken }, () => next());
+    const orgRaw = req.headers['x-organization-id'];
+    const organizationId =
+      typeof orgRaw === 'string' ? orgRaw.trim() : Array.isArray(orgRaw) ? String(orgRaw[0] ?? '').trim() : undefined;
+    gatewayAuthStore.run(
+      { bearerToken, organizationId: organizationId || undefined },
+      () => next()
+    );
   });
 
   // Compress JSON / GraphQL responses (major win vs raw microservice aggregation payloads)

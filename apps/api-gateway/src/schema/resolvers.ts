@@ -216,7 +216,19 @@ export const resolvers = {
           extensions: { code: 'UNAUTHENTICATED', statusCode: 401 },
         });
       }
-      return authClient.postWithAuth('/auth/me', {}, context.token);
+      const rawOrg = context.headers['x-organization-id'];
+      const organizationId =
+        typeof rawOrg === 'string'
+          ? rawOrg.trim()
+          : Array.isArray(rawOrg)
+            ? String(rawOrg[0] ?? '').trim()
+            : undefined;
+      return authClient.postWithAuth(
+        '/auth/me',
+        { organizationId: organizationId || undefined },
+        context.token,
+        organizationId
+      );
     },
     getInviteDetails: async (_: unknown, { token }: { token: string }) => {
       return authClient.get(`/auth/invite-details/${token}`);
@@ -353,7 +365,13 @@ export const resolvers = {
     // Teams (Workforce Service) â€” org-scoped
     teams: async (_: unknown, { organizationId }: { organizationId?: string }, context: Context) => {
       const user = await requirePermission(context, 'teams', 'read');
-      const orgId = organizationId || getOrgId(user);
+      let orgId: string;
+      if (organizationId) {
+        await requireOrganization(context, organizationId);
+        orgId = organizationId;
+      } else {
+        orgId = getOrgId(user);
+      }
       return workforceClient.get(`/teams?organizationId=${orgId}`);
     },
     team: async (_: unknown, { id }: { id: string }, context: Context) => {
@@ -388,7 +406,13 @@ export const resolvers = {
     // Projects (Project Service) â€” org-scoped
     projects: async (_: unknown, { status, search, organizationId }: { status?: string; search?: string; organizationId?: string }, context: Context) => {
       const user = await requirePermission(context, 'projects', 'read');
-      const orgId = organizationId || getOrgId(user);
+      let orgId: string;
+      if (organizationId) {
+        await requireOrganization(context, organizationId);
+        orgId = organizationId;
+      } else {
+        orgId = getOrgId(user);
+      }
       const params = new URLSearchParams();
       if (status) params.append('status', status);
       if (search) params.append('search', search);
@@ -459,7 +483,13 @@ export const resolvers = {
     // Clients (Client Management Service) â€” org-scoped, require clients:read
     clients: async (_: unknown, { search, status, industry, organizationId }: { search?: string; status?: string; industry?: string; organizationId?: string }, context: Context) => {
       const user = await requirePermission(context, 'clients', 'read');
-      const orgId = organizationId || getOrgId(user);
+      let orgId: string;
+      if (organizationId) {
+        await requireOrganization(context, organizationId);
+        orgId = organizationId;
+      } else {
+        orgId = getOrgId(user);
+      }
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (status) params.append('status', status);
@@ -499,6 +529,7 @@ export const resolvers = {
     // Documentation (Knowledge Hub Service) â€” require wiki:read
     wikis: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
+      await requireOrganization(context, organizationId);
       return knowledgeClient.get(`/wikis?organizationId=${organizationId}`);
     },
     wiki: async (_: unknown, { id }: { id: string }, context: Context) => {
@@ -550,6 +581,7 @@ export const resolvers = {
     // Communication (Communication Service) â€" require channels:read
     chatChannels: async (_: unknown, { organizationId, userId, type, projectId }: { organizationId: string; userId?: string; type?: string; projectId?: string }, context: Context) => {
       await requirePermission(context, 'channels', 'read');
+      await requireOrganization(context, organizationId);
       const params = new URLSearchParams({ organizationId });
       if (userId) params.append('userId', userId);
       if (type) params.append('type', type);
@@ -660,7 +692,13 @@ export const resolvers = {
     // Report Schedules (Monitoring Service) â€” org-scoped, require reports:read
     reportSchedules: async (_: unknown, { organizationId }: { organizationId?: string }, context: Context) => {
       const user = await requirePermission(context, 'reports', 'read');
-      const orgId = organizationId || getOrgId(user);
+      let orgId: string;
+      if (organizationId) {
+        await requireOrganization(context, organizationId);
+        orgId = organizationId;
+      } else {
+        orgId = getOrgId(user);
+      }
       return monitoringClient.get(`/report-schedules?organizationId=${orgId}`);
     },
     reportSchedule: async (_: unknown, { id }: { id: string }, context: Context) => {
@@ -697,7 +735,7 @@ export const resolvers = {
     // AI Engine
     aiChatStats: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
       await requireOrganization(context, organizationId);
-      return aiEngineClient.getWithAuth(`/api/sync/stats/${organizationId}`, context.token || '');
+      return aiEngineClient.getWithAuth(`/api/sync/stats/${organizationId}`, context.token || '', organizationId);
     },
 
     // Analytics & Dashboard
@@ -3095,32 +3133,49 @@ export const resolvers = {
       }
     },
 
-    // AI Engine
+    // AI Engine — forward organizationId so ai-engine auth/me + outbound tools match the user's workspace
     aiChat: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await validateAiRequest(context, input.organizationId, input.userId);
-      const result = await aiEngineClient.postWithAuth('/api/chat', input, context.token || '');
+      const body = {
+        query: input.query,
+        sessionId: input.sessionId,
+        confirmAction: input.confirmAction,
+      };
+      const result = await aiEngineClient.postWithAuth(
+        '/api/chat',
+        body,
+        context.token || '',
+        input.organizationId as string
+      );
       return { success: true, data: result };
     },
     aiClearHistory: async (_: unknown, { sessionId }: { sessionId: string }, context: Context) => {
-      await requireAuth(context);
-      await aiEngineClient.deleteWithAuth('/api/chat/history', sessionId, context.token || '');
+      const user = await requireAuth(context);
+      const orgId = getOrgId(user);
+      await aiEngineClient.deleteWithAuth('/api/chat/history', sessionId, context.token || '', orgId);
       return { message: 'Conversation history cleared' };
     },
     aiSyncAll: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
       await requireOrganization(context, organizationId);
-      return aiEngineClient.postWithAuth('/api/sync/all', { organizationId }, context.token || '');
+      return aiEngineClient.postWithAuth('/api/sync/all', { organizationId }, context.token || '', organizationId);
     },
     aiSyncType: async (_: unknown, { organizationId, type }: { organizationId: string; type: string }, context: Context) => {
       await requireOrganization(context, organizationId);
-      return aiEngineClient.postWithAuth(`/api/sync/${type}`, { organizationId }, context.token || '');
+      return aiEngineClient.postWithAuth(`/api/sync/${type}`, { organizationId }, context.token || '', organizationId);
     },
     aiIndexDocument: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requireOrganization(context, input.organizationId);
-      return aiEngineClient.postWithAuth('/api/sync/document', input, context.token || '');
+      return aiEngineClient.postWithAuth('/api/sync/document', input, context.token || '', input.organizationId as string);
     },
     aiRemoveDocument: async (_: unknown, { sourceSchema, sourceTable, sourceId }: { sourceSchema: string; sourceTable: string; sourceId: string }, context: Context) => {
-      await requireAuth(context);
-      return aiEngineClient.postWithAuth('/api/sync/document/remove', { sourceSchema, sourceTable, sourceId }, context.token || '');
+      const user = await requireAuth(context);
+      const orgId = getOrgId(user);
+      return aiEngineClient.postWithAuth(
+        '/api/sync/document/remove',
+        { sourceSchema, sourceTable, sourceId },
+        context.token || '',
+        orgId
+      );
     },
   },
 };

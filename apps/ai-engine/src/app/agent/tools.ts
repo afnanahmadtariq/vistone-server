@@ -12,6 +12,7 @@
  *   Knowledge Hub (3005): /documents, /wiki-pages, /document-folders
  */
 import { z } from 'zod';
+import type { AuthenticatedUser } from '../types';
 import {
     projectClient, clientClient, workforceClient,
     communicationClient, notificationClient, knowledgeClient,
@@ -29,23 +30,23 @@ export interface ToolDef {
     func: (input: any) => Promise<string>;
 }
 
-// ── Lazy tool creation ──────────────────────────────────────────
+/**
+ * Build tools scoped to the authenticated user. Organization IDs are injected server-side — the model must not supply them.
+ */
+export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
+    const orgId = user.organizationId.trim();
+    const noOrg = (): string =>
+        JSON.stringify({ success: false, error: 'No organization in session. Select a workspace in the app.' });
 
-let _allTools: ToolDef[] | null = null;
-
-export function getAllToolDefs(): ToolDef[] {
-    if (_allTools) return _allTools;
-
-    _allTools = [
+    return [
         // ═══════════════════════════════════════════════════════════
         // Project Management Service (port 3003)
         // Routes: /projects, /tasks, /milestones, /risk-register
         // ═══════════════════════════════════════════════════════════
         {
             name: 'create_project',
-            description: 'Create a new project in the organization.',
+            description: 'Create a new project in the user\'s current organization.',
             schema: z.object({
-                organizationId: z.string().describe('Organization ID'),
                 name: z.string().describe('Project name'),
                 description: z.string().optional().describe('Project description'),
                 status: z.enum(['planned', 'in_progress', 'on_hold', 'completed', 'cancelled']).optional().default('planned'),
@@ -56,7 +57,10 @@ export function getAllToolDefs(): ToolDef[] {
                 clientId: z.string().optional(),
             }),
             func: async (input) => {
-                const r = await safeCall(() => projectClient().post('/projects', input));
+                if (!orgId) return noOrg();
+                const r = await safeCall(() =>
+                    projectClient().post('/projects', { ...input, organizationId: orgId })
+                );
                 return JSON.stringify(r);
             },
         },
@@ -90,15 +94,15 @@ export function getAllToolDefs(): ToolDef[] {
         },
         {
             name: 'list_projects',
-            description: 'List projects in an organization.',
+            description: 'List projects in the user\'s current organization.',
             schema: z.object({
-                organizationId: z.string(),
                 status: z.enum(['planned', 'in_progress', 'on_hold', 'completed', 'cancelled']).optional(),
                 search: z.string().optional(),
             }),
             func: async (input) => {
+                if (!orgId) return noOrg();
                 const params = new URLSearchParams();
-                params.set('organizationId', input.organizationId);
+                params.set('organizationId', orgId);
                 if (input.status) params.set('status', input.status);
                 if (input.search) params.set('search', input.search);
                 const r = await safeCall(() => projectClient().get(`/projects?${params}`));
@@ -205,9 +209,8 @@ export function getAllToolDefs(): ToolDef[] {
         // ═══════════════════════════════════════════════════════════
         {
             name: 'create_client',
-            description: 'Create a new client in the organization.',
+            description: 'Create a new client in the user\'s current organization.',
             schema: z.object({
-                organizationId: z.string(),
                 name: z.string(),
                 email: z.string().optional(),
                 phone: z.string().optional(),
@@ -220,8 +223,8 @@ export function getAllToolDefs(): ToolDef[] {
                 contactInfo: z.any().optional().describe('Additional contact info (JSON)'),
             }),
             func: async (input) => {
-                // POST /clients
-                const r = await safeCall(() => clientClient().post('/clients', input));
+                if (!orgId) return noOrg();
+                const r = await safeCall(() => clientClient().post('/clients', { ...input, organizationId: orgId }));
                 return JSON.stringify(r);
             },
         },
@@ -259,18 +262,17 @@ export function getAllToolDefs(): ToolDef[] {
         },
         {
             name: 'list_clients',
-            description: 'List clients in an organization.',
+            description: 'List clients in the user\'s current organization.',
             schema: z.object({
-                organizationId: z.string(),
                 status: z.enum(['active', 'inactive', 'prospect', 'churned']).optional(),
                 search: z.string().optional(),
             }),
             func: async (input) => {
+                if (!orgId) return noOrg();
                 const params = new URLSearchParams();
-                params.set('organizationId', input.organizationId);
+                params.set('organizationId', orgId);
                 if (input.status) params.set('status', input.status);
                 if (input.search) params.set('search', input.search);
-                // GET /clients?...
                 const r = await safeCall(() => clientClient().get(`/clients?${params}`));
                 return JSON.stringify(r);
             },
@@ -292,18 +294,17 @@ export function getAllToolDefs(): ToolDef[] {
         },
         {
             name: 'list_proposals',
-            description: 'List proposals, optionally filtered by client or status.',
+            description: 'List proposals in the user\'s organization, optionally filtered by client or status.',
             schema: z.object({
-                organizationId: z.string(),
                 clientId: z.string().optional(),
                 status: z.enum(['draft', 'sent', 'accepted', 'rejected', 'expired']).optional(),
             }),
             func: async (input) => {
+                if (!orgId) return noOrg();
                 const params = new URLSearchParams();
-                params.set('organizationId', input.organizationId);
+                params.set('organizationId', orgId);
                 if (input.clientId) params.set('clientId', input.clientId);
                 if (input.status) params.set('status', input.status);
-                // GET /proposals?...
                 const r = await safeCall(() => clientClient().get(`/proposals?${params}`));
                 return JSON.stringify(r);
             },
@@ -315,16 +316,15 @@ export function getAllToolDefs(): ToolDef[] {
         // ═══════════════════════════════════════════════════════════
         {
             name: 'create_team',
-            description: 'Create a new team.',
+            description: 'Create a new team in the user\'s current organization.',
             schema: z.object({
-                organizationId: z.string(),
                 name: z.string(),
                 description: z.string().optional(),
                 managerId: z.string().optional().describe('User ID of the team manager'),
             }),
             func: async (input) => {
-                // POST /teams
-                const r = await safeCall(() => workforceClient().post('/teams', input));
+                if (!orgId) return noOrg();
+                const r = await safeCall(() => workforceClient().post('/teams', { ...input, organizationId: orgId }));
                 return JSON.stringify(r);
             },
         },
@@ -340,16 +340,15 @@ export function getAllToolDefs(): ToolDef[] {
         },
         {
             name: 'list_teams',
-            description: 'List teams in an organization.',
+            description: 'List teams in the user\'s current organization.',
             schema: z.object({
-                organizationId: z.string(),
                 search: z.string().optional(),
             }),
             func: async (input) => {
+                if (!orgId) return noOrg();
                 const params = new URLSearchParams();
-                params.set('organizationId', input.organizationId);
+                params.set('organizationId', orgId);
                 if (input.search) params.set('search', input.search);
-                // GET /teams?...
                 const r = await safeCall(() => workforceClient().get(`/teams?${params}`));
                 return JSON.stringify(r);
             },
@@ -439,9 +438,8 @@ export function getAllToolDefs(): ToolDef[] {
         },
         {
             name: 'create_channel',
-            description: 'Create a communication channel.',
+            description: 'Create a communication channel in the user\'s current organization.',
             schema: z.object({
-                organizationId: z.string(),
                 name: z.string(),
                 description: z.string().optional(),
                 type: z.enum(['project', 'group', 'dm']).optional().default('group').describe('Channel type'),
@@ -450,23 +448,24 @@ export function getAllToolDefs(): ToolDef[] {
                 memberIds: z.array(z.string()).optional().default([]).describe('User IDs to add as members'),
             }),
             func: async (input) => {
-                // POST /chat-channels
-                const r = await safeCall(() => communicationClient().post('/chat-channels', input));
+                if (!orgId) return noOrg();
+                const r = await safeCall(() =>
+                    communicationClient().post('/chat-channels', { ...input, organizationId: orgId })
+                );
                 return JSON.stringify(r);
             },
         },
         {
             name: 'list_channels',
-            description: 'List communication channels.',
+            description: 'List communication channels for the user\'s current organization.',
             schema: z.object({
-                organizationId: z.string(),
                 userId: z.string().optional(),
             }),
             func: async (input) => {
+                if (!orgId) return noOrg();
                 const params = new URLSearchParams();
-                params.set('organizationId', input.organizationId);
+                params.set('organizationId', orgId);
                 if (input.userId) params.set('userId', input.userId);
-                // GET /chat-channels?...
                 const r = await safeCall(() => communicationClient().get(`/chat-channels?${params}`));
                 return JSON.stringify(r);
             },
@@ -543,27 +542,46 @@ export function getAllToolDefs(): ToolDef[] {
                 metadata: z.any().optional().describe('Additional metadata (JSON)'),
             }),
             func: async (input) => {
-                // POST /documents
-                const r = await safeCall(() => knowledgeClient().post('/documents', input));
+                if (!orgId) return noOrg();
+                const r = await safeCall(() =>
+                    knowledgeClient().post('/documents', { ...input, organizationId: orgId })
+                );
                 return JSON.stringify(r);
             },
         },
         {
             name: 'search_documents',
-            description: 'Search for documents in the knowledge hub.',
+            description:
+                'List documents in the knowledge hub for this organization. If wikiId is omitted, lists documents across all wikis in the org.',
             schema: z.object({
-                organizationId: z.string(),
-                query: z.string(),
-                category: z.string().optional(),
+                wikiId: z.string().optional().describe('Limit to one wiki; omit to include every wiki in the org.'),
             }),
-            func: async (input) => {
-                const params = new URLSearchParams();
-                params.set('organizationId', input.organizationId);
-                if (input.query) params.set('query', input.query);
-                if (input.category) params.set('category', input.category);
-                // GET /documents?... (uses standard list with query filter)
-                const r = await safeCall(() => knowledgeClient().get(`/documents?${params}`));
-                return JSON.stringify(r);
+            func: async ({ wikiId }) => {
+                if (!orgId) return noOrg();
+                if (wikiId) {
+                    const r = await safeCall(() =>
+                        knowledgeClient().get(`/documents?wikiId=${encodeURIComponent(wikiId)}`)
+                    );
+                    return JSON.stringify(r);
+                }
+                const wikisR = await safeCall(() =>
+                    knowledgeClient().get(`/wikis?organizationId=${encodeURIComponent(orgId)}`)
+                );
+                if (!wikisR.success) return JSON.stringify(wikisR);
+                const wikis = wikisR.data as { id: string }[];
+                if (!Array.isArray(wikis) || wikis.length === 0) {
+                    return JSON.stringify({ success: true, data: [] });
+                }
+                const all: unknown[] = [];
+                for (const w of wikis) {
+                    const dr = await safeCall(() =>
+                        knowledgeClient().get(`/documents?wikiId=${encodeURIComponent(w.id)}`)
+                    );
+                    if (dr.success && Array.isArray(dr.data)) {
+                        all.push(...dr.data);
+                    }
+                }
+                return JSON.stringify({ success: true, data: all });
             },
         },
         {
@@ -582,6 +600,4 @@ export function getAllToolDefs(): ToolDef[] {
             },
         },
     ];
-
-    return _allTools;
 }

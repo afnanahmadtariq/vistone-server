@@ -36,6 +36,7 @@ const mockRes = () => {
 
 const sample = {
   id: 'doc-1',
+  wikiId: 'wiki-1',
   folderId: 'folder-1',
   name: 'Architecture Overview',
   content: 'This doc describes...',
@@ -49,14 +50,20 @@ describe('Documents Controller – Unit Tests', () => {
   describe('createDocumentHandler', () => {
     it('creates and returns a document', async () => {
       (prisma.document.create as jest.Mock).mockResolvedValue(sample);
-      const req: any = { body: { folderId: 'folder-1', name: 'Architecture Overview' } };
+      const req: any = { body: { wikiId: 'wiki-1', folderId: 'folder-1', name: 'Architecture Overview' } };
       const res = mockRes();
       await createDocumentHandler(req, res);
       expect(res.json).toHaveBeenCalledWith(sample);
     });
+    it('returns 400 when wikiId is missing', async () => {
+      const req: any = { body: { folderId: 'folder-1', name: 'Architecture Overview' } };
+      const res = mockRes();
+      await createDocumentHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
     it('returns 500 on error', async () => {
       (prisma.document.create as jest.Mock).mockRejectedValue(new Error('DB'));
-      const req: any = { body: {} };
+      const req: any = { body: { wikiId: 'wiki-1', folderId: 'folder-1', name: 'Architecture Overview' } };
       const res = mockRes();
       await createDocumentHandler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
@@ -93,6 +100,7 @@ describe('Documents Controller – Unit Tests', () => {
   describe('updateDocumentHandler', () => {
     it('updates and returns document', async () => {
       const updated = { ...sample, name: 'Updated Doc' };
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(sample);
       (prisma.document.update as jest.Mock).mockResolvedValue(updated);
       const req: any = { params: { id: 'doc-1' }, body: { name: 'Updated Doc' } };
       const res = mockRes();
@@ -103,6 +111,8 @@ describe('Documents Controller – Unit Tests', () => {
 
   describe('deleteDocumentHandler', () => {
     it('deletes document and returns success', async () => {
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(sample);
+      (prisma.documentPermission.deleteMany as jest.Mock).mockResolvedValue({ count: 0 });
       (prisma.document.delete as jest.Mock).mockResolvedValue(sample);
       const req: any = { params: { id: 'doc-1' } };
       const res = mockRes();

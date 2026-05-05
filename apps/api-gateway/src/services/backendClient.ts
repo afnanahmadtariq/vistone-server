@@ -29,9 +29,14 @@ class ServiceClient {
     });
 
     this.client.interceptors.request.use((config) => {
-      const token = gatewayAuthStore.getStore()?.bearerToken;
+      const store = gatewayAuthStore.getStore();
+      const token = store?.bearerToken;
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+      }
+      const orgId = store?.organizationId;
+      if (orgId) {
+        config.headers['X-Organization-Id'] = orgId;
       }
       return config;
     });
@@ -120,13 +125,15 @@ class ServiceClient {
     }
   }
 
-  async getWithAuth(endpoint: string, token: string): Promise<ServiceRecord | ServiceRecord[]> {
+  async getWithAuth(endpoint: string, token: string, organizationId?: string): Promise<ServiceRecord | ServiceRecord[]> {
     try {
-      const response = await this.client.get(endpoint, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (organizationId) {
+        headers['X-Organization-Id'] = organizationId;
+      }
+      const response = await this.client.get(endpoint, { headers });
       return response.data;
     } catch (error) {
       this.handleError(error, 'GET');
@@ -151,12 +158,16 @@ class ServiceClient {
     }
   }
 
-  async postWithAuth(endpoint: string, data: ServiceRecord, token: string): Promise<ServiceRecord> {
+  async postWithAuth(endpoint: string, data: ServiceRecord, token: string, organizationId?: string): Promise<ServiceRecord> {
     try {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (organizationId) {
+        headers['X-Organization-Id'] = organizationId;
+      }
       const response = await this.client.post(endpoint, data, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
       });
       return response.data;
     } catch (error) {
@@ -182,12 +193,16 @@ class ServiceClient {
     }
   }
 
-  async deleteWithAuth(endpoint: string, id: string, token: string): Promise<ServiceRecord> {
+  async deleteWithAuth(endpoint: string, id: string, token: string, organizationId?: string): Promise<ServiceRecord> {
     try {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (organizationId) {
+        headers['X-Organization-Id'] = organizationId;
+      }
       const response = await this.client.delete(`${endpoint}/${id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
       });
       return response.data;
     } catch (error) {

@@ -1,7 +1,7 @@
 /**
  * AI Engine — Auth Plugin
  * Validates JWT via auth-service and loads user's actual DB permissions.
- * Follows the same pattern as the API Gateway's auth.ts.
+ * Forwards `X-Organization-Id` into POST /auth/me (same contract as API Gateway + microservices).
  */
 import fp from 'fastify-plugin';
 import { FastifyInstance, FastifyRequest } from 'fastify';
@@ -13,6 +13,13 @@ declare module 'fastify' {
   interface FastifyRequest {
     user?: AuthenticatedUser;
   }
+}
+
+function readOrganizationHeader(request: FastifyRequest): string | undefined {
+  const raw = request.headers['x-organization-id'];
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  if (Array.isArray(raw) && raw[0]) return String(raw[0]).trim();
+  return undefined;
 }
 
 // Simple cache to avoid hitting auth-service on every request
@@ -33,18 +40,20 @@ async function authPlugin(fastify: FastifyInstance) {
     const token = authHeader.slice(7);
     if (!token) return;
 
-    // Check cache
-    const cached = authCache.get(token);
+    const requestedOrgId = readOrganizationHeader(request) ?? '';
+    const cacheKey = `${token}|${requestedOrgId}`;
+
+    // Check cache first
+    const cached = authCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       request.user = cached.user;
       return;
     }
 
     try {
-      // Validate JWT by calling auth-service (same as API Gateway does)
       const { data } = await axios.post(
         `${config.services.auth}/auth/me`,
-        {},
+        { organizationId: requestedOrgId || undefined },
         {
           headers: { Authorization: `Bearer ${token}` },
           timeout: 5000,
@@ -56,6 +65,8 @@ async function authPlugin(fastify: FastifyInstance) {
         return; // Don't attach user — downstream will see no user and reject
       }
 
+      const orgId = data.organizationId != null ? String(data.organizationId) : '';
+
       const user: AuthenticatedUser = {
         id: data.id,
         name: data.name,
@@ -64,13 +75,13 @@ async function authPlugin(fastify: FastifyInstance) {
         email: data.email,
         role: data.role,
         status: data.status,
-        organizationId: data.organizationId,
+        organizationId: orgId,
         organizationName: data.organization?.name,
         permissions: data.permissions || null,
       };
 
       // Cache the result
-      authCache.set(token, { user, expiresAt: Date.now() + CACHE_TTL });
+      authCache.set(cacheKey, { user, expiresAt: Date.now() + CACHE_TTL });
       request.user = user;
     } catch {
       // Token invalid or auth-service unavailable — proceed without user

@@ -16,6 +16,7 @@ export interface AuthenticatedUser {
     email: string;
     role: string;
     status: string;
+    /** Empty when user has no membership or org context was not resolved — chat routes reject before agent runs. */
     organizationId: string;
     organizationName?: string;
     permissions: UserPermissions | null;

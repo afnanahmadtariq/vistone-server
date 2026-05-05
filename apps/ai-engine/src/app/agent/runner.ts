@@ -12,7 +12,7 @@
 import { config } from '../config';
 import type { AuthenticatedUser, ActionResult } from '../types';
 import { filterToolsByPermission } from '../services/rbac.service';
-import { getAllToolDefs, type ToolDef } from './tools';
+import { buildToolDefs, type ToolDef } from './tools';
 import { TOOL_PERMISSIONS } from '../types';
 
 // ── Lazy LangChain imports ─────────────────────────────────────
@@ -95,7 +95,7 @@ export async function runAgent(
     await loadLangChain();
 
     // Get tools filtered by user's RBAC permissions
-    const allDefs = getAllToolDefs();
+    const allDefs = buildToolDefs(user);
     let allowedDefs = filterToolsByPermission(user, allDefs);
 
     // If readOnly is true, filter out non-read tools
@@ -226,7 +226,7 @@ export async function planAgent(
 ): Promise<{ description: string; tools: string[] }> {
     await loadLangChain();
 
-    const allDefs = getAllToolDefs();
+    const allDefs = buildToolDefs(user);
     const allowedDefs = filterToolsByPermission(user, allDefs);
 
     if (allowedDefs.length === 0) {

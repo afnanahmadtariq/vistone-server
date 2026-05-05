@@ -37,9 +37,16 @@ describe('WikiPageVersions Controller – Unit Tests', () => {
       await createWikiPageVersionHandler(req, res);
       expect(res.json).toHaveBeenCalledWith(sample);
     });
+    it('returns 400 when wikiPageId is missing', async () => {
+      const req: any = { body: { content: 'x' } };
+      const res = mockRes();
+      await createWikiPageVersionHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
     it('returns 500 on error', async () => {
       (prisma.wikiPageVersion.create as jest.Mock).mockRejectedValue(new Error('DB'));
-      const req: any = { body: {} };
+      const req: any = { body: { wikiPageId: 'wp-1', content: 'Version 1 content' } };
       const res = mockRes();
       await createWikiPageVersionHandler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
@@ -47,11 +54,15 @@ describe('WikiPageVersions Controller – Unit Tests', () => {
   });
 
   describe('getAllWikiPageVersionsHandler', () => {
-    it('returns all versions', async () => {
+    it('returns versions for wikiPageId', async () => {
       (prisma.wikiPageVersion.findMany as jest.Mock).mockResolvedValue([sample]);
-      const req: any = { query: {} };
+      const req: any = { query: { wikiPageId: 'wp-1' } };
       const res = mockRes();
       await getAllWikiPageVersionsHandler(req, res);
+      expect(prisma.wikiPageVersion.findMany).toHaveBeenCalledWith({
+        where: { wikiPageId: 'wp-1' },
+        orderBy: { version: 'desc' },
+      });
       expect(res.json).toHaveBeenCalledWith([sample]);
     });
   });

@@ -9,6 +9,9 @@ import {
 jest.mock('../../lib/prisma', () => ({
   __esModule: true,
   default: {
+    document: {
+      findUnique: jest.fn(),
+    },
     documentPermission: {
       create: jest.fn(),
       findMany: jest.fn(),
@@ -29,12 +32,14 @@ const mockRes = () => {
 };
 
 const sample = { id: 'dp-1', documentId: 'doc-1', userId: 'user-1', permission: 'read' };
+const docRow = { id: 'doc-1', wikiId: 'wiki-1' };
 
 describe('DocumentPermissions Controller', () => {
   beforeEach(() => jest.clearAllMocks());
 
   describe('createDocumentPermissionHandler', () => {
     it('creates and returns permission', async () => {
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(docRow);
       (prisma.documentPermission.create as jest.Mock).mockResolvedValue(sample);
       const req: any = { body: { documentId: 'doc-1', userId: 'user-1', permission: 'read' } };
       const res = mockRes();
@@ -42,9 +47,17 @@ describe('DocumentPermissions Controller', () => {
       expect(res.json).toHaveBeenCalledWith(sample);
     });
 
+    it('returns 400 when documentId is missing', async () => {
+      const req: any = { body: { permission: 'read' } };
+      const res = mockRes();
+      await createDocumentPermissionHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
     it('returns 500 on error', async () => {
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(docRow);
       (prisma.documentPermission.create as jest.Mock).mockRejectedValue(new Error('DB'));
-      const req: any = { body: {} };
+      const req: any = { body: { documentId: 'doc-1', permission: 'read' } };
       const res = mockRes();
       await createDocumentPermissionHandler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
@@ -52,17 +65,29 @@ describe('DocumentPermissions Controller', () => {
   });
 
   describe('getAllDocumentPermissionsHandler', () => {
-    it('returns all permissions', async () => {
+    it('returns permissions for documentId', async () => {
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(docRow);
       (prisma.documentPermission.findMany as jest.Mock).mockResolvedValue([sample]);
-      const req: any = {};
+      const req: any = { query: { documentId: 'doc-1' } };
       const res = mockRes();
       await getAllDocumentPermissionsHandler(req, res);
+      expect(prisma.documentPermission.findMany).toHaveBeenCalledWith({
+        where: { documentId: 'doc-1' },
+      });
       expect(res.json).toHaveBeenCalledWith([sample]);
     });
 
+    it('returns 400 when documentId query is missing', async () => {
+      const req: any = { query: {} };
+      const res = mockRes();
+      await getAllDocumentPermissionsHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
     it('returns 500 on error', async () => {
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(docRow);
       (prisma.documentPermission.findMany as jest.Mock).mockRejectedValue(new Error('DB'));
-      const req: any = {};
+      const req: any = { query: { documentId: 'doc-1' } };
       const res = mockRes();
       await getAllDocumentPermissionsHandler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
@@ -72,6 +97,7 @@ describe('DocumentPermissions Controller', () => {
   describe('getDocumentPermissionByIdHandler', () => {
     it('returns permission by id', async () => {
       (prisma.documentPermission.findUnique as jest.Mock).mockResolvedValue(sample);
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(docRow);
       const req: any = { params: { id: 'dp-1' } };
       const res = mockRes();
       await getDocumentPermissionByIdHandler(req, res);
@@ -98,6 +124,8 @@ describe('DocumentPermissions Controller', () => {
   describe('updateDocumentPermissionHandler', () => {
     it('updates and returns permission', async () => {
       const updated = { ...sample, permission: 'write' };
+      (prisma.documentPermission.findUnique as jest.Mock).mockResolvedValue(sample);
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(docRow);
       (prisma.documentPermission.update as jest.Mock).mockResolvedValue(updated);
       const req: any = { params: { id: 'dp-1' }, body: { permission: 'write' } };
       const res = mockRes();
@@ -106,6 +134,8 @@ describe('DocumentPermissions Controller', () => {
     });
 
     it('returns 500 on error', async () => {
+      (prisma.documentPermission.findUnique as jest.Mock).mockResolvedValue(sample);
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(docRow);
       (prisma.documentPermission.update as jest.Mock).mockRejectedValue(new Error('DB'));
       const req: any = { params: { id: 'dp-1' }, body: {} };
       const res = mockRes();
@@ -116,6 +146,8 @@ describe('DocumentPermissions Controller', () => {
 
   describe('deleteDocumentPermissionHandler', () => {
     it('deletes and returns success', async () => {
+      (prisma.documentPermission.findUnique as jest.Mock).mockResolvedValue(sample);
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(docRow);
       (prisma.documentPermission.delete as jest.Mock).mockResolvedValue({});
       const req: any = { params: { id: 'dp-1' } };
       const res = mockRes();
@@ -124,6 +156,8 @@ describe('DocumentPermissions Controller', () => {
     });
 
     it('returns 500 on error', async () => {
+      (prisma.documentPermission.findUnique as jest.Mock).mockResolvedValue(sample);
+      (prisma.document.findUnique as jest.Mock).mockResolvedValue(docRow);
       (prisma.documentPermission.delete as jest.Mock).mockRejectedValue(new Error('DB'));
       const req: any = { params: { id: 'dp-1' } };
       const res = mockRes();
