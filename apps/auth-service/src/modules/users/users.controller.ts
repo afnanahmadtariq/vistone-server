@@ -76,8 +76,21 @@ export async function updateUserHandler(req: Request, res: Response) {
 
 export async function deleteUserHandler(req: Request, res: Response) {
     try {
-    await prisma.user.delete({
-      where: { id: req.params.id },
+    await prisma.$transaction(async (tx: {
+      activityLog: {
+        deleteMany: (args: { where: { userId: string } }) => Promise<unknown>;
+      };
+      user: {
+        delete: (args: { where: { id: string } }) => Promise<unknown>;
+      };
+    }) => {
+      await tx.activityLog.deleteMany({
+        where: { userId: req.params.id },
+      });
+
+      await tx.user.delete({
+        where: { id: req.params.id },
+      });
     });
     res.json({ success: true, message: 'User deleted' });
     } catch (error) {

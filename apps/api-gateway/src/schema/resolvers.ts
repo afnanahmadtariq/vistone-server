@@ -40,6 +40,205 @@ async function validateAiRequest(
   }
 }
 
+function isUserOrganizer(user: ServiceRecord): boolean {
+  const role = (user?.roleName || user?.role || '').toString().toLowerCase();
+  return role === 'organizer';
+}
+
+function getUserOrganizationId(user: ServiceRecord): string {
+  const organizationId = user?.organizationId;
+  if (typeof organizationId === 'string' && organizationId) return organizationId;
+  throw new GraphQLError('Organization ID is required', {
+    extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+  });
+}
+
+async function getAccessibleProjectIds(user: ServiceRecord): Promise<Set<string>> {
+  const projectIds = new Set<string>();
+
+  const [projectMembers, managedProjects] = await Promise.all([
+    projectClient.get(`/project-members?userId=${user.id}`).catch(() => [] as ServiceRecord[]),
+    projectClient.get(`/projects?managerId=${user.id}`).catch(() => [] as ServiceRecord[]),
+  ]);
+
+  if (Array.isArray(projectMembers)) {
+    projectMembers.forEach((pm: ServiceRecord) => {
+      if (typeof pm?.projectId === 'string' && pm.projectId) {
+        projectIds.add(pm.projectId);
+      }
+    });
+  }
+
+  if (Array.isArray(managedProjects)) {
+    managedProjects.forEach((p: ServiceRecord) => {
+      if (typeof p?.id === 'string' && p.id) {
+        projectIds.add(p.id);
+      }
+    });
+  }
+
+  const orgId = getUserOrganizationId(user);
+  const [teamMemberships, orgTeams, allOrgProjects] = await Promise.all([
+    workforceClient.get(`/team-members?userId=${user.id}`).catch(() => [] as ServiceRecord[]),
+    workforceClient.get(`/teams?organizationId=${orgId}`).catch(() => [] as ServiceRecord[]),
+    projectClient.get(`/projects?organizationId=${orgId}`).catch(() => [] as ServiceRecord[]),
+  ]);
+
+  const userTeamIds = new Set<string>();
+  if (Array.isArray(teamMemberships)) {
+    teamMemberships.forEach((tm: ServiceRecord) => {
+      if (typeof tm?.teamId === 'string' && tm.teamId) {
+        userTeamIds.add(tm.teamId);
+      }
+    });
+  }
+  if (Array.isArray(orgTeams)) {
+    orgTeams.forEach((team: ServiceRecord) => {
+      if (team?.managerId === user.id && typeof team?.id === 'string' && team.id) {
+        userTeamIds.add(team.id);
+      }
+    });
+  }
+  if (userTeamIds.size > 0 && Array.isArray(allOrgProjects)) {
+    allOrgProjects.forEach((p: ServiceRecord) => {
+      const projectTeamIds: string[] = Array.isArray(p.teamIds) ? p.teamIds : [];
+      if (projectTeamIds.some((tid) => userTeamIds.has(tid)) && typeof p?.id === 'string' && p.id) {
+        projectIds.add(p.id);
+      }
+    });
+  }
+
+  return projectIds;
+}
+
+async function resolveChatChannelMemberIds(
+  input: ServiceRecord,
+  creatorId: string
+): Promise<string[]> {
+  const memberIds = new Set<string>();
+
+  // Keep explicitly provided members from client payload.
+  if (Array.isArray(input.memberIds)) {
+    input.memberIds.forEach((id: unknown) => {
+      if (typeof id === 'string' && id) memberIds.add(id);
+    });
+  }
+
+  // Creator should always be a member.
+  if (creatorId) memberIds.add(creatorId);
+
+  // For project channels, auto-include all project-linked participants:
+  // - external contributors (project-members records)
+  // - linked team members (team-members records)
+  // - linked team managers
+  if (input.type === 'project' && typeof input.projectId === 'string' && input.projectId) {
+    const projectId = input.projectId;
+
+    const [projectMembers, project] = await Promise.all([
+      projectClient.get(`/project-members?projectId=${projectId}`).catch(() => [] as ServiceRecord[]),
+      projectClient.getById('/projects', projectId).catch(() => null),
+    ]);
+
+    if (Array.isArray(projectMembers)) {
+      projectMembers.forEach((pm: ServiceRecord) => {
+        if (typeof pm?.userId === 'string' && pm.userId) memberIds.add(pm.userId);
+      });
+    }
+
+    const teamIds: string[] = Array.isArray(project?.teamIds) ? project.teamIds : [];
+    if (teamIds.length > 0) {
+      const [teamMembersByTeam, teams] = await Promise.all([
+        Promise.all(
+          teamIds.map((teamId) =>
+            workforceClient.get(`/team-members?teamId=${teamId}`).catch(() => [] as ServiceRecord[])
+          )
+        ),
+        Promise.all(
+          teamIds.map((teamId) => workforceClient.getById('/teams', teamId).catch(() => null))
+        ),
+      ]);
+
+      teamMembersByTeam.forEach((teamMembers) => {
+        if (!Array.isArray(teamMembers)) return;
+        teamMembers.forEach((tm: ServiceRecord) => {
+          if (typeof tm?.userId === 'string' && tm.userId) memberIds.add(tm.userId);
+        });
+      });
+
+      teams.forEach((team) => {
+        if (typeof team?.managerId === 'string' && team.managerId) memberIds.add(team.managerId);
+      });
+    }
+  }
+
+  return Array.from(memberIds);
+}
+
+async function getAccessibleWikiIds(user: ServiceRecord): Promise<Set<string>> {
+  const wikiIds = new Set<string>();
+  const accessibleProjectIds = await getAccessibleProjectIds(user);
+
+  if (accessibleProjectIds.size === 0) return wikiIds;
+
+  await Promise.all(
+    Array.from(accessibleProjectIds).map(async (projectId) => {
+      const links = await knowledgeClient
+        .get(`/wiki-project-links?projectId=${encodeURIComponent(projectId)}`)
+        .catch(() => [] as ServiceRecord[]);
+      if (Array.isArray(links)) {
+        links.forEach((link: ServiceRecord) => {
+          if (typeof link?.wikiId === 'string' && link.wikiId) {
+            wikiIds.add(link.wikiId);
+          }
+        });
+      }
+    })
+  );
+
+  return wikiIds;
+}
+
+async function assertWikiAccess(user: ServiceRecord, wikiId: string): Promise<void> {
+  if (isUserOrganizer(user)) return;
+
+  const accessibleWikiIds = await getAccessibleWikiIds(user);
+  if (!accessibleWikiIds.has(wikiId)) {
+    throw new GraphQLError('Forbidden: wiki is not linked to your accessible projects', {
+      extensions: { code: 'FORBIDDEN', statusCode: 403 },
+    });
+  }
+}
+
+async function ensureProjectWikiLink(params: {
+  organizationId: string;
+  projectId: string;
+  projectName?: string | null;
+}): Promise<void> {
+  const { organizationId, projectId, projectName } = params;
+  if (!organizationId || !projectId) return;
+
+  const existingLinks = await knowledgeClient
+    .get(`/wiki-project-links?projectId=${encodeURIComponent(projectId)}`)
+    .catch(() => [] as ServiceRecord[]);
+  if (Array.isArray(existingLinks) && existingLinks.length > 0) {
+    return;
+  }
+
+  const wikiName = (projectName || 'Project Wiki').toString().trim() || 'Project Wiki';
+  const createdWiki = await knowledgeClient.post('/wikis', {
+    name: wikiName,
+    description: `Client workspace wiki for ${wikiName}`,
+    organizationId,
+  });
+
+  if (createdWiki?.id) {
+    await knowledgeClient.post('/wiki-project-links', {
+      wikiId: createdWiki.id,
+      projectId,
+    });
+  }
+}
+
 const dateTimeScalar = new GraphQLScalarType({
   name: 'DateTime',
   description: 'DateTime custom scalar type',
@@ -528,12 +727,17 @@ export const resolvers = {
 
     // Documentation (Knowledge Hub Service) â€” require wiki:read
     wikis: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
+      const user = await requirePermission(context, 'wiki', 'read');
       await requireOrganization(context, organizationId);
-      return knowledgeClient.get(`/wikis?organizationId=${organizationId}`);
+      const allWikis = await knowledgeClient.get(`/wikis?organizationId=${organizationId}`);
+      if (!Array.isArray(allWikis) || isUserOrganizer(user)) return allWikis;
+
+      const accessibleWikiIds = await getAccessibleWikiIds(user);
+      return allWikis.filter((wiki: ServiceRecord) => accessibleWikiIds.has(wiki.id));
     },
     wiki: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
+      const user = await requirePermission(context, 'wiki', 'read');
+      await assertWikiAccess(user, id);
       return knowledgeClient.getById('/wikis', id);
     },
     wikiProjectLinks: async (_: unknown, { projectId, wikiId }: { projectId?: string; wikiId?: string }, context: Context) => {
@@ -544,34 +748,53 @@ export const resolvers = {
       return knowledgeClient.get(`/wiki-project-links?${params.toString()}`);
     },
     wikiPages: async (_: unknown, { wikiId }: { wikiId: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
+      const user = await requirePermission(context, 'wiki', 'read');
+      await assertWikiAccess(user, wikiId);
       return knowledgeClient.get(`/wiki-pages?wikiId=${wikiId}`);
     },
     wikiPage: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.getById('/wiki-pages', id);
+      const user = await requirePermission(context, 'wiki', 'read');
+      const page = await knowledgeClient.getById('/wiki-pages', id);
+      if (page?.wikiId) {
+        await assertWikiAccess(user, page.wikiId);
+      }
+      return page;
     },
     wikiPageVersions: async (_: unknown, { wikiPageId }: { wikiPageId: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
+      const user = await requirePermission(context, 'wiki', 'read');
+      const page = await knowledgeClient.getById('/wiki-pages', wikiPageId);
+      if (page?.wikiId) {
+        await assertWikiAccess(user, page.wikiId);
+      }
       return knowledgeClient.get(`/wiki-page-versions?wikiPageId=${wikiPageId}`);
     },
     documentFolders: async (_: unknown, { wikiId }: { wikiId: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
+      const user = await requirePermission(context, 'wiki', 'read');
+      await assertWikiAccess(user, wikiId);
       return knowledgeClient.get(`/document-folders?wikiId=${wikiId}`);
     },
     documentFolder: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.getById('/document-folders', id);
+      const user = await requirePermission(context, 'wiki', 'read');
+      const folder = await knowledgeClient.getById('/document-folders', id);
+      if (folder?.wikiId) {
+        await assertWikiAccess(user, folder.wikiId);
+      }
+      return folder;
     },
     documents: async (_: unknown, { wikiId, folderId }: { wikiId: string; folderId?: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
+      const user = await requirePermission(context, 'wiki', 'read');
+      await assertWikiAccess(user, wikiId);
       const params = new URLSearchParams({ wikiId });
       if (folderId) params.append('folderId', folderId);
       return knowledgeClient.get(`/documents?${params.toString()}`);
     },
     document: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'read');
-      return knowledgeClient.getById('/documents', id);
+      const user = await requirePermission(context, 'wiki', 'read');
+      const doc = await knowledgeClient.getById('/documents', id);
+      if (doc?.wikiId) {
+        await assertWikiAccess(user, doc.wikiId);
+      }
+      return doc;
     },
     documentPermissions: async (_: unknown, { documentId }: { documentId: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
@@ -755,22 +978,42 @@ export const resolvers = {
           managedProjects.forEach((p: ServiceRecord) => projectIds.add(p.id));
         }
 
-        // 2. Via team membership — projects with this user's team in their teamIds
+        // 2. Via team assignment — projects with this user's team in their teamIds.
+        // Includes both explicit team-members rows and teams managed by the user.
         try {
-          const teamMemberships = await workforceClient.get(`/team-members?userId=${user.id}`);
-          if (Array.isArray(teamMemberships) && teamMemberships.length > 0) {
-            // Fetch all projects for the org and filter those whose teamIds include the manager's teams
-            const orgId = getOrgId(user);
-            const allOrgProjects = await projectClient.get(`/projects?organizationId=${orgId}`);
-            if (Array.isArray(allOrgProjects)) {
-              const userTeamIds = new Set(teamMemberships.map((tm: ServiceRecord) => tm.teamId));
-              allOrgProjects.forEach((p: ServiceRecord) => {
-                const projectTeamIds: string[] = Array.isArray(p.teamIds) ? p.teamIds : [];
-                if (projectTeamIds.some((tid) => userTeamIds.has(tid))) {
-                  projectIds.add(p.id);
-                }
-              });
-            }
+          const orgId = getOrgId(user);
+
+          const [teamMemberships, orgTeams, allOrgProjects] = await Promise.all([
+            workforceClient.get(`/team-members?userId=${user.id}`).catch(() => [] as ServiceRecord[]),
+            workforceClient.get(`/teams?organizationId=${orgId}`).catch(() => [] as ServiceRecord[]),
+            projectClient.get(`/projects?organizationId=${orgId}`).catch(() => [] as ServiceRecord[]),
+          ]);
+
+          const userTeamIds = new Set<string>();
+
+          if (Array.isArray(teamMemberships)) {
+            teamMemberships.forEach((tm: ServiceRecord) => {
+              if (typeof tm?.teamId === 'string' && tm.teamId) {
+                userTeamIds.add(tm.teamId);
+              }
+            });
+          }
+
+          if (Array.isArray(orgTeams)) {
+            orgTeams.forEach((team: ServiceRecord) => {
+              if (team?.managerId === user.id && typeof team?.id === 'string' && team.id) {
+                userTeamIds.add(team.id);
+              }
+            });
+          }
+
+          if (userTeamIds.size > 0 && Array.isArray(allOrgProjects)) {
+            allOrgProjects.forEach((p: ServiceRecord) => {
+              const projectTeamIds: string[] = Array.isArray(p.teamIds) ? p.teamIds : [];
+              if (projectTeamIds.some((tid) => userTeamIds.has(tid))) {
+                projectIds.add(p.id);
+              }
+            });
           }
         } catch { /* ignore if workforce service unavailable */ }
 
@@ -1876,7 +2119,7 @@ export const resolvers = {
                 projects: ['read'],
                 tasks: ['read'],
                 clients: [],
-                wiki: [],
+                wiki: ['read'],
                 channels: ['read', 'update'],
                 settings: [],
                 reports: ['read'],
@@ -2344,6 +2587,19 @@ export const resolvers = {
 
       const project = await projectClient.post('/projects', projectData);
 
+      // Auto-create client project wiki on project creation is disabled for now.
+      // if (input.clientId) {
+      //   try {
+      //     await ensureProjectWikiLink({
+      //       organizationId,
+      //       projectId: project.id,
+      //       projectName: project.name,
+      //     });
+      //   } catch (error) {
+      //     console.error(`[createProject] Failed to create wiki for project ${project.id}:`, error);
+      //   }
+      // }
+
       if (input.contributors && input.contributors.length > 0) {
         for (const userId of input.contributors) {
           try {
@@ -2708,7 +2964,7 @@ export const resolvers = {
               projects: ['read'],
               tasks: ['read'],
               clients: [],
-              wiki: [],
+              wiki: ['read'],
               channels: ['read', 'update'],
               settings: [],
               reports: ['read'],
@@ -2772,6 +3028,11 @@ export const resolvers = {
           await clientMgmtClient.post('/project-clients', {
             projectId: input.projectId,
             clientId: client.id,
+          });
+          await ensureProjectWikiLink({
+            organizationId,
+            projectId: input.projectId,
+            projectName: project?.name,
           });
         } catch {
           // Relationship might already exist
@@ -2904,7 +3165,13 @@ export const resolvers = {
       return knowledgeClient.delete('/document-folders', id);
     },
     createDocument: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'create');
+      const user = await requirePermission(context, 'wiki', 'read');
+      if (typeof input?.wikiId !== 'string' || !input.wikiId) {
+        throw new GraphQLError('wikiId is required to create a document', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      await assertWikiAccess(user, input.wikiId);
       return knowledgeClient.post('/documents', input);
     },
     updateDocument: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
@@ -2938,12 +3205,13 @@ export const resolvers = {
         // Group/project channels require channels:create permission
         user = await requirePermission(context, 'channels', 'create');
       }
+      const resolvedMemberIds = await resolveChatChannelMemberIds(input, user.id);
       // Enrich the input with the authenticated user's organizationId and id
       const enrichedInput = {
         ...input,
         organizationId: input.organizationId || getOrgId(user),
         createdBy: input.createdBy || user.id,
-        memberIds: input.memberIds || [],
+        memberIds: resolvedMemberIds,
       };
       return communicationClient.post('/chat-channels', enrichedInput);
     },

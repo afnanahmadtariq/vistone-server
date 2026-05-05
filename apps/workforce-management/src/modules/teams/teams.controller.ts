@@ -29,6 +29,20 @@ interface ProjectData {
   endDate?: Date;
   updatedAt?: Date;
 }
+function getForwardHeaders(req?: Request) {
+  const headers: Record<string, string> = {};
+  const authHeader = req?.headers?.authorization;
+  const orgHeader = req?.headers?.["x-organization-id"];
+
+  if (typeof authHeader === "string" && authHeader.trim()) {
+    headers.Authorization = authHeader;
+  }
+  if (typeof orgHeader === "string" && orgHeader.trim()) {
+    headers["X-Organization-Id"] = orgHeader;
+  }
+
+  return headers;
+}
 async function fetchUserData(userId: string) {
   try {
     const response = await axios.get(`${AUTH_SERVICE_URL}/users/${userId}`);
@@ -55,9 +69,11 @@ async function fetchUserRole(userId: string): Promise<string> {
   return 'Contributor';
 }
 
-async function fetchProjects(): Promise<ProjectData[]> {
+async function fetchProjects(req?: Request): Promise<ProjectData[]> {
   try {
-    const response = await axios.get(`${PROJECT_SERVICE_URL}/projects`);
+    const response = await axios.get(`${PROJECT_SERVICE_URL}/projects`, {
+      headers: getForwardHeaders(req),
+    });
     return response.data;
   } catch (error) {
     console.error('Failed to fetch projects:', error);
@@ -94,7 +110,7 @@ export async function getAllTeamsHandler(req: Request, res: Response) {
     }) as TeamWithMembers[];
 
     // Fetch all projects once to avoid multiple API calls
-    const allProjects = await fetchProjects();
+    const allProjects = await fetchProjects(req);
 
     const enhancedTeams = await Promise.all(teams.map(async (team: TeamWithMembers) => {
       // Fetch manager data
@@ -192,7 +208,7 @@ export async function getTeamByIdHandler(req: Request, res: Response) {
     );
 
     // Fetch projects and filter by team
-    const allProjects = await fetchProjects();
+    const allProjects = await fetchProjects(req);
 
     const ongoingProjects = allProjects
       .filter((p: ProjectData) => p.teamIds?.includes(team.id) && p.status !== 'completed' && p.status !== 'Completed')

@@ -9,6 +9,10 @@ import {
 jest.mock('../../lib/prisma', () => ({
   __esModule: true,
   default: {
+    $transaction: jest.fn(),
+    activityLog: {
+      deleteMany: jest.fn(),
+    },
     user: {
       create: jest.fn(),
       findMany: jest.fn(),
@@ -198,18 +202,26 @@ describe('Users Controller – Unit Tests', () => {
   // ── deleteUserHandler ───────────────────────────────────────
   describe('deleteUserHandler', () => {
     it('deletes the user and returns success', async () => {
+      (prisma.$transaction as jest.Mock).mockImplementation(async (cb: any) =>
+        cb({
+          activityLog: { deleteMany: prisma.activityLog.deleteMany },
+          user: { delete: prisma.user.delete },
+        })
+      );
+      (prisma.activityLog.deleteMany as jest.Mock).mockResolvedValue({ count: 1 });
       (prisma.user.delete as jest.Mock).mockResolvedValue(sampleUser);
       const req: any = { params: { id: 'user-1' } };
       const res = mockRes();
 
       await deleteUserHandler(req, res);
 
+      expect(prisma.activityLog.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
       expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: 'user-1' } });
       expect(res.json).toHaveBeenCalledWith({ success: true, message: 'User deleted' });
     });
 
     it('returns 500 on database error', async () => {
-      (prisma.user.delete as jest.Mock).mockRejectedValue(new Error('DB error'));
+      (prisma.$transaction as jest.Mock).mockRejectedValue(new Error('DB error'));
       const req: any = { params: { id: 'user-1' } };
       const res = mockRes();
 
