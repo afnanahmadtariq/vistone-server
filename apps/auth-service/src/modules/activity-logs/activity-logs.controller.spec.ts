@@ -84,6 +84,30 @@ describe('ActivityLogs Controller – Unit Tests', () => {
         })
       );
     });
+
+    it('scopes by organizationId via user memberships', async () => {
+      (prisma.activityLog.findMany as jest.Mock).mockResolvedValue([sampleLog]);
+      const req: any = { query: { organizationId: 'org-1' } };
+      const res = mockRes();
+
+      await getAllActivityLogsHandler(req, res);
+
+      expect(prisma.activityLog.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            user: {
+              is: {
+                organizationMemberships: {
+                  some: { organizationId: 'org-1' },
+                },
+              },
+            },
+          }),
+          orderBy: { createdAt: 'desc' },
+        })
+      );
+      expect(res.json).toHaveBeenCalledWith([sampleLog]);
+    });
   });
 
   describe('getActivityLogByIdHandler', () => {

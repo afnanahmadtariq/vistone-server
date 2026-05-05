@@ -223,9 +223,15 @@ export const resolvers = {
     },
 
     // Users & Organizations (Auth Service) — org-scoped
-    users: async (_: unknown, { organizationId }: { organizationId?: string }, context: Context) => {
+    users: async (_: unknown, { organizationId: organizationIdArg }: { organizationId?: string }, context: Context) => {
       const user = await requireAuth(context);
-      const orgId = organizationId || getOrgId(user);
+      let orgId: string;
+      if (organizationIdArg) {
+        await requireOrganization(context, organizationIdArg);
+        orgId = organizationIdArg;
+      } else {
+        orgId = getOrgId(user);
+      }
       const users = await authClient.get(
         `/users?organizationId=${encodeURIComponent(orgId)}`
       );

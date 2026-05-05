@@ -17,6 +17,7 @@ jest.mock('./lib/prisma', () => ({
     user: {
       create: jest.fn(),
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -102,6 +103,24 @@ describe('GET /users', () => {
     (prisma.user.findMany as jest.Mock).mockRejectedValue(new Error('DB fail'));
     const res = await request(app).get('/users');
     expect(res.status).toBe(500);
+  });
+
+  it('filters by organizationId when provided', async () => {
+    (prisma.user.findMany as jest.Mock).mockResolvedValue([userPayload]);
+    const res = await request(app).get('/users').query({ organizationId: 'org-1' });
+    expect(res.status).toBe(200);
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationMemberships: { some: { organizationId: 'org-1' } },
+      },
+    });
+  });
+
+  it('filters by email (case-insensitive) when provided', async () => {
+    (prisma.user.findFirst as jest.Mock).mockResolvedValue(userPayload);
+    const res = await request(app).get('/users').query({ email: 'Alice@Example.com' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([userPayload]);
   });
 });
 
@@ -210,6 +229,23 @@ describe('GET /activity-logs', () => {
     (prisma.activityLog.findMany as jest.Mock).mockResolvedValue([]);
     const res = await request(app).get('/activity-logs');
     expect(res.status).toBe(200);
+  });
+
+  it('accepts organizationId to scope logs by org membership', async () => {
+    (prisma.activityLog.findMany as jest.Mock).mockResolvedValue([]);
+    const res = await request(app).get('/activity-logs').query({ organizationId: 'org-1' });
+    expect(res.status).toBe(200);
+    expect(prisma.activityLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          user: {
+            is: {
+              organizationMemberships: { some: { organizationId: 'org-1' } },
+            },
+          },
+        }),
+      })
+    );
   });
 });
 
