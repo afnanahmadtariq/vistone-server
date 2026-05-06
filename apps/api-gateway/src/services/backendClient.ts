@@ -12,15 +12,20 @@ const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 100 });
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ServiceRecord = Record<string, any>;
 
+export type ServiceClientOptions = {
+  /** Override default 30s (slow networks / long AI agent runs). */
+  timeout?: number;
+};
+
 class ServiceClient {
   private client: AxiosInstance;
   private serviceName: string;
 
-  constructor(baseURL: string, serviceName: string) {
+  constructor(baseURL: string, serviceName: string, options?: ServiceClientOptions) {
     this.serviceName = serviceName;
     this.client = axios.create({
       baseURL,
-      timeout: 30000,
+      timeout: options?.timeout ?? 30000,
       httpAgent,
       httpsAgent,
       headers: {
@@ -252,9 +257,16 @@ export const notificationClient = new ServiceClient(
   'Notification Service'
 );
 
+/** Gateway → AI Engine: agent + tools often exceed 30s on slow links (env override). */
+const AI_ENGINE_GATEWAY_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AI_ENGINE_GATEWAY_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 180000;
+})();
+
 export const aiEngineClient = new ServiceClient(
   process.env.AI_ENGINE_URL || 'http://localhost:3009',
-  'AI Engine Service'
+  'AI Engine Service',
+  { timeout: AI_ENGINE_GATEWAY_TIMEOUT_MS }
 );
 
 // Legacy export for backward compatibility (deprecated)

@@ -23,7 +23,12 @@ function attachOutboundAuth(client: AxiosInstance): AxiosInstance {
 
 // ── Generic service client ─────────────────────────────────────
 
-function createClient(baseURL: string, timeout = 15000): AxiosInstance {
+const OUTBOUND_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AI_ENGINE_OUTBOUND_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 30000;
+})();
+
+function createClient(baseURL: string, timeout = OUTBOUND_TIMEOUT_MS): AxiosInstance {
   const client = axios.create({
     baseURL,
     timeout,

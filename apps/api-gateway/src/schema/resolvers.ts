@@ -1546,7 +1546,17 @@ export const resolvers = {
     phone: (parent: ServiceRecord) => parent.phone ?? parent.contactInfo?.phone ?? null,
     address: (parent: ServiceRecord) => parent.address ?? parent.contactInfo?.address ?? null,
     industry: (parent: ServiceRecord) => parent.industry ?? null,
-    status: (parent: ServiceRecord) => parent.status ?? 'active',
+    status: (parent: ServiceRecord) => {
+      const raw = parent.status;
+      if (raw == null || raw === '') {
+        return 'Active';
+      }
+      const lower = String(raw).toLowerCase();
+      if (lower === 'active') {
+        return 'Active';
+      }
+      return raw;
+    },
     rating: async (parent: ServiceRecord) => {
       try {
         // Calculate rating from client feedback
@@ -1746,13 +1756,28 @@ export const resolvers = {
         // accept-invite will validate the token
       }
 
-      const result = await authClient.post('/auth/accept-invite', { token, password, name, role });
+      const result = (await authClient.post('/auth/accept-invite', {
+        token,
+        password,
+        name,
+        role,
+      })) as ServiceRecord;
 
-      const invRole = String(inviteMeta?.role ?? role ?? '').toLowerCase();
+      const acceptedUser = result?.user as ServiceRecord | undefined;
+      // Prefer invite metadata when present; otherwise use accept-invite response so client CRM
+      // updates still run if invite-details prefetch failed or onboarding URL omitted role.
+      const invRole = String(
+        inviteMeta?.role ?? acceptedUser?.role ?? role ?? '',
+      ).toLowerCase();
       const orgId =
-        typeof inviteMeta?.organizationId === 'string' ? inviteMeta.organizationId : undefined;
+        (typeof inviteMeta?.organizationId === 'string' && inviteMeta.organizationId) ||
+        (typeof acceptedUser?.organizationId === 'string' && acceptedUser.organizationId) ||
+        (typeof acceptedUser?.organization?.id === 'string' && acceptedUser.organization.id) ||
+        undefined;
       const email =
-        typeof inviteMeta?.email === 'string' ? inviteMeta.email : undefined;
+        (typeof inviteMeta?.email === 'string' && inviteMeta.email) ||
+        (typeof acceptedUser?.email === 'string' && acceptedUser.email) ||
+        undefined;
 
       if (invRole === 'client' && orgId && email) {
         try {
@@ -1767,7 +1792,8 @@ export const resolvers = {
               c.email.trim().toLowerCase() === normalized,
           );
           if (match?.id) {
-            await clientMgmtClient.put('/clients', match.id, { status: 'active' });
+            // Must match ClientStatus / UI filters ("Active"), not lowercase DB drift
+            await clientMgmtClient.put('/clients', match.id, { status: 'Active' });
           }
         } catch (e) {
           console.error('[acceptInvite] Failed to activate client record after onboarding:', e);
