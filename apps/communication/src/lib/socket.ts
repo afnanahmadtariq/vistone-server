@@ -4,11 +4,14 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
 import prisma from './prisma';
 import { Message, IReaction } from '../models/message.model';
+import { syncChatAttachmentsToWiki } from './chatWikiSync';
 
 // Extended socket type with auth data
 interface AuthenticatedSocket extends Socket {
     userId: string;
     organizationId: string;
+    /** Raw JWT for server-side calls (e.g. syncing chat files to knowledge-hub). */
+    accessToken?: string;
 }
 
 let io: Server;
@@ -81,6 +84,7 @@ async function authenticateSocket(socket: Socket, next: (err?: Error) => void) {
 
         (socket as AuthenticatedSocket).userId = uid;
         (socket as AuthenticatedSocket).organizationId = oid;
+        (socket as AuthenticatedSocket).accessToken = token;
         next();
     } catch {
         next(new Error('Authentication failed'));
@@ -181,6 +185,18 @@ export function initSocketServer(httpServer: HttpServer): Server {
                     mentions,
                     replyTo: replyTo || undefined,
                 });
+
+                const sock = socket as AuthenticatedSocket;
+                if (sock.accessToken && sock.organizationId) {
+                    void syncChatAttachmentsToWiki({
+                        channelId,
+                        messageId: String(message.id),
+                        senderId: userId,
+                        attachments: attachments || [],
+                        authorization: `Bearer ${sock.accessToken}`,
+                        organizationId: sock.organizationId,
+                    });
+                }
 
                 // Broadcast to the room (including sender)
                 io.to(channelId).emit('new_message', message.toJSON());

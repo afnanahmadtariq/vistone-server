@@ -3,11 +3,29 @@ import prisma from "../../lib/prisma";
 
 export async function createChatChannelHandler(req: Request, res: Response) {
   try {
-    const { organizationId, name, description, type, projectId, createdBy, memberIds = [] } = req.body;
+    const { organizationId, name, description, type, projectId, createdBy, memberIds = [], syncWikiId } = req.body;
 
     if (!organizationId || !type || !createdBy) {
       res.status(400).json({ error: 'organizationId, type, and createdBy are required' });
       return;
+    }
+
+    if (type === 'client_workspace') {
+      if (!projectId || String(projectId).trim() === '') {
+        res.status(400).json({ error: 'client_workspace channels require projectId' });
+        return;
+      }
+      if (typeof syncWikiId !== 'string' || !syncWikiId.trim()) {
+        res.status(400).json({ error: 'client_workspace channels require syncWikiId (linked wiki id)' });
+        return;
+      }
+      const existingCw = await prisma.chatChannel.findFirst({
+        where: { organizationId, projectId: String(projectId), type: 'client_workspace', isArchived: false },
+      });
+      if (existingCw) {
+        res.status(200).json(existingCw);
+        return;
+      }
     }
 
     // Ensure the creator is always included in memberIds
@@ -47,7 +65,8 @@ export async function createChatChannelHandler(req: Request, res: Response) {
         name: type === 'dm' ? null : (name || 'Untitled Channel'),
         description,
         type,
-        projectId: type === 'project' ? projectId : null,
+        projectId: type === 'project' || type === 'client_workspace' ? projectId : null,
+        syncWikiId: typeof syncWikiId === 'string' && syncWikiId.trim() ? syncWikiId.trim() : null,
         createdBy,
         members: {
           create: finalMemberIds.map((userId: string) => ({

@@ -50,7 +50,12 @@ export async function getAllOrganizationMembersHandler(req: Request, res: Respon
       where.userId = userId as string;
     }
 
-    const members = await prisma.organizationMember.findMany({ where });
+    const members = await prisma.organizationMember.findMany({
+      where,
+      include: {
+        role: { select: { id: true, name: true } },
+      },
+    });
     res.json(members);
     } catch (error) {
     console.error(error);

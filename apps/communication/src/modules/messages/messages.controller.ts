@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Message } from '../../models/message.model';
 import prisma from '../../lib/prisma';
+import { syncChatAttachmentsToWiki } from '../../lib/chatWikiSync';
 
 // GET /messages/media?channelId=xxx&cursor=xxx&limit=50
 // Returns messages that contain attachments (for the media sidebar)
@@ -152,6 +153,20 @@ export async function createMessageHandler(req: Request, res: Response) {
             attachments,
             mentions,
             replyTo: replyTo || undefined,
+        });
+
+        const authHeader =
+            typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined;
+        const orgHeader = req.headers['x-organization-id'];
+        const orgId =
+            typeof orgHeader === 'string' ? orgHeader : Array.isArray(orgHeader) ? orgHeader[0] : undefined;
+        void syncChatAttachmentsToWiki({
+            channelId,
+            messageId: String(message.id),
+            senderId,
+            attachments,
+            authorization: authHeader,
+            organizationId: orgId,
         });
 
         // Broadcast via Socket.IO if available

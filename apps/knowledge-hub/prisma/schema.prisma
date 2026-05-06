@@ -15,6 +15,8 @@ model Wiki {
   organizationId String
   name           String
   description    String?
+  /// e.g. { clientOrganizerWorkspace: true, projectId }
+  metadata       Json?
 
   pages          WikiPage[]
   folders        DocumentFolder[]
@@ -116,15 +118,33 @@ model Document {
   url            String
   version        Int      @default(1)
   metadata       Json?
-  
+  uploadedById   String?
+
   wiki           Wiki            @relation(fields: [wikiId], references: [id], onDelete: Cascade)
   folder         DocumentFolder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
   permissions    DocumentPermission[]
+  versions       DocumentVersion[]
   
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@map("documents")
+  @@schema("knowledge")
+}
+
+model DocumentVersion {
+  id           String   @id @default(uuid())
+  documentId String
+  name         String
+  url          String
+  version      Int
+  uploadedById String?
+
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime @default(now())
+
+  @@map("document_versions")
   @@schema("knowledge")
 }
 

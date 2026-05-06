@@ -16,6 +16,7 @@ import { requireAuth, requireOrganizer, requireOrganization, requirePermission, 
 import { verifyTurnstileToken } from '../lib/turnstile';
 import { ServiceError } from '../lib/errors';
 import { enrichUserWithWorkforceData, type GraphQLLoaders } from '../lib/graphqlLoaders';
+import { provisionClientOrganizerWorkspaceHub } from '../lib/clientOrganizerHub';
 
 interface Context extends AuthContext {
   headers: Record<string, string | string[] | undefined>;
@@ -816,6 +817,15 @@ export const resolvers = {
         await assertWikiAccess(user, doc.wikiId);
       }
       return doc;
+    },
+    documentVersions: async (_: unknown, { documentId }: { documentId: string }, context: Context) => {
+      const user = await requirePermission(context, 'wiki', 'read');
+      const doc = await knowledgeClient.getById('/documents', documentId);
+      if (doc?.wikiId) {
+        await assertWikiAccess(user, doc.wikiId);
+      }
+      const rows = await knowledgeClient.get(`/documents/${encodeURIComponent(documentId)}/versions`);
+      return Array.isArray(rows) ? rows : [];
     },
     documentPermissions: async (_: unknown, { documentId }: { documentId: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'read');
@@ -2846,19 +2856,6 @@ export const resolvers = {
 
       const project = await projectClient.post('/projects', projectData);
 
-      // Auto-create client project wiki on project creation is disabled for now.
-      // if (input.clientId) {
-      //   try {
-      //     await ensureProjectWikiLink({
-      //       organizationId,
-      //       projectId: project.id,
-      //       projectName: project.name,
-      //     });
-      //   } catch (error) {
-      //     console.error(`[createProject] Failed to create wiki for project ${project.id}:`, error);
-      //   }
-      // }
-
       if (input.contributors && input.contributors.length > 0) {
         for (const userId of input.contributors) {
           try {
@@ -2882,6 +2879,17 @@ export const resolvers = {
           });
         } catch (error) {
           console.error(`Failed to create project-client link for client ${input.clientId}:`, error);
+        }
+        try {
+          await provisionClientOrganizerWorkspaceHub({
+            organizationId,
+            projectId: project.id,
+            projectName: project.name,
+            clientId: input.clientId,
+            creatorUserId: currentUser.id,
+          });
+        } catch (hubErr) {
+          console.error(`[createProject] client–organizer hub:`, hubErr);
         }
       }
 
@@ -2966,7 +2974,7 @@ export const resolvers = {
       return project;
     },
     updateProject: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'projects', 'update');
+      const currentUser = await requirePermission(context, 'projects', 'update');
       const projectData: ServiceRecord = {};
       if (input.name !== undefined) projectData.name = input.name;
       if (input.description !== undefined) projectData.description = input.description;
@@ -3025,7 +3033,35 @@ export const resolvers = {
         }
       }
 
-      return projectClient.put('/projects', id, projectData);
+      const updated = await projectClient.put('/projects', id, projectData);
+      if (input.clientId !== undefined && updated?.clientId) {
+        try {
+          await clientMgmtClient.post('/project-clients', {
+            projectId: id,
+            clientId: updated.clientId,
+          });
+        } catch {
+          /* link may already exist */
+        }
+        const orgId =
+          typeof updated.organizationId === 'string' && updated.organizationId
+            ? updated.organizationId
+            : currentUser.organizationId;
+        if (orgId) {
+          try {
+            await provisionClientOrganizerWorkspaceHub({
+              organizationId: orgId,
+              projectId: id,
+              projectName: updated.name,
+              clientId: updated.clientId,
+              creatorUserId: currentUser.id,
+            });
+          } catch (hubErr) {
+            console.error('[updateProject] client–organizer hub:', hubErr);
+          }
+        }
+      }
+      return updated;
     },
     deleteProject: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'projects', 'delete');
@@ -3338,6 +3374,17 @@ export const resolvers = {
             projectId: input.projectId,
             projectName: project?.name,
           });
+          try {
+            await provisionClientOrganizerWorkspaceHub({
+              organizationId,
+              projectId: input.projectId,
+              projectName: project?.name,
+              clientId: client.id,
+              creatorUserId: currentUser.id,
+            });
+          } catch (hubErr) {
+            console.error('[inviteClientToOrganization] client–organizer hub:', hubErr);
+          }
         } catch {
           // Relationship might already exist
         }
@@ -3367,8 +3414,28 @@ export const resolvers = {
     },
 
     createProjectClient: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'clients', 'update');
-      return clientMgmtClient.post('/project-clients', input);
+      const user = await requirePermission(context, 'clients', 'update');
+      const row = await clientMgmtClient.post('/project-clients', input);
+      const projectId = typeof input?.projectId === 'string' ? input.projectId : '';
+      const clientId = typeof input?.clientId === 'string' ? input.clientId : '';
+      if (projectId && clientId) {
+        try {
+          const project = await projectClient.getById('/projects', projectId);
+          const orgId = project?.organizationId as string | undefined;
+          if (orgId) {
+            await provisionClientOrganizerWorkspaceHub({
+              organizationId: orgId,
+              projectId,
+              projectName: project?.name,
+              clientId,
+              creatorUserId: user.id,
+            });
+          }
+        } catch (hubErr) {
+          console.error('[createProjectClient] client–organizer hub:', hubErr);
+        }
+      }
+      return row;
     },
     updateProjectClient: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'clients', 'update');

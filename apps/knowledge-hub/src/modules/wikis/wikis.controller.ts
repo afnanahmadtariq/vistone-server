@@ -158,9 +158,22 @@ export async function updateWiki(req: Request, res: Response): Promise<void> {
         const nextOrg = req.body?.organizationId;
         if (typeof nextOrg === 'string' && nextOrg.trim() && !ensureQueryOrgMatchesCaller(req, nextOrg.trim(), res)) return;
 
+        const data: Record<string, unknown> = { ...req.body };
+        if (data.metadata !== undefined && typeof data.metadata === 'object' && data.metadata !== null) {
+            const prev = await prisma.wiki.findUnique({
+                where: { id },
+                select: { metadata: true },
+            });
+            const prevMeta =
+                prev?.metadata && typeof prev.metadata === 'object' && !Array.isArray(prev.metadata)
+                    ? (prev.metadata as Record<string, unknown>)
+                    : {};
+            data.metadata = { ...prevMeta, ...(data.metadata as Record<string, unknown>) };
+        }
+
         const wiki = await prisma.wiki.update({
             where: { id },
-            data: req.body,
+            data,
         });
         res.json(wiki);
     } catch (error) {

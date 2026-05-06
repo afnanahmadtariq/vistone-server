@@ -435,6 +435,7 @@ export const typeDefs = gql`
     organizationId: String!
     name: String!
     description: String
+    metadata: JSON
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -489,8 +490,19 @@ export const typeDefs = gql`
     url: String!
     version: Int!
     metadata: JSON
+    uploadedById: String
     createdAt: DateTime!
     updatedAt: DateTime!
+  }
+
+  type DocumentVersion {
+    id: ID!
+    documentId: String!
+    name: String!
+    url: String!
+    version: Int!
+    uploadedById: String
+    createdAt: DateTime!
   }
 
   type DocumentPermission {
@@ -511,6 +523,7 @@ export const typeDefs = gql`
     description: String
     type: String!
     projectId: String
+    syncWikiId: String
     createdBy: String!
     isArchived: Boolean!
     members: [ChannelMember!]
@@ -827,6 +840,7 @@ export const typeDefs = gql`
     documentFolder(id: ID!): DocumentFolder
     documents(wikiId: ID!, folderId: ID): [Document!]!
     document(id: ID!): Document
+    documentVersions(documentId: ID!): [DocumentVersion!]!
     documentPermissions(documentId: ID!): [DocumentPermission!]!
 
     # Communication

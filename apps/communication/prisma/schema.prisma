@@ -13,17 +13,20 @@ datasource db {
 // PostgreSQL keeps only structured/relational data: channels & memberships.
 
 // Channel types:
-//   "project"  – auto-created per project, visible on project page
-//   "group"    – custom channel created by authorized users
-//   "dm"       – direct message between exactly 2 users
+//   "project"         – auto-created per project, visible on project page
+//   "group"           – custom channel created by authorized users
+//   "dm"              – direct message between exactly 2 users
+//   "client_workspace" – client + organizer(s); chat file attachments sync to linked wiki
 
 model ChatChannel {
   id             String   @id @default(uuid())
   organizationId String
   name           String?           // null for DMs
   description    String?
-  type           String            // "project" | "group" | "dm"
-  projectId      String?           // only set when type = "project"
+  type           String            // "project" | "group" | "dm" | "client_workspace"
+  projectId      String?           // set when type = "project" or "client_workspace"
+  /// Knowledge-hub wiki id: chat attachments with URLs are copied as documents here.
+  syncWikiId     String?
   createdBy      String            // userId who created the channel
   isArchived     Boolean  @default(false)
 

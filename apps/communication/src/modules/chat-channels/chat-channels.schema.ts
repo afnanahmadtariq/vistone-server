@@ -7,6 +7,8 @@ export const chatChannelSchema = z.object({
     description: z.string().nullable().optional(),
     type: z.string().min(1),
     projectId: z.string().nullable().optional(),
+    /** Knowledge-hub wiki to mirror chat file attachments into (client_workspace channels). */
+    syncWikiId: z.string().nullable().optional(),
     createdBy: z.string().min(1),
     memberIds: z.array(z.string()).optional().default([]),
   }),

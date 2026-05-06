@@ -5,6 +5,7 @@ export const createWikiSchema = z.object({
         organizationId: z.string().min(1),
         name: z.string().min(1).max(100),
         description: z.string().max(500).optional().nullable(),
+        metadata: z.record(z.unknown()).optional(),
     })
 });
 
@@ -15,5 +16,6 @@ export const updateWikiSchema = z.object({
     body: z.object({
         name: z.string().min(1).max(100).optional(),
         description: z.string().max(500).optional().nullable(),
+        metadata: z.record(z.unknown()).optional().nullable(),
     })
 });
