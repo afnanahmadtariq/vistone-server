@@ -1417,6 +1417,44 @@ export const resolvers = {
     },
   },
 
+  Team: {
+    members: async (parent: ServiceRecord, _args: unknown, context: Context) => {
+      try {
+        const teamMembers = await workforceClient.get(`/team-members?teamId=${parent.id}`);
+        if (!Array.isArray(teamMembers) || teamMembers.length === 0) return [];
+
+        const members = await Promise.all(
+          teamMembers.map(async (tm: ServiceRecord) => {
+            if (!tm.userId) return null;
+            try {
+              const user = await context.loaders.enrichedUser.load(tm.userId);
+              if (!user) return null;
+              return {
+                id: user.id,
+                name:
+                  [user.firstName, user.lastName]
+                    .filter((part: unknown) => typeof part === 'string' && part.trim().length > 0)
+                    .join(' ')
+                    .trim() || user.name || null,
+                role: user.role || tm.role || null,
+                jobTitle: user.jobTitle || null,
+                email: user.email || null,
+                status: user.status || null,
+                avatar: user.avatar || null,
+              };
+            } catch {
+              return null;
+            }
+          })
+        );
+
+        return members.filter(Boolean);
+      } catch {
+        return [];
+      }
+    },
+  },
+
   Project: {
     tasks: async (parent: ServiceRecord) => {
       try {
