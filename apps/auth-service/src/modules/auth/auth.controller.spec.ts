@@ -19,7 +19,7 @@ jest.mock('../../lib/prisma', () => ({
     organization: { findUnique: jest.fn(), create: jest.fn() },
     role: { create: jest.fn(), findFirst: jest.fn() },
     organizationMember: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
-    invitation: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+    invitation: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
     refreshToken: {
       findUnique: jest.fn(),
       delete: jest.fn().mockResolvedValue(undefined),
@@ -422,6 +422,8 @@ describe('Auth Controller', () => {
     });
 
     it('creates invitation and returns token', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+      (prisma.invitation.findFirst as jest.Mock).mockResolvedValue(null);
       (prisma.invitation.create as jest.Mock).mockResolvedValue({ token: 'mock-uuid' });
       const req: any = { body: { email: 'a@b.com', organizationId: 'org-1', role: 'Manager' } };
       const res = mockRes();
@@ -438,6 +440,8 @@ describe('Auth Controller', () => {
     });
 
     it('defaults role to Member', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+      (prisma.invitation.findFirst as jest.Mock).mockResolvedValue(null);
       (prisma.invitation.create as jest.Mock).mockResolvedValue({ token: 'mock-uuid' });
       const req: any = { body: { email: 'a@b.com', organizationId: 'org-1' } };
       const res = mockRes();
@@ -447,7 +451,33 @@ describe('Auth Controller', () => {
       });
     });
 
+    it('returns 409 when user is already an organization member', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'u1', email: 'a@b.com' });
+      (prisma.organizationMember.findFirst as jest.Mock).mockResolvedValue({
+        id: 'mem-1',
+        userId: 'u1',
+        organizationId: 'org-1',
+      });
+      const req: any = { body: { email: 'a@b.com', organizationId: 'org-1' } };
+      const res = mockRes();
+      await createInvitationHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(prisma.invitation.create).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when a pending invitation exists', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+      (prisma.invitation.findFirst as jest.Mock).mockResolvedValue({ id: 'inv-1' });
+      const req: any = { body: { email: 'a@b.com', organizationId: 'org-1' } };
+      const res = mockRes();
+      await createInvitationHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(prisma.invitation.create).not.toHaveBeenCalled();
+    });
+
     it('returns 500 on exception', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+      (prisma.invitation.findFirst as jest.Mock).mockResolvedValue(null);
       (prisma.invitation.create as jest.Mock).mockRejectedValue(new Error('DB'));
       const req: any = { body: { email: 'a@b.com', organizationId: 'org-1' } };
       const res = mockRes();

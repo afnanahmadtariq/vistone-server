@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { v4 as uuidv4 } from "uuid";
 import prisma from "../../lib/prisma";
 import { consumeValidRefreshToken, persistRefreshToken } from "../../lib/refresh-token-store";
 import * as crypto from "crypto";
@@ -827,8 +828,6 @@ export async function getInviteDetailsHandler(req: Request, res: Response) {
   }
 }
 
-import { v4 as uuidv4 } from 'uuid';
-
 export async function createInvitationHandler(req: Request, res: Response) {
   try {
     const { email, role, organizationId } = req.body;
@@ -838,12 +837,52 @@ export async function createInvitationHandler(req: Request, res: Response) {
       return;
     }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!normalizedEmail) {
+      res.status(400).json({ error: 'Email is required' });
+      return;
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+    });
+
+    if (existingUser) {
+      const membership = await prisma.organizationMember.findFirst({
+        where: { organizationId, userId: existingUser.id },
+      });
+      if (membership) {
+        res.status(409).json({
+          error:
+            'This email is already part of your organization. Remove the existing membership before inviting again with a different role.',
+        });
+        return;
+      }
+    }
+
+    const now = new Date();
+    const pendingInvite = await prisma.invitation.findFirst({
+      where: {
+        organizationId,
+        acceptedAt: null,
+        expiresAt: { gt: now },
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+      },
+    });
+
+    if (pendingInvite) {
+      res.status(409).json({
+        error: 'An invitation is already pending for this email.',
+      });
+      return;
+    }
+
     const token = uuidv4();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
 
     const invitation = await prisma.invitation.create({
       data: {
-        email,
+        email: normalizedEmail,
         role: role || 'Member',
         token,
         organizationId,

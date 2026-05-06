@@ -3,6 +3,28 @@ import prisma from "../../lib/prisma";
 
 export async function createOrganizationMemberHandler(req: Request, res: Response) {
     try {
+    const { organizationId, userId } = req.body as {
+      organizationId?: string;
+      userId?: string;
+    };
+
+    if (!organizationId || !userId) {
+      res.status(400).json({ error: 'organizationId and userId are required' });
+      return;
+    }
+
+    const existing = await prisma.organizationMember.findFirst({
+      where: { organizationId, userId },
+    });
+
+    if (existing) {
+      res.status(409).json({
+        error:
+          'This user is already a member of this organization.',
+      });
+      return;
+    }
+
     const member = await prisma.organizationMember.create({
       data: req.body,
     });
