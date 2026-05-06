@@ -2986,16 +2986,32 @@ export const resolvers = {
       const project = await projectClient.post('/projects', projectData);
 
       if (input.contributors && input.contributors.length > 0) {
-        for (const userId of input.contributors) {
-          try {
+        const contributorIds = Array.from(
+          new Set(
+            input.contributors
+              .filter((userId: unknown) => typeof userId === "string")
+              .map((userId: string) => userId.trim())
+              .filter(Boolean)
+          )
+        );
+
+        try {
+          for (const userId of contributorIds) {
             await projectClient.post('/project-members', {
               projectId: project.id,
               userId,
               role: 'contributor',
             });
-          } catch (error) {
-            console.error(`Failed to add contributor ${userId}:`, error);
           }
+        } catch (error) {
+          console.error('[createProject] Failed to assign all contributors:', error);
+          // Avoid leaving behind a partially configured project.
+          await projectClient.delete('/projects', project.id).catch((cleanupError: unknown) => {
+            console.error('[createProject] Cleanup failed after contributor assignment error:', cleanupError);
+          });
+          throw new GraphQLError('Failed to assign project contributors', {
+            extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+          });
         }
       }
 
@@ -3131,34 +3147,50 @@ export const resolvers = {
 
       if (input.contributors !== undefined) {
         try {
+          const requestedContributorIds = Array.from(
+            new Set(
+              (Array.isArray(input.contributors) ? input.contributors : [])
+                .filter((userId: unknown) => typeof userId === "string")
+                .map((userId: string) => userId.trim())
+                .filter(Boolean)
+            )
+          );
+
           // Get existing members for the project
           const existingMembers = await projectClient.get(`/project-members?projectId=${id}`);
           const existingMemberArray = Array.isArray(existingMembers) ? existingMembers : [];
-          
+
           // Users that are currently members
           const existingUserIds = existingMemberArray.map((m: any) => m.userId);
-          
+
           // Determine which to delete
-          const membersToDelete = existingMemberArray.filter((m: any) => !input.contributors.includes(m.userId));
-          
+          const membersToDelete = existingMemberArray.filter(
+            (m: any) => !requestedContributorIds.includes(m.userId)
+          );
+
           // Determine which to add
-          const userIdsToAdd = input.contributors.filter((userId: string) => !existingUserIds.includes(userId));
-          
+          const userIdsToAdd = requestedContributorIds.filter(
+            (userId: string) => !existingUserIds.includes(userId)
+          );
+
           // Delete removed members
           for (const member of membersToDelete) {
             await projectClient.delete('/project-members', member.id);
           }
-          
+
           // Add new members
           for (const userId of userIdsToAdd) {
             await projectClient.post('/project-members', {
               projectId: id,
-              userId: userId,
+              userId,
               role: 'contributor'
             });
           }
         } catch (error) {
           console.error('[updateProject] Error updating contributors:', error);
+          throw new GraphQLError('Failed to synchronize project contributors', {
+            extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+          });
         }
       }
 

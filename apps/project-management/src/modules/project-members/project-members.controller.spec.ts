@@ -11,6 +11,7 @@ jest.mock('../../lib/prisma', () => ({
   default: {
     projectMember: {
       create: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
@@ -41,6 +42,7 @@ describe('ProjectMembers Controller – Unit Tests', () => {
 
   describe('createProjectMemberHandler', () => {
     it('creates and returns a project member', async () => {
+      (prisma.projectMember.findFirst as jest.Mock).mockResolvedValue(null);
       (prisma.projectMember.create as jest.Mock).mockResolvedValue(sample);
       const req: any = { body: { projectId: 'proj-1', userId: 'user-1' } };
       const res = mockRes();
@@ -50,14 +52,26 @@ describe('ProjectMembers Controller – Unit Tests', () => {
       expect(res.json).toHaveBeenCalledWith(sample);
     });
 
-    it('returns 500 on error', async () => {
-      (prisma.projectMember.create as jest.Mock).mockRejectedValue(new Error('DB'));
+    it('returns 400 when required fields are missing', async () => {
+      (prisma.projectMember.findFirst as jest.Mock).mockResolvedValue(null);
       const req: any = { body: {} };
       const res = mockRes();
 
       await createProjectMemberHandler(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(prisma.projectMember.create).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when member already exists', async () => {
+      (prisma.projectMember.findFirst as jest.Mock).mockResolvedValue({ id: 'pm-2' });
+      const req: any = { body: { projectId: 'proj-1', userId: 'user-1' } };
+      const res = mockRes();
+
+      await createProjectMemberHandler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(prisma.projectMember.create).not.toHaveBeenCalled();
     });
   });
 
@@ -106,6 +120,16 @@ describe('ProjectMembers Controller – Unit Tests', () => {
 
       expect(res.json).toHaveBeenCalledWith(updated);
     });
+
+    it('returns 404 when updating non-existing member', async () => {
+      (prisma.projectMember.update as jest.Mock).mockRejectedValue({ code: 'P2025' });
+      const req: any = { params: { id: 'missing' }, body: { role: 'LEAD' } };
+      const res = mockRes();
+
+      await updateProjectMemberHandler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
   });
 
   describe('deleteProjectMemberHandler', () => {
@@ -117,6 +141,16 @@ describe('ProjectMembers Controller – Unit Tests', () => {
       await deleteProjectMemberHandler(req, res);
 
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    });
+
+    it('returns 404 when deleting non-existing member', async () => {
+      (prisma.projectMember.delete as jest.Mock).mockRejectedValue({ code: 'P2025' });
+      const req: any = { params: { id: 'missing' } };
+      const res = mockRes();
+
+      await deleteProjectMemberHandler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
     });
   });
 });
