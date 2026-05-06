@@ -14,7 +14,7 @@ async function projectNameTaken(
     select: { id: true, name: true },
   });
   return rows.some(
-    (p) =>
+    (p: { id: string; name: string }) =>
       p.id !== excludeProjectId &&
       normalizeOrgEntityNameKey(p.name) === key
   );

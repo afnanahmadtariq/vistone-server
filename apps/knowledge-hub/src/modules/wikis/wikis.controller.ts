@@ -16,7 +16,8 @@ async function wikiNameTaken(
         select: { id: true, name: true },
     });
     return rows.some(
-        (w) => w.id !== excludeWikiId && normalizeOrgEntityNameKey(w.name) === key
+        (w: { id: string; name: string }) =>
+            w.id !== excludeWikiId && normalizeOrgEntityNameKey(w.name) === key
     );
 }
 

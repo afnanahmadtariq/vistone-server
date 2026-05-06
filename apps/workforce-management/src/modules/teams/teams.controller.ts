@@ -94,7 +94,7 @@ async function teamNameTaken(
     select: { id: true, name: true },
   });
   return rows.some(
-    (t) =>
+    (t: { id: string; name: string }) =>
       t.id !== excludeTeamId && normalizeOrgEntityNameKey(t.name) === key
   );
 }
