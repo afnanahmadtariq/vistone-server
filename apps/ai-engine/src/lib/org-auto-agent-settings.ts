@@ -16,6 +16,8 @@ export interface OrgAutoAgentSettings {
    * Applies to the client-workspace automation pipeline, not the general AI chat UI.
    */
   skipUserConfirmation: boolean;
+  /** When true, new client_workspace text messages can auto-trigger the pipeline. */
+  autoRunOnClientWorkspaceMessage: boolean;
 }
 
 export const DEFAULT_ORG_AUTO_AGENT: OrgAutoAgentSettings = {
@@ -24,6 +26,7 @@ export const DEFAULT_ORG_AUTO_AGENT: OrgAutoAgentSettings = {
   autoAssignBySkillsAndLoad: false,
   fullAuto: false,
   skipUserConfirmation: false,
+  autoRunOnClientWorkspaceMessage: true,
 };
 
 export function parseOrgAutoAgentSettings(raw: unknown): OrgAutoAgentSettings {
@@ -37,6 +40,8 @@ export function parseOrgAutoAgentSettings(raw: unknown): OrgAutoAgentSettings {
     autoAssignBySkillsAndLoad: !!o.autoAssignBySkillsAndLoad,
     fullAuto: !!o.fullAuto,
     skipUserConfirmation: !!o.skipUserConfirmation,
+    autoRunOnClientWorkspaceMessage:
+      o.autoRunOnClientWorkspaceMessage === undefined ? true : !!o.autoRunOnClientWorkspaceMessage,
   };
 }
 
