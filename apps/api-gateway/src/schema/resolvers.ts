@@ -13,6 +13,7 @@ import {
 } from '../services/backendClient';
 import { requireAuth, requireOrganizer, requireOrganization, requirePermission, hasMetaPermission, isOrganizer, getOrgId, AuthContext } from '../lib/auth';
 import { verifyTurnstileToken } from '../lib/turnstile';
+import { ServiceError } from '../lib/errors';
 import { enrichUserWithWorkforceData, type GraphQLLoaders } from '../lib/graphqlLoaders';
 
 interface Context extends AuthContext {
@@ -2186,15 +2187,56 @@ export const resolvers = {
         }
       }
 
-      // Add user to organization as a member with the resolved roleId
+      const existingMemberships = await authClient.get(
+        `/organization-members?userId=${encodeURIComponent(user.id)}&organizationId=${encodeURIComponent(organizationId)}`,
+      );
+      const membershipList = Array.isArray(existingMemberships) ? existingMemberships : [];
+      if (membershipList.length > 0) {
+        throw new GraphQLError('This email is already part of your organization.', {
+          extensions: { code: 'CONFLICT', statusCode: 409 },
+        });
+      }
+
+      // Reserve invitation first (auth service enforces no duplicate pending / member email)
+      let inviteToken = '';
+      try {
+        const invData = await authClient.post('/auth/invitations', {
+          email: input.email,
+          role: input.role,
+          organizationId,
+        });
+        if (invData && invData.token) {
+          inviteToken = invData.token;
+        } else {
+          throw new GraphQLError('No token returned from auth service', {
+            extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+          });
+        }
+      } catch (invErr) {
+        if (invErr instanceof ServiceError && invErr.statusCode === 409) {
+          throw new GraphQLError(invErr.message, {
+            extensions: { code: 'CONFLICT', statusCode: 409 },
+          });
+        }
+        console.error('Failed to create invitation record:', invErr);
+        throw new GraphQLError('Failed to generate secure invitation token. Please try again.', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+        });
+      }
+
       try {
         await authClient.post('/organization-members', {
           userId: user.id,
           organizationId,
           roleId, // Use the resolved roleId from input.role
         });
-      } catch {
-        // User might already be a member, continue
+      } catch (memberErr) {
+        if (memberErr instanceof ServiceError && memberErr.statusCode === 409) {
+          throw new GraphQLError(memberErr.message, {
+            extensions: { code: 'CONFLICT', statusCode: 409 },
+          });
+        }
+        throw memberErr;
       }
 
       // If teamId provided, add user to team
@@ -2218,28 +2260,6 @@ export const resolvers = {
       try {
         const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
         const recipientName = `${input.firstName || ''} ${input.lastName || ''}`.trim() || undefined;
-
-        // Generate invite token by calling the new auth service invitations endpoint
-        let inviteToken = '';
-        try {
-          const invData = await authClient.post('/auth/invitations', {
-            email: input.email,
-            role: input.role,
-            organizationId,
-          });
-          if (invData && invData.token) {
-            inviteToken = invData.token;
-          } else {
-            throw new GraphQLError('No token returned from auth service', {
-              extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
-            });
-          }
-        } catch (invErr) {
-          console.error('Failed to create invitation record:', invErr);
-          throw new GraphQLError('Failed to generate secure invitation token. Please try again.', {
-            extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
-          });
-        }
 
         if (input.teamId && teamName) {
           // Send team invitation
@@ -2975,6 +2995,18 @@ export const resolvers = {
         });
       }
 
+      const existingOrgMemberships = await authClient.get(
+        `/organization-members?userId=${encodeURIComponent(user.id)}&organizationId=${encodeURIComponent(organizationId)}`,
+      );
+      const existingMembershipRows = Array.isArray(existingOrgMemberships)
+        ? existingOrgMemberships
+        : [];
+      if (existingMembershipRows.length > 0) {
+        throw new GraphQLError('This email is already part of your organization.', {
+          extensions: { code: 'CONFLICT', statusCode: 409 },
+        });
+      }
+
       // Find or create 'Client' role
       let roleId: string | null = null;
       try {
@@ -3009,14 +3041,46 @@ export const resolvers = {
         console.error('Failed to resolve Client role:', e);
       }
 
+      let inviteToken = '';
+      try {
+        const invData = await authClient.post('/auth/invitations', {
+          email: input.email,
+          role: 'Client',
+          organizationId,
+          senderId: currentUser.id,
+        });
+        if (invData && invData.token) {
+          inviteToken = invData.token;
+        } else {
+          throw new GraphQLError('No invitation token returned from auth service', {
+            extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+          });
+        }
+      } catch (invErr) {
+        if (invErr instanceof ServiceError && invErr.statusCode === 409) {
+          throw new GraphQLError(invErr.message, {
+            extensions: { code: 'CONFLICT', statusCode: 409 },
+          });
+        }
+        console.error('Failed to create invitation record for client:', invErr);
+        throw new GraphQLError('Failed to create client invitation. Please try again.', {
+          extensions: { code: 'INTERNAL_SERVER_ERROR', statusCode: 500 },
+        });
+      }
+
       try {
         await authClient.post('/organization-members', {
           userId: user.id,
           organizationId,
           roleId,
         });
-      } catch {
-        // May already exist
+      } catch (memberErr) {
+        if (memberErr instanceof ServiceError && memberErr.statusCode === 409) {
+          throw new GraphQLError(memberErr.message, {
+            extensions: { code: 'CONFLICT', statusCode: 409 },
+          });
+        }
+        throw memberErr;
       }
 
       let client;
@@ -3068,27 +3132,6 @@ export const resolvers = {
         } catch {
           // Relationship might already exist
         }
-      }
-
-      // Generate invite token by calling the auth service invitations endpoint
-      let inviteToken = '';
-      try {
-        const invData = await authClient.post('/auth/invitations', {
-          email: input.email,
-          role: 'Client',
-          organizationId,
-          senderId: currentUser.id,
-        });
-        if (invData && invData.token) {
-          inviteToken = invData.token;
-        } else {
-          // Fallback to user.id if token is not returned (unlikely)
-          inviteToken = user.id;
-        }
-      } catch (invErr) {
-        console.error('Failed to create invitation record for client:', invErr);
-        // Fallback to user.id to at least try sending the invite
-        inviteToken = user.id;
       }
 
       try {

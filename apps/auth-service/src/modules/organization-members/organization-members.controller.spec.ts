@@ -11,6 +11,7 @@ jest.mock('../../lib/prisma', () => ({
   default: {
     organizationMember: {
       create: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
       update: jest.fn(),
@@ -41,6 +42,7 @@ describe('OrganizationMembers Controller – Unit Tests', () => {
 
   describe('createOrganizationMemberHandler', () => {
     it('creates and returns a member', async () => {
+      (prisma.organizationMember.findFirst as jest.Mock).mockResolvedValue(null);
       (prisma.organizationMember.create as jest.Mock).mockResolvedValue(sampleMember);
       const req: any = { body: { organizationId: 'org-1', userId: 'user-1' } };
       const res = mockRes();
@@ -50,9 +52,31 @@ describe('OrganizationMembers Controller – Unit Tests', () => {
       expect(res.json).toHaveBeenCalledWith(sampleMember);
     });
 
+    it('returns 409 when membership already exists', async () => {
+      (prisma.organizationMember.findFirst as jest.Mock).mockResolvedValue(sampleMember);
+      const req: any = { body: { organizationId: 'org-1', userId: 'user-1' } };
+      const res = mockRes();
+
+      await createOrganizationMemberHandler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(prisma.organizationMember.create).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when organizationId or userId missing', async () => {
+      const req: any = { body: { organizationId: 'org-1' } };
+      const res = mockRes();
+
+      await createOrganizationMemberHandler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(prisma.organizationMember.create).not.toHaveBeenCalled();
+    });
+
     it('returns 500 on error', async () => {
+      (prisma.organizationMember.findFirst as jest.Mock).mockResolvedValue(null);
       (prisma.organizationMember.create as jest.Mock).mockRejectedValue(new Error('DB'));
-      const req: any = { body: {} };
+      const req: any = { body: { organizationId: 'org-1', userId: 'user-1' } };
       const res = mockRes();
 
       await createOrganizationMemberHandler(req, res);
