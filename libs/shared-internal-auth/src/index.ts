@@ -5,3 +5,4 @@ export {
   type InternalAuthUser,
   type RequestWithInternalUser,
 } from './lib/internal-service-auth.js';
+export { normalizeOrgEntityNameKey } from './lib/org-entity-name.js';

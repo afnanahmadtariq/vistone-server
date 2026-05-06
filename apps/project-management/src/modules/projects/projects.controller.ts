@@ -1,5 +1,24 @@
 import { Request, Response } from "express";
+import { normalizeOrgEntityNameKey } from "@vistone-server/shared-internal-auth";
 import prisma from "../../lib/prisma";
+
+async function projectNameTaken(
+  organizationId: string,
+  name: string,
+  excludeProjectId?: string
+): Promise<boolean> {
+  const key = normalizeOrgEntityNameKey(name);
+  if (!key) return false;
+  const rows = await prisma.project.findMany({
+    where: { organizationId, deletedAt: null },
+    select: { id: true, name: true },
+  });
+  return rows.some(
+    (p) =>
+      p.id !== excludeProjectId &&
+      normalizeOrgEntityNameKey(p.name) === key
+  );
+}
 
 export async function createProjectHandler(req: Request, res: Response) {
   try {
@@ -18,6 +37,22 @@ export async function createProjectHandler(req: Request, res: Response) {
       teamIds,
       metadata,
     } = req.body;
+
+    if (typeof organizationId !== "string" || !organizationId.trim()) {
+      res.status(400).json({ error: "organizationId is required" });
+      return;
+    }
+    if (typeof name !== "string" || !name.trim()) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
+    if (await projectNameTaken(organizationId.trim(), name)) {
+      res.status(409).json({
+        error:
+          "A project with this name already exists in your organization.",
+      });
+      return;
+    }
 
     const project = await prisma.project.create({
       data: {
@@ -120,10 +155,40 @@ export async function getProjectByIdHandler(req: Request, res: Response) {
 
 export async function updateProjectHandler(req: Request, res: Response) {
   try {
+    const existing = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, organizationId: true, deletedAt: true },
+    });
+    if (!existing || existing.deletedAt) {
+      res.status(404).json({ error: "Project not found" });
+      return;
+    }
+
     const data: Record<string, unknown> = { ...req.body };
     // Convert date strings to Date objects
     if (data.startDate) data.startDate = new Date(data.startDate as string);
     if (data.endDate) data.endDate = new Date(data.endDate as string);
+
+    if (data.name !== undefined && data.name !== null) {
+      const nextName = data.name;
+      if (typeof nextName !== "string" || !nextName.trim()) {
+        res.status(400).json({ error: "name cannot be empty" });
+        return;
+      }
+      if (
+        await projectNameTaken(
+          existing.organizationId,
+          nextName,
+          req.params.id
+        )
+      ) {
+        res.status(409).json({
+          error:
+            "A project with this name already exists in your organization.",
+        });
+        return;
+      }
+    }
 
     const project = await prisma.project.update({
       where: { id: req.params.id },

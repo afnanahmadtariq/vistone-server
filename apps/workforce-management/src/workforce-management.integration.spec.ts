@@ -43,6 +43,7 @@ describe('GET /teams', () => {
 
 describe('POST /teams', () => {
   it('creates a team', async () => {
+    (prisma.team.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.team.create as jest.Mock).mockResolvedValue(team);
     const res = await request(app).post('/teams').send({ organizationId: 'org-1', name: 'Engineering' });
     expect([200, 201]).toContain(res.status);
@@ -65,6 +66,11 @@ describe('GET /teams/:id', () => {
 
 describe('PUT /teams/:id', () => {
   it('updates a team', async () => {
+    (prisma.team.findUnique as jest.Mock).mockResolvedValue({
+      id: 'team-1',
+      organizationId: 'org-1',
+    });
+    (prisma.team.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.team.update as jest.Mock).mockResolvedValue({ ...team, name: 'Platform' });
     const res = await request(app).put('/teams/team-1').send({ name: 'Platform' });
     expect(res.status).toBe(200);

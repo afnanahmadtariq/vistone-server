@@ -1,6 +1,24 @@
 import { Request, Response } from 'express';
+import type { RequestWithInternalUser } from '@vistone-server/shared-internal-auth';
+import { normalizeOrgEntityNameKey } from '@vistone-server/shared-internal-auth';
 import prisma from '../../lib/prisma';
 import { ensureQueryOrgMatchesCaller, ensureWikiInCallerOrg } from '../../lib/org-scope';
+
+async function wikiNameTaken(
+    organizationId: string,
+    name: string,
+    excludeWikiId?: string
+): Promise<boolean> {
+    const key = normalizeOrgEntityNameKey(name);
+    if (!key) return false;
+    const rows = await prisma.wiki.findMany({
+        where: { organizationId },
+        select: { id: true, name: true },
+    });
+    return rows.some(
+        (w) => w.id !== excludeWikiId && normalizeOrgEntityNameKey(w.name) === key
+    );
+}
 
 export async function createWiki(req: Request, res: Response): Promise<void> {
     try {
@@ -9,12 +27,50 @@ export async function createWiki(req: Request, res: Response): Promise<void> {
             res.status(400).json({ error: 'organizationId is required' });
             return;
         }
+        const rawName = req.body?.name;
+        if (typeof rawName !== 'string' || !rawName.trim()) {
+            res.status(400).json({ error: 'name is required' });
+            return;
+        }
         if (!ensureQueryOrgMatchesCaller(req, orgId.trim(), res)) return;
+
+        if (await wikiNameTaken(orgId.trim(), rawName)) {
+            res.status(409).json({
+                error: 'A wiki with this name already exists in your organization.',
+            });
+            return;
+        }
 
         const wiki = await prisma.wiki.create({
             data: req.body,
             include: { pages: true, folders: true, documents: true }
         });
+
+        // So the creator appears in the API gateway `wikis` list for non-organizers
+        // (access is otherwise limited to project-linked wikis + explicit wiki members).
+        const creatorId = (req as RequestWithInternalUser).internalUser?.id;
+        if (creatorId) {
+            try {
+                await prisma.wikiMember.create({
+                    data: {
+                        wikiId: wiki.id,
+                        userId: creatorId,
+                        role: 'admin',
+                    },
+                });
+            } catch (memberErr: unknown) {
+                const code =
+                    memberErr && typeof memberErr === 'object' && 'code' in memberErr
+                        ? (memberErr as { code?: string }).code
+                        : '';
+                if (code === 'P2002') {
+                    // already a member (idempotent)
+                } else {
+                    console.error('[createWiki] failed to add creator as wiki member:', memberErr);
+                }
+            }
+        }
+
         res.status(201).json(wiki);
     } catch (error) {
         res.status(500).json({ error: 'Failed to create wiki' });
@@ -74,6 +130,29 @@ export async function updateWiki(req: Request, res: Response): Promise<void> {
     try {
         const id = req.params.id;
         if (!(await ensureWikiInCallerOrg(id, req, res))) return;
+
+        const existing = await prisma.wiki.findUnique({
+            where: { id },
+            select: { organizationId: true },
+        });
+        if (!existing) {
+            res.status(404).json({ error: 'Wiki not found' });
+            return;
+        }
+
+        if (req.body?.name !== undefined && req.body?.name !== null) {
+            const nextName = req.body.name;
+            if (typeof nextName !== 'string' || !nextName.trim()) {
+                res.status(400).json({ error: 'name cannot be empty' });
+                return;
+            }
+            if (await wikiNameTaken(existing.organizationId, nextName, id)) {
+                res.status(409).json({
+                    error: 'A wiki with this name already exists in your organization.',
+                });
+                return;
+            }
+        }
 
         const nextOrg = req.body?.organizationId;
         if (typeof nextOrg === 'string' && nextOrg.trim() && !ensureQueryOrgMatchesCaller(req, nextOrg.trim(), res)) return;

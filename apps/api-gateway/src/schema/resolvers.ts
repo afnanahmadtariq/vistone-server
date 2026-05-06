@@ -174,11 +174,9 @@ async function resolveChatChannelMemberIds(
   return Array.from(memberIds);
 }
 
-async function getAccessibleWikiIds(user: ServiceRecord): Promise<Set<string>> {
+async function wikiIdsFromLinkedProjects(user: ServiceRecord): Promise<Set<string>> {
   const wikiIds = new Set<string>();
   const accessibleProjectIds = await getAccessibleProjectIds(user);
-
-  if (accessibleProjectIds.size === 0) return wikiIds;
 
   await Promise.all(
     Array.from(accessibleProjectIds).map(async (projectId) => {
@@ -196,6 +194,22 @@ async function getAccessibleWikiIds(user: ServiceRecord): Promise<Set<string>> {
   );
 
   return wikiIds;
+}
+
+/** Wikis linked to projects the user can access, plus wikis where they are an explicit member. */
+async function getAccessibleWikiIds(user: ServiceRecord): Promise<Set<string>> {
+  const fromProjects = await wikiIdsFromLinkedProjects(user);
+  const explicit = await knowledgeClient
+    .get(`/wiki-members?userId=${encodeURIComponent(user.id)}`)
+    .catch(() => [] as ServiceRecord[]);
+  if (Array.isArray(explicit)) {
+    for (const row of explicit) {
+      if (typeof (row as ServiceRecord)?.wikiId === 'string' && (row as ServiceRecord).wikiId) {
+        fromProjects.add((row as ServiceRecord).wikiId as string);
+      }
+    }
+  }
+  return fromProjects;
 }
 
 async function assertWikiAccess(user: ServiceRecord, wikiId: string): Promise<void> {
@@ -746,6 +760,11 @@ export const resolvers = {
       if (projectId) params.append('projectId', projectId);
       if (wikiId) params.append('wikiId', wikiId);
       return knowledgeClient.get(`/wiki-project-links?${params.toString()}`);
+    },
+    wikiMembers: async (_: unknown, { wikiId }: { wikiId: string }, context: Context) => {
+      const user = await requirePermission(context, 'wiki', 'read');
+      await assertWikiAccess(user, wikiId);
+      return knowledgeClient.get(`/wiki-members?wikiId=${encodeURIComponent(wikiId)}`);
     },
     wikiPages: async (_: unknown, { wikiId }: { wikiId: string }, context: Context) => {
       const user = await requirePermission(context, 'wiki', 'read');
@@ -3141,6 +3160,24 @@ export const resolvers = {
     deleteWikiProjectLink: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'wiki', 'delete');
       return knowledgeClient.delete('/wiki-project-links', id);
+    },
+    createWikiMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      const user = await requirePermission(context, 'wiki', 'update');
+      if (typeof input?.wikiId !== 'string' || !input.wikiId) {
+        throw new GraphQLError('wikiId is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      await assertWikiAccess(user, input.wikiId);
+      return knowledgeClient.post('/wiki-members', input);
+    },
+    deleteWikiMember: async (_: unknown, { id }: { id: string }, context: Context) => {
+      const user = await requirePermission(context, 'wiki', 'update');
+      const member = await knowledgeClient.getById('/wiki-members', id).catch(() => null);
+      if (member && typeof member.wikiId === 'string') {
+        await assertWikiAccess(user, member.wikiId);
+      }
+      return knowledgeClient.delete('/wiki-members', id);
     },
     createWikiPage: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'wiki', 'create');

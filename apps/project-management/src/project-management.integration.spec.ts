@@ -38,6 +38,7 @@ describe('GET /projects', () => {
 
 describe('POST /projects', () => {
   it('creates a project', async () => {
+    (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.project.create as jest.Mock).mockResolvedValue(project);
     const res = await request(app).post('/projects').send({ organizationId: 'org-1', name: 'Alpha', status: 'ACTIVE' });
     expect([200, 201]).toContain(res.status);
@@ -60,6 +61,12 @@ describe('GET /projects/:id', () => {
 
 describe('PUT /projects/:id', () => {
   it('updates a project', async () => {
+    (prisma.project.findUnique as jest.Mock).mockResolvedValue({
+      id: 'proj-1',
+      organizationId: 'org-1',
+      deletedAt: null,
+    });
+    (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.project.update as jest.Mock).mockResolvedValue({ ...project, name: 'Beta' });
     const res = await request(app).put('/projects/proj-1').send({ name: 'Beta' });
     expect(res.status).toBe(200);

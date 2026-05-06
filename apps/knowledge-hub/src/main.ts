@@ -9,6 +9,7 @@ import documentRoutes from './modules/documents/documents.routes';
 import documentPermissionRoutes from './modules/document-permissions/document-permissions.routes';
 import wikisRoutes from './modules/wikis/wikis.routes';
 import wikiProjectLinksRoutes from './modules/wiki-project-links/wiki-project-links.routes';
+import wikiMembersRoutes from './modules/wiki-members/wiki-members.routes';
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3005;
 
@@ -36,6 +37,7 @@ app.get('/health', (req, res) => {
 // Documentation & Knowledge routes
 app.use('/wikis', wikisRoutes);
 app.use('/wiki-project-links', wikiProjectLinksRoutes);
+app.use('/wiki-members', wikiMembersRoutes);
 app.use('/wiki-pages', wikiPageRoutes);
 app.use('/wiki-page-versions', wikiPageVersionRoutes);
 app.use('/document-folders', documentFolderRoutes);

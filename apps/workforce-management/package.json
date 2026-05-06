@@ -19,7 +19,12 @@
           "bundle": true,
           "main": "apps/workforce-management/src/main.ts",
           "tsConfig": "apps/workforce-management/tsconfig.app.json",
-          "external": ["@prisma/client", "@prisma/adapter-pg", "pg"],
+          "external": [
+            "@prisma/client",
+            "@prisma/adapter-pg",
+            "pg",
+            "@vistone-server/shared-internal-auth"
+          ],
           "assets": [
             "apps/workforce-management/src/assets"
           ],

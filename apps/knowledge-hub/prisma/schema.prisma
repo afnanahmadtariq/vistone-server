@@ -20,11 +20,27 @@ model Wiki {
   folders        DocumentFolder[]
   documents      Document[]
   projectLinks   WikiProjectLink[]
+  members        WikiMember[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@map("wikis")
+  @@schema("knowledge")
+}
+
+model WikiMember {
+  id        String   @id @default(uuid())
+  wikiId    String
+  userId    String
+  role      String   @default("member")
+
+  wiki      Wiki     @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([wikiId, userId])
+  @@map("wiki_members")
   @@schema("knowledge")
 }
 

@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { normalizeOrgEntityNameKey } from "@vistone-server/shared-internal-auth";
 import prisma from "../../lib/prisma";
 import axios from "axios";
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
@@ -81,8 +82,42 @@ async function fetchProjects(req?: Request): Promise<ProjectData[]> {
   }
 }
 
+async function teamNameTaken(
+  organizationId: string,
+  name: string,
+  excludeTeamId?: string
+): Promise<boolean> {
+  const key = normalizeOrgEntityNameKey(name);
+  if (!key) return false;
+  const rows = await prisma.team.findMany({
+    where: { organizationId },
+    select: { id: true, name: true },
+  });
+  return rows.some(
+    (t) =>
+      t.id !== excludeTeamId && normalizeOrgEntityNameKey(t.name) === key
+  );
+}
+
 export async function createTeamHandler(req: Request, res: Response) {
   try {
+    const { organizationId, name } = req.body as Record<string, unknown>;
+
+    if (typeof organizationId !== "string" || !organizationId.trim()) {
+      res.status(400).json({ error: "organizationId is required" });
+      return;
+    }
+    if (typeof name !== "string" || !name.trim()) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
+    if (await teamNameTaken(organizationId.trim(), name)) {
+      res.status(409).json({
+        error: "A team with this name already exists in your organization.",
+      });
+      return;
+    }
+
     const team = await prisma.team.create({
       data: req.body,
     });
@@ -250,6 +285,36 @@ export async function getTeamByIdHandler(req: Request, res: Response) {
 
 export async function updateTeamHandler(req: Request, res: Response) {
   try {
+    const existing = await prisma.team.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, organizationId: true },
+    });
+    if (!existing) {
+      res.status(404).json({ error: 'Team not found' });
+      return;
+    }
+
+    const body = req.body as Record<string, unknown>;
+    if (body.name !== undefined && body.name !== null) {
+      const nextName = body.name;
+      if (typeof nextName !== "string" || !nextName.trim()) {
+        res.status(400).json({ error: "name cannot be empty" });
+        return;
+      }
+      if (
+        await teamNameTaken(
+          existing.organizationId,
+          nextName,
+          req.params.id
+        )
+      ) {
+        res.status(409).json({
+          error: "A team with this name already exists in your organization.",
+        });
+        return;
+      }
+    }
+
     const team = await prisma.team.update({
       where: { id: req.params.id },
       data: req.body,

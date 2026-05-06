@@ -19,6 +19,12 @@ jest.mock('../../lib/prisma', () => ({
   },
 }));
 
+const existingProjectRow = {
+  id: 'proj-1',
+  organizationId: 'org-1',
+  deletedAt: null as Date | null,
+};
+
 import prisma from '../../lib/prisma';
 
 const mockRes = () => {
@@ -53,6 +59,7 @@ describe('Projects Controller – Unit Tests', () => {
   /* ────────── createProjectHandler ────────── */
   describe('createProjectHandler', () => {
     it('creates project with all fields destructured properly', async () => {
+      (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.project.create as jest.Mock).mockResolvedValue(sampleProject);
       const req: any = {
         body: {
@@ -87,6 +94,7 @@ describe('Projects Controller – Unit Tests', () => {
     });
 
     it('handles null dates when startDate/endDate not provided', async () => {
+      (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.project.create as jest.Mock).mockResolvedValue(sampleProject);
       const req: any = { body: { organizationId: 'org-1', name: 'No Dates' } };
       const res = mockRes();
@@ -101,9 +109,32 @@ describe('Projects Controller – Unit Tests', () => {
       });
     });
 
-    it('returns 500 on error', async () => {
-      (prisma.project.create as jest.Mock).mockRejectedValue(new Error('DB'));
+    it('returns 400 when organizationId or name missing', async () => {
       const req: any = { body: {} };
+      const res = mockRes();
+      await createProjectHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ error: 'organizationId is required' });
+      expect(prisma.project.create).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when project name already exists in org', async () => {
+      (prisma.project.findMany as jest.Mock).mockResolvedValue([
+        { id: 'other', name: 'Alpha Project' },
+      ]);
+      const req: any = {
+        body: { organizationId: 'org-1', name: 'alpha project' },
+      };
+      const res = mockRes();
+      await createProjectHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(prisma.project.create).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 on error', async () => {
+      (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.project.create as jest.Mock).mockRejectedValue(new Error('DB'));
+      const req: any = { body: { organizationId: 'org-1', name: 'Ok' } };
       const res = mockRes();
       await createProjectHandler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
@@ -220,6 +251,8 @@ describe('Projects Controller – Unit Tests', () => {
   describe('updateProjectHandler', () => {
     it('updates project and converts date strings to Date objects', async () => {
       const updated = { ...sampleProject, name: 'Beta' };
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue(existingProjectRow);
+      (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.project.update as jest.Mock).mockResolvedValue(updated);
       const req: any = {
         params: { id: 'proj-1' },
@@ -240,6 +273,8 @@ describe('Projects Controller – Unit Tests', () => {
 
     it('does not convert dates when not provided', async () => {
       const updated = { ...sampleProject, name: 'Gamma' };
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue(existingProjectRow);
+      (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.project.update as jest.Mock).mockResolvedValue(updated);
       const req: any = { params: { id: 'proj-1' }, body: { name: 'Gamma' } };
       const res = mockRes();
@@ -248,7 +283,33 @@ describe('Projects Controller – Unit Tests', () => {
       expect(passedData.startDate).toBeUndefined();
     });
 
+    it('returns 404 when project missing or soft-deleted', async () => {
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue(null);
+      const req: any = { params: { id: 'missing' }, body: { name: 'X' } };
+      const res = mockRes();
+      await updateProjectHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(prisma.project.update).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when renaming to an existing project name', async () => {
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue(existingProjectRow);
+      (prisma.project.findMany as jest.Mock).mockResolvedValue([
+        { id: 'other-proj', name: 'Taken Name' },
+      ]);
+      const req: any = {
+        params: { id: 'proj-1' },
+        body: { name: 'taken name' },
+      };
+      const res = mockRes();
+      await updateProjectHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(prisma.project.update).not.toHaveBeenCalled();
+    });
+
     it('returns 500 on error', async () => {
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue(existingProjectRow);
+      (prisma.project.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.project.update as jest.Mock).mockRejectedValue(new Error('DB'));
       const req: any = { params: { id: 'proj-1' }, body: {} };
       const res = mockRes();

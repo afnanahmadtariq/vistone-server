@@ -440,6 +440,14 @@ export const typeDefs = gql`
     createdAt: DateTime!
   }
 
+  type WikiMember {
+    id: ID!
+    wikiId: String!
+    userId: String!
+    role: String!
+    createdAt: DateTime!
+  }
+
   type WikiPage {
     id: ID!
     wikiId: String!
@@ -805,6 +813,7 @@ export const typeDefs = gql`
     wikis(organizationId: ID!): [Wiki!]!
     wiki(id: ID!): Wiki
     wikiProjectLinks(projectId: String, wikiId: String): [WikiProjectLink!]!
+    wikiMembers(wikiId: ID!): [WikiMember!]!
     wikiPages(wikiId: ID!): [WikiPage!]!
     wikiPage(id: ID!): WikiPage
     wikiPageVersions(wikiPageId: ID!): [WikiPageVersion!]!
@@ -991,6 +1000,8 @@ export const typeDefs = gql`
     deleteWiki(id: ID!): DeleteResponse!
     createWikiProjectLink(input: JSON!): WikiProjectLink!
     deleteWikiProjectLink(id: ID!): DeleteResponse!
+    createWikiMember(input: JSON!): WikiMember!
+    deleteWikiMember(id: ID!): DeleteResponse!
     createWikiPage(input: JSON!): WikiPage!
     updateWikiPage(id: ID!, input: JSON!): WikiPage!
     deleteWikiPage(id: ID!): DeleteResponse!

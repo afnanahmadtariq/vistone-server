@@ -67,6 +67,7 @@ describe('Teams Controller – Unit Tests', () => {
   describe('createTeamHandler', () => {
     it('creates and returns a team', async () => {
       const created = { id: 'team-1', name: 'Engineering' };
+      (prisma.team.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.team.create as jest.Mock).mockResolvedValue(created);
       const req: any = { body: { organizationId: 'org-1', name: 'Engineering' } };
       const res = mockRes();
@@ -75,9 +76,31 @@ describe('Teams Controller – Unit Tests', () => {
       expect(res.json).toHaveBeenCalledWith(created);
     });
 
-    it('returns 500 on error', async () => {
-      (prisma.team.create as jest.Mock).mockRejectedValue(new Error('DB'));
+    it('returns 400 when organizationId or name missing', async () => {
       const req: any = { body: {} };
+      const res = mockRes();
+      await createTeamHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(prisma.team.create).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when team name already exists in org', async () => {
+      (prisma.team.findMany as jest.Mock).mockResolvedValue([
+        { id: 'other', name: 'Engineering' },
+      ]);
+      const req: any = {
+        body: { organizationId: 'org-1', name: 'engineering' },
+      };
+      const res = mockRes();
+      await createTeamHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(prisma.team.create).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 on error', async () => {
+      (prisma.team.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.team.create as jest.Mock).mockRejectedValue(new Error('DB'));
+      const req: any = { body: { organizationId: 'org-1', name: 'Ok' } };
       const res = mockRes();
       await createTeamHandler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
@@ -164,6 +187,11 @@ describe('Teams Controller – Unit Tests', () => {
   describe('updateTeamHandler', () => {
     it('updates and returns team', async () => {
       const updated = { id: 'team-1', name: 'Platform' };
+      (prisma.team.findUnique as jest.Mock).mockResolvedValue({
+        id: 'team-1',
+        organizationId: 'org-1',
+      });
+      (prisma.team.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.team.update as jest.Mock).mockResolvedValue(updated);
       const req: any = { params: { id: 'team-1' }, body: { name: 'Platform' } };
       const res = mockRes();
@@ -172,7 +200,39 @@ describe('Teams Controller – Unit Tests', () => {
       expect(res.json).toHaveBeenCalledWith(updated);
     });
 
+    it('returns 404 when team not found', async () => {
+      (prisma.team.findUnique as jest.Mock).mockResolvedValue(null);
+      const req: any = { params: { id: 'missing' }, body: { name: 'X' } };
+      const res = mockRes();
+      await updateTeamHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(prisma.team.update).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 when renaming to an existing team name', async () => {
+      (prisma.team.findUnique as jest.Mock).mockResolvedValue({
+        id: 'team-1',
+        organizationId: 'org-1',
+      });
+      (prisma.team.findMany as jest.Mock).mockResolvedValue([
+        { id: 'team-2', name: 'Taken' },
+      ]);
+      const req: any = {
+        params: { id: 'team-1' },
+        body: { name: 'taken' },
+      };
+      const res = mockRes();
+      await updateTeamHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(prisma.team.update).not.toHaveBeenCalled();
+    });
+
     it('returns 500 on error', async () => {
+      (prisma.team.findUnique as jest.Mock).mockResolvedValue({
+        id: 'team-1',
+        organizationId: 'org-1',
+      });
+      (prisma.team.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.team.update as jest.Mock).mockRejectedValue(new Error('DB'));
       const req: any = { params: { id: 'team-1' }, body: {} };
       const res = mockRes();
