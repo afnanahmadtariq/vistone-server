@@ -14,13 +14,20 @@ function extractBearerToken(request: FastifyRequest): string | null {
 
 export default async function autoAgentRoutes(fastify: FastifyInstance) {
   fastify.post<{
-    Body: { projectId?: string; channelId?: string; organizationId?: string; forceExecute?: boolean };
+    Body: {
+      projectId?: string;
+      channelId?: string;
+      organizationId?: string;
+      forceExecute?: boolean;
+      triggerSource?: 'auto' | 'manual';
+    };
   }>('/api/auto-agent/client-workspace', async (request, reply) => {
     if (!request.user) {
       return reply.status(401).send({ error: 'Authentication required' });
     }
     const role = request.user.role?.toLowerCase();
-    if (role !== 'organizer') {
+    const isAutoTrigger = request.body?.triggerSource === 'auto';
+    if (!isAutoTrigger && role !== 'organizer') {
       return reply.status(403).send({ error: 'Only organizers can run workspace automation' });
     }
 
@@ -45,6 +52,7 @@ export default async function autoAgentRoutes(fastify: FastifyInstance) {
           channelId: channelId.trim(),
           organizationId: request.body?.organizationId?.trim() || organizationId,
           forceExecute: !!request.body?.forceExecute,
+          triggerSource: request.body?.triggerSource,
         })
       );
       if (!result.success && result.error) {

@@ -18,6 +18,11 @@ import {
   resolveAutoAgentPipeline,
 } from '../../lib/org-auto-agent-settings';
 import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'node:crypto';
+import { assessClientWorkspaceMessageClarity } from './client-workspace-clarity.service';
+
+const CLARIFICATION_DEDUPE_TTL_MS = 60_000;
+const postedClarificationCache = new Map<string, number>();
 
 async function fetchChannelSummary(channelId: string): Promise<{
   type?: string;
@@ -35,17 +40,17 @@ async function fetchChannelSummary(channelId: string): Promise<{
   };
 }
 
-async function fetchRecentMessagesSnippet(channelId: string, limit = 40): Promise<string> {
+async function fetchRecentMessages(channelId: string, limit = 40): Promise<string[]> {
   const r = await safeCall(() =>
     communicationClient().get(`/chat-messages?channelId=${encodeURIComponent(channelId)}&limit=${limit}`)
   );
-  if (!r.success || !Array.isArray(r.data)) return '(no messages)';
+  if (!r.success || !Array.isArray(r.data)) return [];
   const lines: string[] = [];
-  for (const m of r.data as Array<{ content?: string; createdAt?: string; senderId?: string }>) {
+  for (const m of r.data as Array<{ content?: string }>) {
     const c = typeof m.content === 'string' ? m.content.trim() : '';
-    if (c) lines.push(`- ${c.slice(0, 500)}${c.length > 500 ? '…' : ''}`);
+    if (c) lines.push(c);
   }
-  return lines.length ? lines.join('\n') : '(no text content)';
+  return lines;
 }
 
 async function fetchWikiDocsSnippet(wikiId: string): Promise<string> {
@@ -70,19 +75,25 @@ function buildAutomationQuery(params: {
   const steps: string[] = [];
   if (params.pipeline.runTasks) {
     steps.push(
-      '1) From the CLIENT WORKSPACE context below, infer concrete new requirements and create project tasks (titles, descriptions, priorities). Use create_task for projectId=' +
+      '1) From the CLIENT WORKSPACE context below, extract concrete deliverables/requirements from the client\'s latest message(s) and convert them into project tasks (title, description, priority) strictly based on those requirements. Use create_task for projectId=' +
         params.projectId +
-        '.',
+        ' exactly. Do not create tasks for any other projectId.',
     );
   }
   if (params.pipeline.runMilestones) {
     steps.push(
-      '2) Based on existing and newly created tasks for this project, create or update milestones with create_milestone (logical groupings, due dates where sensible). Use list_tasks and list_milestones first.',
+      '2) Based on existing and newly created tasks for this project, create or update milestones with create_milestone (logical groupings, due dates where sensible). Use list_tasks with projectId=' +
+        params.projectId +
+        ' and list_milestones for the same project first, then call create_milestone with projectId=' +
+        params.projectId +
+        ' exactly.',
     );
   }
   if (params.pipeline.runAssign) {
     steps.push(
-      '3) For tasks that are still unassigned (or need better owners), assign them: use list_tasks, then for candidate members use get_user_skills and compare task titles/descriptions to skill names. Prefer assignees with fewer open tasks (list_tasks by assigneeId). Use update_task to set assigneeId.',
+      '3) For tasks that are still unassigned (or need better owners), assign them: use list_tasks with projectId=' +
+        params.projectId +
+        ', then for candidate members use get_user_skills and compare task titles/descriptions to skill names. Prefer assignees with fewer open tasks (list_tasks by assigneeId). Use update_task to set assigneeId for tasks from this project only.',
     );
   }
 
@@ -123,6 +134,7 @@ CLIENT WORKSPACE AUTOMATION RULES:
 - You are acting on behalf of an organizer who enabled automation in organization settings.
 - Only use data and tools permitted for this user. Stay within projectId and organization scope.
 - The channel is the dedicated client↔organizer workspace; treat message text as potential client requirements.
+- Hard constraint: every write MUST target the provided projectId only.
 - When wiki file names are listed, use them as context for what was already shared; use list_messages if you need more.
 - Do not delete projects, clients, or wiki content unless explicitly required (prefer create/update only).
 - Be conservative: if requirements are ambiguous, create fewer, clearer tasks rather than many vague ones.
@@ -142,9 +154,74 @@ export interface ClientWorkspaceAutoAgentResult {
   pendingAction?: { description: string; tools: string[]; originalQuery: string };
 }
 
+function shouldSkipClarificationPost(dedupeKey: string): boolean {
+  const now = Date.now();
+  const expiresAt = postedClarificationCache.get(dedupeKey) ?? 0;
+  if (expiresAt > now) return true;
+  postedClarificationCache.set(dedupeKey, now + CLARIFICATION_DEDUPE_TTL_MS);
+  return false;
+}
+
+async function postClarificationQuestions(params: {
+  channelId: string;
+  senderId: string;
+  questions: string[];
+}): Promise<void> {
+  const questionLines = params.questions.map((q, i) => `${i + 1}. ${q}`).join('\n');
+  const content =
+    `Thanks for the update. To proceed safely, I need a bit more detail before creating tasks:\n\n` +
+    `${questionLines}\n\n` +
+    `Please reply in this channel and I will continue automation.`;
+  await safeCall(() =>
+    communicationClient().post('/messages', {
+      channelId: params.channelId,
+      senderId: params.senderId,
+      type: 'system',
+      content,
+      mentions: [],
+      attachments: [],
+    })
+  );
+}
+
+function hasCreationFromAutomation(toolsUsed: string[]): boolean {
+  const toolSet = new Set(toolsUsed);
+  return (
+    toolSet.has('create_project') ||
+    toolSet.has('create_task') ||
+    toolSet.has('create_milestone')
+  );
+}
+
+async function postAutomationConfirmation(params: {
+  channelId: string;
+  senderId: string;
+  summary: string;
+}): Promise<void> {
+  const content =
+    `Automation update: I created items from the latest client requirements.\n\n` +
+    `${params.summary}`;
+  await safeCall(() =>
+    communicationClient().post('/messages', {
+      channelId: params.channelId,
+      senderId: params.senderId,
+      type: 'system',
+      content,
+      mentions: [],
+      attachments: [],
+    })
+  );
+}
+
 export async function runClientWorkspaceAutoAgentPipeline(
   user: AuthenticatedUser,
-  body: { projectId: string; channelId: string; organizationId?: string; forceExecute?: boolean }
+  body: {
+    projectId: string;
+    channelId: string;
+    organizationId?: string;
+    forceExecute?: boolean;
+    triggerSource?: 'auto' | 'manual';
+  }
 ): Promise<ClientWorkspaceAutoAgentResult> {
   const organizationId = (body.organizationId || user.organizationId || '').trim();
   if (!organizationId) {
@@ -176,12 +253,51 @@ export async function runClientWorkspaceAutoAgentPipeline(
     return { success: false, sessionId: '', error: 'Channel must belong to the given projectId' };
   }
 
-  const [messagesSnippet, wikiSnippet] = await Promise.all([
-    fetchRecentMessagesSnippet(body.channelId),
+  const [messageTexts, wikiSnippet] = await Promise.all([
+    fetchRecentMessages(body.channelId),
     channel.syncWikiId
       ? fetchWikiDocsSnippet(channel.syncWikiId)
       : Promise.resolve('(no sync wiki on channel)'),
   ]);
+  const messagesSnippet =
+    messageTexts.length > 0
+      ? messageTexts
+          .slice(-40)
+          .map((c) => `- ${c.slice(0, 500)}${c.length > 500 ? '…' : ''}`)
+          .join('\n')
+      : '(no text content)';
+  const latestMessage = messageTexts[messageTexts.length - 1] ?? '';
+  const isAutoTriggered = body.triggerSource === 'auto';
+
+  if (isAutoTriggered) {
+    const clarity = await assessClientWorkspaceMessageClarity({
+      latestMessage,
+      messagesSnippet,
+      wikiSnippet,
+      projectId: body.projectId,
+    });
+    if (!clarity.isClear) {
+      const dedupeKey = createHash('sha256')
+        .update(`${body.channelId}|${latestMessage}|${clarity.questions.join('|')}`)
+        .digest('hex');
+      if (!shouldSkipClarificationPost(dedupeKey)) {
+        await postClarificationQuestions({
+          channelId: body.channelId,
+          senderId: user.id,
+          questions:
+            clarity.questions.length > 0
+              ? clarity.questions
+              : ['Could you clarify the requirement in more detail so we can proceed?'],
+        });
+      }
+      return {
+        success: true,
+        sessionId: '',
+        skippedReason: 'needs_clarification',
+        answer: `Automation paused: clarification requested (${clarity.reason}).`,
+      };
+    }
+  }
 
   const queryText = buildAutomationQuery({
     projectId: body.projectId,
@@ -206,7 +322,9 @@ export async function runClientWorkspaceAutoAgentPipeline(
 
   const { runAgent, planAgent, isWriteTool } = await import('../agent/runner.js');
 
-  if (!pipeline.skipUserConfirmation && !body.forceExecute) {
+  const shouldPlanForConfirmation =
+    !pipeline.skipUserConfirmation && !body.forceExecute && !isAutoTriggered;
+  if (shouldPlanForConfirmation) {
     const plan = await planAgent(user, queryText, systemPrompt, history);
     const hasWrite = plan.tools.some(isWriteTool);
     if (hasWrite) {
@@ -230,6 +348,14 @@ export async function runClientWorkspaceAutoAgentPipeline(
   }
 
   const result = await runAgent(user, queryText, systemPrompt, history, false);
+
+  if (isAutoTriggered && result.success && hasCreationFromAutomation(result.toolsUsed)) {
+    await postAutomationConfirmation({
+      channelId: body.channelId,
+      senderId: user.id,
+      summary: result.response || 'Created project tasks/milestones successfully.',
+    });
+  }
 
   await saveToHistory(user.organizationId, user.id, sessionId, 'user', queryText);
   await saveToHistory(user.organizationId, user.id, sessionId, 'assistant', result.response, {

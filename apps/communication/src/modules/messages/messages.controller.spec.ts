@@ -214,7 +214,7 @@ describe('Messages Controller', () => {
 
     it('returns 403 if sender not a member', async () => {
       (prisma.channelMember.findUnique as jest.Mock).mockResolvedValue(null);
-      const req: any = { body: { channelId: 'ch1', senderId: 'u1', content: 'hi' } };
+      const req: any = { body: { channelId: 'ch1', senderId: 'u1', content: 'hi' }, headers: {} };
       const res = mockRes();
       await createMessageHandler(req, res);
       expect(res.status).toHaveBeenCalledWith(403);
@@ -235,7 +235,7 @@ describe('Messages Controller', () => {
       (Message.create as jest.Mock).mockResolvedValue(created);
       (prisma.chatChannel.update as jest.Mock).mockResolvedValue({});
 
-      const req: any = { body: { channelId: 'ch1', senderId: 'u1', content: 'hi' } };
+      const req: any = { body: { channelId: 'ch1', senderId: 'u1', content: 'hi' }, headers: {} };
       const res = mockRes();
       await createMessageHandler(req, res);
 

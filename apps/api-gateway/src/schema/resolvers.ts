@@ -4025,6 +4025,7 @@ export const resolvers = {
           channelId: input.channelId,
           organizationId: orgId,
           forceExecute: !!input.forceExecute,
+          triggerSource: 'manual',
         },
         context.token || '',
         orgId

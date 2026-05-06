@@ -138,6 +138,7 @@ export async function triggerClientWorkspaceAutoAgent(params: {
         organizationId: orgId,
         projectId: channel.projectId,
         channelId: params.channelId,
+        triggerSource: 'auto',
       }),
     });
     if (!res.ok) {
