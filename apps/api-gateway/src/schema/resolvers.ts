@@ -3406,18 +3406,30 @@ export const resolvers = {
     // Documentation (Knowledge Hub Service)
     createWiki: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'wiki', 'create');
+      const oid = typeof input?.organizationId === 'string' ? input.organizationId.trim() : '';
+      if (!oid) {
+        throw new GraphQLError('organizationId is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      await requireOrganization(context, oid);
       return knowledgeClient.post('/wikis', input);
     },
     updateWiki: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'update');
+      const user = await requirePermission(context, 'wiki', 'update');
+      await assertWikiAccess(user, id);
       return knowledgeClient.put('/wikis', id, input);
     },
     deleteWiki: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'delete');
+      const user = await requirePermission(context, 'wiki', 'delete');
+      await assertWikiAccess(user, id);
       return knowledgeClient.delete('/wikis', id);
     },
     createWikiProjectLink: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'update');
+      const user = await requirePermission(context, 'wiki', 'update');
+      if (typeof input?.wikiId === 'string' && input.wikiId) {
+        await assertWikiAccess(user, input.wikiId);
+      }
       return knowledgeClient.post('/wiki-project-links', input);
     },
     deleteWikiProjectLink: async (_: unknown, { id }: { id: string }, context: Context) => {
@@ -3443,31 +3455,69 @@ export const resolvers = {
       return knowledgeClient.delete('/wiki-members', id);
     },
     createWikiPage: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'create');
+      const user = await requirePermission(context, 'wiki', 'create');
+      if (typeof input?.wikiId !== 'string' || !input.wikiId.trim()) {
+        throw new GraphQLError('wikiId is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      await assertWikiAccess(user, input.wikiId.trim());
       return knowledgeClient.post('/wiki-pages', input);
     },
     updateWikiPage: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'update');
+      const user = await requirePermission(context, 'wiki', 'update');
+      const page = await knowledgeClient.getById('/wiki-pages', id);
+      if (page && typeof page.wikiId === 'string') {
+        await assertWikiAccess(user, page.wikiId);
+      }
       return knowledgeClient.put('/wiki-pages', id, input);
     },
     deleteWikiPage: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'delete');
+      const user = await requirePermission(context, 'wiki', 'delete');
+      const page = await knowledgeClient.getById('/wiki-pages', id);
+      if (page && typeof page.wikiId === 'string') {
+        await assertWikiAccess(user, page.wikiId);
+      }
       return knowledgeClient.delete('/wiki-pages', id);
     },
     createWikiPageVersion: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'update');
+      const user = await requirePermission(context, 'wiki', 'update');
+      const wikiPageId = typeof input?.wikiPageId === 'string' ? input.wikiPageId : '';
+      if (!wikiPageId) {
+        throw new GraphQLError('wikiPageId is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      const page = await knowledgeClient.getById('/wiki-pages', wikiPageId);
+      if (page && typeof page.wikiId === 'string') {
+        await assertWikiAccess(user, page.wikiId);
+      }
       return knowledgeClient.post('/wiki-page-versions', input);
     },
     createDocumentFolder: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'create');
+      const user = await requirePermission(context, 'wiki', 'create');
+      if (typeof input?.wikiId !== 'string' || !input.wikiId.trim()) {
+        throw new GraphQLError('wikiId is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      await assertWikiAccess(user, input.wikiId.trim());
       return knowledgeClient.post('/document-folders', input);
     },
     updateDocumentFolder: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'update');
+      const user = await requirePermission(context, 'wiki', 'update');
+      const folder = await knowledgeClient.getById('/document-folders', id);
+      if (folder && typeof folder.wikiId === 'string') {
+        await assertWikiAccess(user, folder.wikiId);
+      }
       return knowledgeClient.put('/document-folders', id, input);
     },
     deleteDocumentFolder: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'delete');
+      const user = await requirePermission(context, 'wiki', 'delete');
+      const folder = await knowledgeClient.getById('/document-folders', id);
+      if (folder && typeof folder.wikiId === 'string') {
+        await assertWikiAccess(user, folder.wikiId);
+      }
       return knowledgeClient.delete('/document-folders', id);
     },
     createDocument: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
@@ -3481,11 +3531,19 @@ export const resolvers = {
       return knowledgeClient.post('/documents', input);
     },
     updateDocument: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'wiki', 'update');
+      const user = await requirePermission(context, 'wiki', 'update');
+      const doc = await knowledgeClient.getById('/documents', id);
+      if (doc && typeof doc.wikiId === 'string') {
+        await assertWikiAccess(user, doc.wikiId);
+      }
       return knowledgeClient.put('/documents', id, input);
     },
     deleteDocument: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'wiki', 'delete');
+      const user = await requirePermission(context, 'wiki', 'delete');
+      const doc = await knowledgeClient.getById('/documents', id);
+      if (doc && typeof doc.wikiId === 'string') {
+        await assertWikiAccess(user, doc.wikiId);
+      }
       return knowledgeClient.delete('/documents', id);
     },
     createDocumentPermission: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {

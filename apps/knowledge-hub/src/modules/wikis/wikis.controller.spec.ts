@@ -16,6 +16,9 @@ jest.mock('../../lib/prisma', () => ({
       update: jest.fn(),
       delete: jest.fn(),
     },
+    wikiMember: {
+      create: jest.fn(),
+    },
   },
 }));
 
@@ -35,7 +38,14 @@ describe('Wikis Controller – Unit Tests', () => {
 
   describe('createWikiHandler', () => {
     it('creates and returns a wiki', async () => {
+      (prisma.wiki.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.wiki.create as jest.Mock).mockResolvedValue(sample);
+      (prisma.wikiMember.create as jest.Mock).mockResolvedValue({
+        id: 'wm-1',
+        wikiId: sample.id,
+        userId: 'user-1',
+        role: 'admin',
+      });
       const req: any = { body: { organizationId: 'org-1', name: 'Company Wiki' } };
       const res = mockRes();
       await createWikiHandler(req, res);
@@ -87,6 +97,8 @@ describe('Wikis Controller – Unit Tests', () => {
   describe('updateWikiHandler', () => {
     it('updates and returns wiki', async () => {
       const updated = { ...sample, name: 'Updated Wiki' };
+      (prisma.wiki.findUnique as jest.Mock).mockResolvedValue({ organizationId: 'org-1' });
+      (prisma.wiki.findMany as jest.Mock).mockResolvedValue([]);
       (prisma.wiki.update as jest.Mock).mockResolvedValue(updated);
       const req: any = { params: { id: 'wiki-1' }, body: { name: 'Updated Wiki' } };
       const res = mockRes();

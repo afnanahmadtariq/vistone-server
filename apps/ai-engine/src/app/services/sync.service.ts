@@ -183,7 +183,7 @@ export async function syncProjects(orgId: string): Promise<SyncResult> {
         (r) => ({
             title: `Project: ${r.name}`,
             content: `Project "${r.name}" - Status: ${r.status}, Progress: ${r.progress || 0}%${r.description ? `. ${r.description}` : ''}`,
-            metadata: { status: r.status, progress: r.progress, budget: r.budget },
+            metadata: { status: r.status, progress: r.progress, budget: r.budget, projectId: r.id },
         })
     );
 }
@@ -299,7 +299,7 @@ export async function syncRisks(orgId: string): Promise<SyncResult> {
         (r) => ({
             title: `Risk in ${r.projectName || 'Unknown'}`,
             content: `Risk in project "${r.projectName || 'Unknown'}" - Probability: ${r.probability || 'N/A'}, Impact: ${r.impact || 'N/A'}, Status: ${r.status}. ${r.description || ''}${r.mitigationPlan ? ` Mitigation: ${r.mitigationPlan}` : ''}`,
-            metadata: { probability: r.probability, impact: r.impact, status: r.status },
+            metadata: { probability: r.probability, impact: r.impact, status: r.status, projectId: r.projectId },
         })
     );
 }
@@ -310,37 +310,21 @@ export async function syncRisks(orgId: string): Promise<SyncResult> {
  * We sync all wiki pages and match to org via parent context if needed.
  */
 export async function syncWikiPages(orgId: string): Promise<SyncResult> {
-    // Wiki pages don't have organizationId — sync all for now
-    const result: SyncResult = { synced: 0, errors: [] };
-
-    try {
-        const res = await query(`SELECT id, title, content FROM knowledge.wiki_pages`, []);
-
-        for (const row of res.rows) {
-            try {
-                if (!row.content || (row.content as string).trim().length === 0) continue;
-
-                const indexed = await indexDocument({
-                    organizationId: orgId,
-                    sourceSchema: 'knowledge',
-                    sourceTable: 'wiki_pages',
-                    sourceId: row.id as string,
-                    title: `Wiki: ${row.title}`,
-                    content: row.content as string,
-                    contentType: 'wiki',
-                });
-                if (indexed) result.synced++;
-            } catch (err: unknown) {
-                const message = err instanceof Error ? err.message : 'Unknown error';
-                result.errors.push(`wiki_pages/${row.id}: ${message}`);
-            }
-        }
-    } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        result.errors.push(`wiki_pages: ${message}`);
-    }
-
-    return result;
+    return syncQuery(
+        orgId,
+        'knowledge',
+        'wiki_pages',
+        `SELECT wp.id, wp.title, wp.content, wp."wikiId"
+     FROM knowledge.wiki_pages wp
+     INNER JOIN knowledge.wikis w ON w.id = wp."wikiId"
+     WHERE w."organizationId" = $1`,
+        'wiki',
+        (r) => ({
+            title: `Wiki: ${r.title}`,
+            content: (r.content as string) || '',
+            metadata: { wikiId: r.wikiId },
+        })
+    );
 }
 
 /**
@@ -350,12 +334,12 @@ export async function syncWikiPages(orgId: string): Promise<SyncResult> {
 export async function syncDocuments(orgId: string): Promise<SyncResult> {
     return syncQuery(
         orgId, 'knowledge', 'documents',
-        `SELECT id, name, url, version, metadata FROM knowledge.documents WHERE "organizationId" = $1`,
+        `SELECT id, name, url, version, metadata, "wikiId" FROM knowledge.documents WHERE "organizationId" = $1`,
         'document',
         (r) => ({
             title: `Document: ${r.name}`,
             content: `Document "${r.name}" (v${r.version || 1}) - URL: ${r.url || 'N/A'}`,
-            metadata: { url: r.url, version: r.version },
+            metadata: { url: r.url, version: r.version, wikiId: r.wikiId },
         })
     );
 }
@@ -367,7 +351,7 @@ export async function syncDocuments(orgId: string): Promise<SyncResult> {
 export async function syncProposals(orgId: string): Promise<SyncResult> {
     return syncQuery(
         orgId, 'client', 'proposals',
-        `SELECT pr.id, pr.title, pr.content, pr.status,
+        `SELECT pr.id, pr.title, pr.content, pr.status, pr."clientId",
             c.name AS "clientName"
      FROM client.proposals pr
      LEFT JOIN client.clients c ON c.id = pr."clientId"
@@ -376,7 +360,7 @@ export async function syncProposals(orgId: string): Promise<SyncResult> {
         (r) => ({
             title: `Proposal: ${r.title}`,
             content: `Proposal "${r.title}" for client "${r.clientName || 'Unknown'}" - Status: ${r.status}${r.content ? `. ${r.content}` : ''}`,
-            metadata: { status: r.status },
+            metadata: { status: r.status, clientId: r.clientId },
         })
     );
 }

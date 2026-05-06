@@ -22,6 +22,32 @@ export interface AuthenticatedUser {
     permissions: UserPermissions | null;
 }
 
+/** Row-level scope for agent tools and RAG (organizers bypass with null / allInOrganization). */
+export type ProjectScope =
+    | { allInOrganization: true }
+    | { allInOrganization: false; ids: Set<string> };
+
+export interface AiDataScope {
+    projectScope: ProjectScope;
+    /** null = all clients in org (organizer) */
+    clientIds: Set<string> | null;
+    /** null = all wikis in org (organizer) */
+    wikiIds: Set<string> | null;
+}
+
+/** RAG vector hit (also used for scope filtering). */
+export interface SimilarDocument {
+    documentId: string;
+    chunkText: string;
+    similarity: number;
+    title: string;
+    contentType: string;
+    sourceId: string;
+    sourceSchema: string;
+    sourceTable: string;
+    metadata: Record<string, unknown>;
+}
+
 // ── Chat ────────────────────────────────────────────────────────
 
 export type ContentType =

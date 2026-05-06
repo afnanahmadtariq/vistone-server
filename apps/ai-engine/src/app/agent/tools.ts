@@ -12,12 +12,18 @@
  *   Knowledge Hub (3005): /documents, /wiki-pages, /document-folders
  */
 import { z } from 'zod';
-import type { AuthenticatedUser } from '../types';
+import type { AuthenticatedUser, AiDataScope } from '../types';
 import {
     projectClient, clientClient, workforceClient,
     communicationClient, notificationClient, knowledgeClient,
     safeCall,
 } from '../services/connectors';
+import {
+    projectIdAllowed,
+    clientIdAllowed,
+    wikiIdAllowed,
+    denyToolResult,
+} from '../services/access-scope.service';
 
 // ── Tool Definition Type ────────────────────────────────────────
 
@@ -33,7 +39,7 @@ export interface ToolDef {
 /**
  * Build tools scoped to the authenticated user. Organization IDs are injected server-side — the model must not supply them.
  */
-export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
+export function buildToolDefs(user: AuthenticatedUser, scope: AiDataScope): ToolDef[] {
     const orgId = user.organizationId.trim();
     const noOrg = (): string =>
         JSON.stringify({ success: false, error: 'No organization in session. Select a workspace in the app.' });
@@ -70,6 +76,14 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
             schema: z.object({ projectId: z.string() }),
             func: async ({ projectId }) => {
                 const r = await safeCall(() => projectClient().get(`/projects/${projectId}`));
+                if (!r.success) return JSON.stringify(r);
+                const proj = r.data as { organizationId?: string };
+                if (typeof proj?.organizationId === 'string' && proj.organizationId !== orgId) {
+                    return denyToolResult('Project not found or access denied.');
+                }
+                if (!projectIdAllowed(scope, projectId)) {
+                    return denyToolResult('You do not have access to this project.');
+                }
                 return JSON.stringify(r);
             },
         },
@@ -88,13 +102,17 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 managerId: z.string().optional(),
             }),
             func: async ({ projectId, ...updates }) => {
+                if (!projectIdAllowed(scope, projectId)) {
+                    return denyToolResult('You do not have access to this project.');
+                }
                 const r = await safeCall(() => projectClient().put(`/projects/${projectId}`, updates));
                 return JSON.stringify(r);
             },
         },
         {
             name: 'list_projects',
-            description: 'List projects in the user\'s current organization.',
+            description:
+                'List projects the current user may access (same visibility as the app: assignments, teams, client links, etc.).',
             schema: z.object({
                 status: z.enum(['planned', 'in_progress', 'on_hold', 'completed', 'cancelled']).optional(),
                 search: z.string().optional(),
@@ -106,7 +124,15 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 if (input.status) params.set('status', input.status);
                 if (input.search) params.set('search', input.search);
                 const r = await safeCall(() => projectClient().get(`/projects?${params}`));
-                return JSON.stringify(r);
+                if (!r.success) return JSON.stringify(r);
+                if (scope.projectScope.allInOrganization) return JSON.stringify(r);
+                const allowed = scope.projectScope.ids;
+                const rows = Array.isArray(r.data)
+                    ? r.data.filter(
+                          (p: { id?: string }) => typeof p?.id === 'string' && allowed.has(p.id)
+                      )
+                    : [];
+                return JSON.stringify({ success: true, data: rows });
             },
         },
         {
@@ -123,8 +149,10 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 estimatedHours: z.number().optional(),
             }),
             func: async (input) => {
-                // Inject current user as creator if not specified
-                const taskData = { ...input, creatorId: input.creatorId || user.id };
+                if (!projectIdAllowed(scope, input.projectId)) {
+                    return denyToolResult('You do not have access to this project.');
+                }
+                const taskData = { ...input, creatorId: user.id };
                 const r = await safeCall(() => projectClient().post('/tasks', taskData));
                 return JSON.stringify(r);
             },
@@ -134,8 +162,12 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
             description: 'Get task details by ID.',
             schema: z.object({ taskId: z.string() }),
             func: async ({ taskId }) => {
-                // GET /tasks/:id
                 const r = await safeCall(() => projectClient().get(`/tasks/${taskId}`));
+                if (!r.success) return JSON.stringify(r);
+                const t = r.data as { projectId?: string };
+                if (typeof t?.projectId !== 'string' || !projectIdAllowed(scope, t.projectId)) {
+                    return denyToolResult('Task not found or access denied.');
+                }
                 return JSON.stringify(r);
             },
         },
@@ -154,28 +186,64 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 actualHours: z.number().optional(),
             }),
             func: async ({ taskId, ...updates }) => {
-                // PUT /tasks/:id
+                const cur = await safeCall(() => projectClient().get(`/tasks/${taskId}`));
+                if (!cur.success) return JSON.stringify(cur);
+                const t = cur.data as { projectId?: string };
+                if (typeof t?.projectId !== 'string' || !projectIdAllowed(scope, t.projectId)) {
+                    return denyToolResult('Task not found or access denied.');
+                }
                 const r = await safeCall(() => projectClient().put(`/tasks/${taskId}`, updates));
                 return JSON.stringify(r);
             },
         },
         {
             name: 'list_tasks',
-            description: 'List tasks. Can filter by project, assignee, or status.',
+            description:
+                'List tasks for projects you can access. Without projectId, aggregates across those projects only.',
             schema: z.object({
                 projectId: z.string().optional(),
                 assigneeId: z.string().optional(),
                 status: z.enum(['todo', 'in_progress', 'in_review', 'done', 'blocked']).optional(),
             }),
             func: async (input) => {
-                const params = new URLSearchParams();
-                params.set('organizationId', orgId);
-                if (input.projectId) params.set('projectId', input.projectId);
-                if (input.assigneeId) params.set('assigneeId', input.assigneeId);
-                if (input.status) params.set('status', input.status);
-                // GET /tasks?...
-                const r = await safeCall(() => projectClient().get(`/tasks?${params}`));
-                return JSON.stringify(r);
+                if (!orgId) return noOrg();
+
+                const fetchForProject = (pid: string) => {
+                    const params = new URLSearchParams();
+                    params.set('projectId', pid);
+                    if (input.assigneeId) params.set('assigneeId', input.assigneeId);
+                    if (input.status) params.set('status', input.status);
+                    return safeCall(() => projectClient().get(`/tasks?${params}`));
+                };
+
+                if (input.projectId) {
+                    if (!projectIdAllowed(scope, input.projectId)) {
+                        return denyToolResult('You do not have access to tasks for this project.');
+                    }
+                    return JSON.stringify(await fetchForProject(input.projectId));
+                }
+
+                let projectIds: string[];
+                if (scope.projectScope.allInOrganization) {
+                    const pr = await safeCall(() => projectClient().get(`/projects?organizationId=${orgId}`));
+                    if (!pr.success) return JSON.stringify(pr);
+                    projectIds = (Array.isArray(pr.data) ? pr.data : [])
+                        .map((p: { id?: string }) => p.id)
+                        .filter((id: unknown): id is string => typeof id === 'string');
+                } else {
+                    projectIds = Array.from(scope.projectScope.ids);
+                }
+
+                if (projectIds.length === 0) {
+                    return JSON.stringify({ success: true, data: [] });
+                }
+
+                const chunks = await Promise.all(projectIds.map((pid) => fetchForProject(pid)));
+                const merged: unknown[] = [];
+                for (const c of chunks) {
+                    if (c.success && Array.isArray(c.data)) merged.push(...c.data);
+                }
+                return JSON.stringify({ success: true, data: merged });
             },
         },
         {
@@ -189,6 +257,9 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 status: z.enum(['pending', 'in_progress', 'completed', 'missed']).optional().default('pending'),
             }),
             func: async (input) => {
+                if (!projectIdAllowed(scope, input.projectId)) {
+                    return denyToolResult('You do not have access to this project.');
+                }
                 const r = await safeCall(() => projectClient().post('/milestones', input));
                 return JSON.stringify(r);
             },
@@ -198,7 +269,9 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
             description: 'List milestones for a project.',
             schema: z.object({ projectId: z.string() }),
             func: async ({ projectId }) => {
-                // GET /milestones?projectId=...&organizationId=...
+                if (!projectIdAllowed(scope, projectId)) {
+                    return denyToolResult('You do not have access to milestones for this project.');
+                }
                 const r = await safeCall(() =>
                     projectClient().get(`/milestones?projectId=${projectId}&organizationId=${orgId}`)
                 );
@@ -236,8 +309,15 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
             description: 'Get client details by ID.',
             schema: z.object({ clientId: z.string() }),
             func: async ({ clientId }) => {
-                // GET /clients/:id
+                if (!clientIdAllowed(scope, clientId)) {
+                    return denyToolResult('You do not have access to this client.');
+                }
                 const r = await safeCall(() => clientClient().get(`/clients/${clientId}`));
+                if (!r.success) return JSON.stringify(r);
+                const row = r.data as { organizationId?: string };
+                if (typeof row?.organizationId === 'string' && row.organizationId !== orgId) {
+                    return denyToolResult('Client not found or access denied.');
+                }
                 return JSON.stringify(r);
             },
         },
@@ -258,14 +338,17 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 contactInfo: z.any().optional().describe('Additional contact info (JSON)'),
             }),
             func: async ({ clientId, ...updates }) => {
-                // PUT /clients/:id
+                if (!clientIdAllowed(scope, clientId)) {
+                    return denyToolResult('You do not have access to this client.');
+                }
                 const r = await safeCall(() => clientClient().put(`/clients/${clientId}`, updates));
                 return JSON.stringify(r);
             },
         },
         {
             name: 'list_clients',
-            description: 'List clients in the user\'s current organization.',
+            description:
+                'List clients you may see (linked to your accessible projects or your contact-person assignments).',
             schema: z.object({
                 status: z.enum(['active', 'inactive', 'prospect', 'churned']).optional(),
                 search: z.string().optional(),
@@ -277,7 +360,15 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 if (input.status) params.set('status', input.status);
                 if (input.search) params.set('search', input.search);
                 const r = await safeCall(() => clientClient().get(`/clients?${params}`));
-                return JSON.stringify(r);
+                if (!r.success) return JSON.stringify(r);
+                if (scope.clientIds === null) return JSON.stringify(r);
+                const allowed = scope.clientIds;
+                const rows = Array.isArray(r.data)
+                    ? r.data.filter(
+                          (c: { id?: string }) => typeof c?.id === 'string' && allowed.has(c.id)
+                      )
+                    : [];
+                return JSON.stringify({ success: true, data: rows });
             },
         },
         {
@@ -290,26 +381,56 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 status: z.enum(['draft', 'sent', 'accepted', 'rejected', 'expired']).optional().default('draft'),
             }),
             func: async (input) => {
-                // POST /proposals
+                if (!clientIdAllowed(scope, input.clientId)) {
+                    return denyToolResult('You do not have access to create proposals for this client.');
+                }
                 const r = await safeCall(() => clientClient().post('/proposals', input));
                 return JSON.stringify(r);
             },
         },
         {
             name: 'list_proposals',
-            description: 'List proposals in the user\'s organization, optionally filtered by client or status.',
+            description: 'List proposals for clients you can access.',
             schema: z.object({
                 clientId: z.string().optional(),
                 status: z.enum(['draft', 'sent', 'accepted', 'rejected', 'expired']).optional(),
             }),
             func: async (input) => {
                 if (!orgId) return noOrg();
+                if (input.clientId && !clientIdAllowed(scope, input.clientId)) {
+                    return denyToolResult('You do not have access to proposals for this client.');
+                }
                 const params = new URLSearchParams();
                 params.set('organizationId', orgId);
                 if (input.clientId) params.set('clientId', input.clientId);
                 if (input.status) params.set('status', input.status);
                 const r = await safeCall(() => clientClient().get(`/proposals?${params}`));
-                return JSON.stringify(r);
+                if (!r.success) return JSON.stringify(r);
+                const raw = Array.isArray(r.data) ? r.data : [];
+                if (scope.clientIds === null) {
+                    const clientsR = await safeCall(() =>
+                        clientClient().get(`/clients?organizationId=${orgId}`)
+                    );
+                    if (!clientsR.success || !Array.isArray(clientsR.data)) {
+                        return JSON.stringify({ success: true, data: raw });
+                    }
+                    const orgClientIds = new Set(
+                        clientsR.data
+                            .map((c: { id?: string }) => c.id)
+                            .filter((id: unknown): id is string => typeof id === 'string')
+                    );
+                    const rows = raw.filter(
+                        (p: { clientId?: string }) =>
+                            typeof p?.clientId === 'string' && orgClientIds.has(p.clientId)
+                    );
+                    return JSON.stringify({ success: true, data: rows });
+                }
+                const allowed = scope.clientIds;
+                const rows = raw.filter(
+                    (p: { clientId?: string }) =>
+                        typeof p?.clientId === 'string' && allowed.has(p.clientId)
+                );
+                return JSON.stringify({ success: true, data: rows });
             },
         },
 
@@ -452,6 +573,14 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
             }),
             func: async (input) => {
                 if (!orgId) return noOrg();
+                if (
+                    input.type === 'project' &&
+                    typeof input.projectId === 'string' &&
+                    input.projectId &&
+                    !projectIdAllowed(scope, input.projectId)
+                ) {
+                    return denyToolResult('You do not have access to channels for this project.');
+                }
                 const r = await safeCall(() =>
                     communicationClient().post('/chat-channels', { ...input, organizationId: orgId })
                 );
@@ -546,6 +675,9 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
             }),
             func: async (input) => {
                 if (!orgId) return noOrg();
+                if (!wikiIdAllowed(scope, input.wikiId)) {
+                    return denyToolResult('You do not have access to this wiki.');
+                }
                 const r = await safeCall(() =>
                     knowledgeClient().post('/documents', { ...input, organizationId: orgId })
                 );
@@ -555,30 +687,49 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
         {
             name: 'search_documents',
             description:
-                'List documents in the knowledge hub for this organization. If wikiId is omitted, lists documents across all wikis in the org.',
+                'List documents from wikis you can access (project-linked wikis and explicit wiki membership).',
             schema: z.object({
-                wikiId: z.string().optional().describe('Limit to one wiki; omit to include every wiki in the org.'),
+                wikiId: z.string().optional().describe('Limit to one wiki; omit to search all wikis you can access.'),
             }),
             func: async ({ wikiId }) => {
                 if (!orgId) return noOrg();
                 if (wikiId) {
+                    if (!wikiIdAllowed(scope, wikiId)) {
+                        return denyToolResult('You do not have access to this wiki.');
+                    }
                     const r = await safeCall(() =>
                         knowledgeClient().get(`/documents?wikiId=${encodeURIComponent(wikiId)}&includeAll=true`)
                     );
                     return JSON.stringify(r);
                 }
-                const wikisR = await safeCall(() =>
-                    knowledgeClient().get(`/wikis?organizationId=${encodeURIComponent(orgId)}`)
-                );
-                if (!wikisR.success) return JSON.stringify(wikisR);
-                const wikis = wikisR.data as { id: string }[];
-                if (!Array.isArray(wikis) || wikis.length === 0) {
+                if (scope.wikiIds === null) {
+                    const wikisR = await safeCall(() =>
+                        knowledgeClient().get(`/wikis?organizationId=${encodeURIComponent(orgId)}`)
+                    );
+                    if (!wikisR.success) return JSON.stringify(wikisR);
+                    const wikis = wikisR.data as { id: string }[];
+                    if (!Array.isArray(wikis) || wikis.length === 0) {
+                        return JSON.stringify({ success: true, data: [] });
+                    }
+                    const all: unknown[] = [];
+                    for (const w of wikis) {
+                        const dr = await safeCall(() =>
+                            knowledgeClient().get(`/documents?wikiId=${encodeURIComponent(w.id)}&includeAll=true`)
+                        );
+                        if (dr.success && Array.isArray(dr.data)) {
+                            all.push(...dr.data);
+                        }
+                    }
+                    return JSON.stringify({ success: true, data: all });
+                }
+                const allowed = scope.wikiIds;
+                if (allowed.size === 0) {
                     return JSON.stringify({ success: true, data: [] });
                 }
                 const all: unknown[] = [];
-                for (const w of wikis) {
+                for (const wid of allowed) {
                     const dr = await safeCall(() =>
-                        knowledgeClient().get(`/documents?wikiId=${encodeURIComponent(w.id)}&includeAll=true`)
+                        knowledgeClient().get(`/documents?wikiId=${encodeURIComponent(wid)}&includeAll=true`)
                     );
                     if (dr.success && Array.isArray(dr.data)) {
                         all.push(...dr.data);
@@ -597,7 +748,9 @@ export function buildToolDefs(user: AuthenticatedUser): ToolDef[] {
                 parentId: z.string().optional().describe('Parent page ID for nesting'),
             }),
             func: async (input) => {
-                // POST /wiki-pages
+                if (!wikiIdAllowed(scope, input.wikiId)) {
+                    return denyToolResult('You do not have access to this wiki.');
+                }
                 const r = await safeCall(() => knowledgeClient().post('/wiki-pages', input));
                 return JSON.stringify(r);
             },

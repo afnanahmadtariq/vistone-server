@@ -3,10 +3,13 @@
  * Bearer token + org header must match the user's session (same as API Gateway → services).
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { AiDataScope } from '../types';
 
 export interface ServiceRequestContext {
   token: string;
   organizationId: string;
+  /** Computed once per chat request; tools and RAG enforce the same project/client/wiki bounds. */
+  aiDataScope?: AiDataScope;
 }
 
 const storage = new AsyncLocalStorage<ServiceRequestContext>();

@@ -5,7 +5,8 @@
  */
 import { config } from '../config';
 import { query, getPrisma } from '../db';
-import type { AuthenticatedUser, SourceReference } from '../types';
+import type { AuthenticatedUser, SourceReference, SimilarDocument } from '../types';
+import { ensureAiDataScope, filterRagDocumentsByDataScope } from './access-scope.service';
 import { getReadableContentTypes } from './rbac.service';
 
 // ── Lazy LangChain singletons ───────────────────────────────────
@@ -45,18 +46,6 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
 
 // ── Vector Search (RBAC-filtered) ───────────────────────────────
 
-export interface SimilarDocument {
-  documentId: string;
-  chunkText: string;
-  similarity: number;
-  title: string;
-  contentType: string;
-  sourceId: string;
-  sourceSchema: string;
-  sourceTable: string;
-  metadata: Record<string, unknown>;
-}
-
 /**
  * Search for similar documents, filtered by user's readable content types.
  */
@@ -68,8 +57,15 @@ export async function searchSimilar(
   const allowedTypes = getReadableContentTypes(user);
   if (allowedTypes.length === 0) return [];
 
+  const scope = await ensureAiDataScope(user);
+  const restrictRows =
+    !scope.projectScope.allInOrganization ||
+    scope.clientIds !== null ||
+    scope.wikiIds !== null;
+
   const queryEmbedding = await embedText(queryText);
   const k = topK || config.vectorSearch.topK;
+  const fetchLimit = restrictRows ? Math.min(k * 25, 200) : k;
   const threshold = config.vectorSearch.similarityThreshold;
 
   // Build parameterized content type placeholders
@@ -92,7 +88,7 @@ export async function searchSimilar(
       AND d."contentType" IN (${typePlaceholders})
       AND 1 - (e.embedding <=> $1::vector) > $3
     ORDER BY similarity DESC
-    LIMIT ${k}
+    LIMIT ${fetchLimit}
   `;
 
   const params = [
@@ -103,7 +99,9 @@ export async function searchSimilar(
   ];
 
   const result = await query(sql, params);
-  return result.rows as SimilarDocument[];
+  let rows = result.rows as SimilarDocument[];
+  rows = filterRagDocumentsByDataScope(rows, scope, user);
+  return rows.slice(0, k);
 }
 
 /**

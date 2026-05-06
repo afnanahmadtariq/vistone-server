@@ -5,6 +5,7 @@ jest.mock('./lib/prisma', () => ({
   __esModule: true,
   default: {
     wiki: { create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn(), delete: jest.fn() },
+    wikiMember: { create: jest.fn() },
     wikiPage: { create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn(), delete: jest.fn() },
     wikiPageVersion: { create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn() },
     wikiProjectLink: { create: jest.fn(), findMany: jest.fn(), findUnique: jest.fn(), delete: jest.fn() },
@@ -36,7 +37,14 @@ describe('GET /wikis', () => {
 
 describe('POST /wikis', () => {
   it('creates a wiki', async () => {
+    (prisma.wiki.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.wiki.create as jest.Mock).mockResolvedValue(wiki);
+    (prisma.wikiMember.create as jest.Mock).mockResolvedValue({
+      id: 'wm-1',
+      wikiId: wiki.id,
+      userId: 'user-1',
+      role: 'admin',
+    });
     const res = await request(app).post('/wikis').send({ organizationId: 'org-1', name: 'Company Wiki' });
     expect([200, 201]).toContain(res.status);
   });
@@ -58,6 +66,8 @@ describe('GET /wikis/:id', () => {
 
 describe('PUT /wikis/:id', () => {
   it('updates a wiki', async () => {
+    (prisma.wiki.findUnique as jest.Mock).mockResolvedValue({ organizationId: 'org-1' });
+    (prisma.wiki.findMany as jest.Mock).mockResolvedValue([]);
     (prisma.wiki.update as jest.Mock).mockResolvedValue({ ...wiki, name: 'Updated Wiki' });
     const res = await request(app).put('/wikis/wiki-1').send({ name: 'Updated Wiki' });
     expect(res.status).toBe(200);
