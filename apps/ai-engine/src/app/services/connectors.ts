@@ -34,12 +34,17 @@ function createClient(baseURL: string, timeout = 15000): AxiosInstance {
 
 // ── Lazy singleton clients ─────────────────────────────────────
 
+let _auth: AxiosInstance | null = null;
 let _project: AxiosInstance | null = null;
 let _client: AxiosInstance | null = null;
 let _workforce: AxiosInstance | null = null;
 let _communication: AxiosInstance | null = null;
 let _notification: AxiosInstance | null = null;
 let _knowledge: AxiosInstance | null = null;
+
+export function authServiceClient() {
+  return (_auth ??= createClient(config.services.auth));
+}
 
 export function projectClient() {
   return (_project ??= createClient(config.services.project));

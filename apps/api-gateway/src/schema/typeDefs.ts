@@ -1117,6 +1117,8 @@ export const typeDefs = gql`
 
     # AI Engine
     aiChat(input: AiChatInput!): AiChatResponse!
+    """Organizer-only. Runs client_workspace automation using organization settings.autoAgent (tasks, milestones, skill/load assignment)."""
+    runClientWorkspaceAutoAgent(input: JSON!): JSON
     aiClearHistory(sessionId: String!): DeleteResponse!
     aiSyncAll(organizationId: String!): AiSyncResponse!
     aiSyncType(organizationId: String!, type: String!): AiSyncResponse!

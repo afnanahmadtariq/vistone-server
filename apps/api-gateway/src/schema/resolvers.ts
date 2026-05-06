@@ -3848,6 +3848,26 @@ export const resolvers = {
       );
       return { success: true, data: result };
     },
+    runClientWorkspaceAutoAgent: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      const orgId = typeof input?.organizationId === 'string' ? input.organizationId : '';
+      if (!orgId) {
+        throw new GraphQLError('organizationId is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      await validateAiRequest(context, orgId, undefined);
+      await requireOrganizer(context);
+      return aiEngineClient.postWithAuth(
+        '/api/auto-agent/client-workspace',
+        {
+          projectId: input.projectId,
+          channelId: input.channelId,
+          organizationId: orgId,
+        },
+        context.token || '',
+        orgId
+      );
+    },
     aiClearHistory: async (_: unknown, { sessionId }: { sessionId: string }, context: Context) => {
       const user = await requireAuth(context);
       const orgId = getOrgId(user);
