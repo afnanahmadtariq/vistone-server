@@ -35,6 +35,8 @@ model User {
   googleId    String?  @unique
   avatarUrl   String?
   jobTitle    String?
+  /// Structured profile for contributors/managers: skill tags + experience entries (AI-friendly JSON).
+  professionalProfile Json?
   status      String   @default("active") // active | paused
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

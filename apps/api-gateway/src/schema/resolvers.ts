@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { GraphQLScalarType, Kind, GraphQLError } from 'graphql';
 import {
   authClient,
@@ -1636,6 +1637,29 @@ export const resolvers = {
     },
   },
 
+  AuthUser: {
+    skills: async (parent: ServiceRecord) => {
+      const fromProfile = parent.professionalProfile as { skillTags?: string[] } | undefined;
+      if (Array.isArray(fromProfile?.skillTags) && fromProfile.skillTags.length > 0) {
+        return fromProfile.skillTags;
+      }
+      if (Array.isArray(parent.skills) && parent.skills.length > 0) {
+        return parent.skills;
+      }
+      try {
+        const userSkills = await workforceClient.get(
+          `/user-skills?userId=${encodeURIComponent(String(parent.id))}`,
+        );
+        return Array.isArray(userSkills)
+          ? userSkills.map((s: ServiceRecord) => s.skillName).filter(Boolean)
+          : [];
+      } catch {
+        return [];
+      }
+    },
+    professionalProfile: (parent: ServiceRecord) => parent.professionalProfile ?? null,
+  },
+
   ActivityItem: {
     user: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       if (!parent.userId) return null;
@@ -1741,6 +1765,155 @@ export const resolvers = {
       }
 
       return result;
+    },
+
+    updateMyProfessionalProfile: async (
+      _: unknown,
+      {
+        input,
+      }: {
+        input: {
+          skillTags: string[];
+          experiences: Array<{
+            id?: string | null;
+            title?: string | null;
+            description: string;
+            organization?: string | null;
+            seniority: string;
+            durationMonths?: number | null;
+            durationLabel?: string | null;
+            startDate?: string | null;
+            endDate?: string | null;
+            isCurrent?: boolean | null;
+          }>;
+        };
+      },
+      context: Context,
+    ) => {
+      const user = await requireAuth(context);
+      if (!context.token) {
+        throw new GraphQLError('Not authenticated', {
+          extensions: { code: 'UNAUTHENTICATED', statusCode: 401 },
+        });
+      }
+
+      const roleName = String(user.role || '').toLowerCase();
+      if (roleName === 'organizer' || roleName === 'client') {
+        throw new GraphQLError(
+          'Professional profile can only be edited by managers and contributors.',
+          {
+            extensions: { code: 'FORBIDDEN', statusCode: 403 },
+          },
+        );
+      }
+
+      const ALLOWED_SENIORITY = new Set([
+        'intern',
+        'junior',
+        'mid',
+        'senior',
+        'lead',
+        'principal',
+        'executive',
+      ]);
+
+      const skillTags = [
+        ...new Set(
+          (input.skillTags || [])
+            .map((s) => String(s).trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      ].slice(0, 80);
+
+      const experiences = (input.experiences || []).slice(0, 25).map((ex, idx) => {
+        const seniority = String(ex.seniority || '').trim().toLowerCase();
+        if (!ALLOWED_SENIORITY.has(seniority)) {
+          throw new GraphQLError(
+            `Invalid seniority "${ex.seniority}". Use: intern, junior, mid, senior, lead, principal, executive.`,
+            {
+              extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+            },
+          );
+        }
+        const description = String(ex.description || '').trim();
+        if (!description || description.length > 4000) {
+          throw new GraphQLError('Each experience requires a description (1–4000 characters).', {
+            extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+          });
+        }
+        const id =
+          typeof ex.id === 'string' && ex.id.trim().length > 0
+            ? ex.id.trim()
+            : randomUUID();
+        return {
+          id,
+          ...(ex.title ? { title: String(ex.title).trim().slice(0, 200) } : {}),
+          description,
+          ...(ex.organization
+            ? { organization: String(ex.organization).trim().slice(0, 200) }
+            : {}),
+          seniority,
+          durationMonths:
+            typeof ex.durationMonths === 'number' &&
+            Number.isFinite(ex.durationMonths) &&
+            ex.durationMonths >= 0
+              ? Math.min(600, Math.floor(ex.durationMonths))
+              : null,
+          ...(ex.durationLabel
+            ? { durationLabel: String(ex.durationLabel).trim().slice(0, 120) }
+            : {}),
+          ...(ex.startDate ? { startDate: String(ex.startDate).trim().slice(0, 32) } : {}),
+          ...(ex.endDate ? { endDate: String(ex.endDate).trim().slice(0, 32) } : {}),
+          isCurrent: Boolean(ex.isCurrent),
+          sortOrder: idx,
+        };
+      });
+
+      const doc = {
+        version: 1,
+        skillTags,
+        experiences,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await authClient.put('/users', user.id, { professionalProfile: doc });
+
+      try {
+        const existing = await workforceClient.get(
+          `/user-skills?userId=${encodeURIComponent(user.id)}`,
+        );
+        if (Array.isArray(existing)) {
+          for (const row of existing) {
+            if (row?.id) {
+              await workforceClient.delete('/user-skills', row.id);
+            }
+          }
+        }
+        for (const tag of skillTags) {
+          await workforceClient.post('/user-skills', {
+            userId: user.id,
+            skillName: tag,
+            proficiency: null,
+          });
+        }
+      } catch (e) {
+        console.error('[updateMyProfessionalProfile] workforce skill sync failed:', e);
+      }
+
+      const rawOrg = context.headers['x-organization-id'];
+      const organizationId =
+        typeof rawOrg === 'string'
+          ? rawOrg.trim()
+          : Array.isArray(rawOrg)
+            ? String(rawOrg[0] ?? '').trim()
+            : undefined;
+
+      return authClient.postWithAuth(
+        '/auth/me',
+        { organizationId: organizationId || undefined },
+        context.token,
+        organizationId,
+      );
     },
 
     /**

@@ -22,15 +22,23 @@ export async function enrichUserWithWorkforceData(
       workforceClient.get(`/user-skills?userId=${user.id}`),
     ]);
     const teamMember = Array.isArray(teamMembers) ? teamMembers[0] : null;
-    const skills = Array.isArray(userSkills)
-      ? userSkills.map((s: ServiceRecord) => s.skillName)
-      : [];
+    const fromProfile = user.professionalProfile as { skillTags?: string[] } | undefined;
+    const profileTags =
+      Array.isArray(fromProfile?.skillTags) && fromProfile.skillTags.length > 0
+        ? fromProfile.skillTags.filter((t): t is string => typeof t === 'string' && t.length > 0)
+        : null;
+    const skills = profileTags
+      ? profileTags
+      : Array.isArray(userSkills)
+        ? userSkills.map((s: ServiceRecord) => s.skillName)
+        : [];
 
     return {
       ...user,
       teamId: teamMember?.teamId || null,
       joinedAt: teamMember?.createdAt || user.createdAt,
       skills,
+      professionalProfile: user.professionalProfile ?? null,
       avatar: null,
       status: user.status || 'active',
     };
@@ -40,6 +48,7 @@ export async function enrichUserWithWorkforceData(
       teamId: null,
       joinedAt: user.createdAt,
       skills: [],
+      professionalProfile: user.professionalProfile ?? null,
       avatar: null,
       status: user.status || 'active',
     };

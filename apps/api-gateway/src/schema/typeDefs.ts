@@ -39,6 +39,10 @@ export const typeDefs = gql`
     avatar: String
     status: String
     skills: [String]
+    """
+    Structured professional data for contributors/managers (JSON v1: version, skillTags, experiences[], updatedAt). Optimized for AI tooling.
+    """
+    professionalProfile: JSON
     teamId: ID
     joinedAt: DateTime
     organizationId: ID
@@ -81,6 +85,7 @@ export const typeDefs = gql`
     avatar: String
     status: String
     skills: [String]
+    professionalProfile: JSON
     teamId: ID
     joinedAt: DateTime
     permissions: JSON
@@ -889,12 +894,35 @@ export const typeDefs = gql`
     recentActivities: [ActivityItem!]!
   }
 
+  """One row of work history; seniority uses lowercase industry labels (intern … executive)."""
+  input ExperienceEntryInput {
+    id: ID
+    title: String
+    description: String!
+    organization: String
+    seniority: String!
+    durationMonths: Int
+    durationLabel: String
+    startDate: String
+    endDate: String
+    isCurrent: Boolean
+  }
+
+  input UpdateProfessionalProfileInput {
+    skillTags: [String!]!
+    experiences: [ExperienceEntryInput!]!
+  }
+
   # Mutation Type
   type Mutation {
     # Authentication
     login(email: String!, password: String!, turnstileToken: String!): AuthPayload!
     register(name: String!, email: String!, password: String!, organizationName: String, turnstileToken: String!): AuthPayload!
     acceptInvite(token: String!, password: String!, name: String!, role: String): AuthPayload!
+    """
+    Contributors and managers: persist skill tags + structured experience for the authenticated user (JSON v1 on User; workforce skills synced). Not available for organizers or clients.
+    """
+    updateMyProfessionalProfile(input: UpdateProfessionalProfileInput!): AuthUser!
     googleLogin(idToken: String!): AuthPayload!
     googleSignup(idToken: String!): AuthPayload!
     refreshToken(refreshToken: String!): TokenPayload!

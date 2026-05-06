@@ -101,6 +101,7 @@ interface UserData {
   avatarUrl?: string | null;
   status?: string;
   createdAt: Date;
+  professionalProfile?: unknown | null;
 }
 interface TeamMemberData {
   role: string | null;
@@ -126,6 +127,11 @@ function formatAuthUser(
   // Combine firstName and lastName into name
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || null;
 
+  const prof = user.professionalProfile as { skillTags?: string[] } | null | undefined;
+  const skillTags = Array.isArray(prof?.skillTags)
+    ? prof.skillTags.filter((t): t is string => typeof t === 'string' && t.length > 0)
+    : [];
+
   return {
     id: user.id,
     name,
@@ -135,7 +141,8 @@ function formatAuthUser(
     role: role?.name || teamMember?.role || 'member',
     avatar: user.avatarUrl || null,
     status: user.status || 'active',
-    skills: [], // Could be extended to fetch from workforce service
+    skills: skillTags,
+    professionalProfile: user.professionalProfile ?? null,
     teamId: teamMember?.teamId || null,
     joinedAt: user.createdAt,
     organizationId: organization?.id || null,

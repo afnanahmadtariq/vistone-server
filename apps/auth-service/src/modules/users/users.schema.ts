@@ -18,5 +18,6 @@ export const updateUserSchema = z.object({
         // GraphQL / clients send `avatar`; DB column is `avatarUrl`
         .extend({
           avatar: z.string().nullable().optional(),
+          professionalProfile: z.any().optional(),
         }),
     });
