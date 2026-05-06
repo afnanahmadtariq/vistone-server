@@ -12,9 +12,8 @@ import {
   saveToHistory,
 } from './rag.service';
 import { communicationClient, knowledgeClient, safeCall } from './connectors';
-import {
-  getOrgAutoAgentSettings,
-} from './org-settings.service';
+import { getOrgAutoAgentSettings } from './org-settings.service';
+import { buildOrganizationOverviewForPrompt } from './org-context.service';
 import {
   resolveAutoAgentPipeline,
 } from '../../lib/org-auto-agent-settings';
@@ -105,13 +104,20 @@ ${steps.join('\n')}
 Summarize tasks, milestones, and assignments you created or updated.`;
 }
 
-function buildAutomationSystemPrompt(user: AuthenticatedUser, ragContext: string): string {
+function buildAutomationSystemPrompt(
+  user: AuthenticatedUser,
+  ragContext: string,
+  orgOverview: string
+): string {
   const userName = user.name || user.firstName || user.email;
   const permSummary = describePermissions(user);
   return `You are Vistone workspace automation for ${user.organizationName || 'the organization'}.
 
 Current user (runner): ${userName} (${user.id}), role ${user.role}.
 ${permSummary}
+
+ORGANIZATION SNAPSHOT (high-level; use tools for tasks, users, detailed project state):
+${orgOverview || '(unavailable)'}
 
 CLIENT WORKSPACE AUTOMATION RULES:
 - You are acting on behalf of an organizer who enabled automation in organization settings.
@@ -188,10 +194,13 @@ export async function runClientWorkspaceAutoAgentPipeline(
     pipeline,
   });
 
-  const similarDocs = await searchSimilar(user, queryText);
+  const [similarDocs, orgOverview] = await Promise.all([
+    searchSimilar(user, queryText),
+    buildOrganizationOverviewForPrompt(user),
+  ]);
   const ragContext = buildContext(similarDocs);
   const sources = extractSources(similarDocs);
-  const systemPrompt = buildAutomationSystemPrompt(user, ragContext);
+  const systemPrompt = buildAutomationSystemPrompt(user, ragContext, orgOverview);
   const sessionId = uuidv4();
   const history = await getConversationHistory(sessionId);
 

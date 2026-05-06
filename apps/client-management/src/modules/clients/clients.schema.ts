@@ -13,6 +13,7 @@ export const clientSchema = z.object({
         contactInfo: z.any().nullable().optional(),
         portalAccess: z.boolean().nullable().optional(),
         contactPersonId: z.string().nullable().optional(),
+        portalUserId: z.string().nullable().optional(),
       })
     });
 export const updateClientSchema = z.object({

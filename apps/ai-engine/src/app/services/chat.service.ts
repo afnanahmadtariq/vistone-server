@@ -25,6 +25,7 @@ import {
     clearHistory as ragClearHistory,
 } from './rag.service';
 import { v4 as uuidv4 } from 'uuid';
+import { buildOrganizationOverviewForPrompt } from './org-context.service';
 
 // ── Action Detection ────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ function isOutOfScope(query: string): boolean {
 
 // ── System Prompt ───────────────────────────────────────────────
 
-function buildSystemPrompt(user: AuthenticatedUser, context: string): string {
+function buildSystemPrompt(user: AuthenticatedUser, context: string, orgOverview: string): string {
     const userName = user.name || user.firstName || user.email;
     const permSummary = describePermissions(user);
 
@@ -83,14 +84,19 @@ ${permSummary}
 RULES:
 - Only answer questions related to the organization's projects, tasks, teams, clients, documents, and operations.
 - If the user asks about topics outside the workspace (politics, medical, legal, etc.), politely decline.
-- Use the retrieved context below to answer factual questions. If the context doesn't contain the answer, say so honestly.
+- You receive an ORGANIZATION SNAPSHOT below (members, projects, teams, clients) plus RAG snippets. The snapshot is for orientation only — it may be incomplete. Use list_/get_ tools whenever you need authoritative, detailed, or up-to-date data (e.g. tasks, milestones, messages, wiki).
+- Use the retrieved RAG context to answer factual questions grounded in synced documents. If RAG does not contain the answer, say so and use tools if appropriate.
 - When executing actions, only use tools the user has permission for.
 - Use the current User ID (${user.id}) when tools require a userId or assigneeId for the current user.
 - Always be concise and professional.
 - The user's workspace organization is already bound to this session. Never ask them for an organization ID, UUID, or exact org name to load data — tools return only records permitted for this user within that workspace (not the whole organization unless they are an organizer).
 - If a data service returns an error, explain briefly (do not ask the user to paste organization identifiers).
+- Conversation history is provided as prior user/assistant turns before the latest message; maintain continuity with it.
 
-RETRIEVED CONTEXT:
+ORGANIZATION SNAPSHOT (high-level, refreshed for this request):
+${orgOverview || '(Snapshot unavailable — rely on tools and RAG.)'}
+
+RETRIEVED CONTEXT (vector search / synced knowledge snippets):
 ${context || 'No relevant documents found.'}`;
 }
 
@@ -114,12 +120,15 @@ export async function chat(
         };
     }
 
-    // 2. Retrieve context via RBAC-filtered vector search
-    const similarDocs = await searchSimilar(user, queryText);
+    // 2. Organization snapshot + RAG (parallel where possible)
+    const [similarDocs, orgOverview] = await Promise.all([
+        searchSimilar(user, queryText),
+        buildOrganizationOverviewForPrompt(user),
+    ]);
     const context = buildContext(similarDocs);
     const sources = extractSources(similarDocs);
 
-    // 3. Get conversation history
+    // 3. Conversation history (chronological user/assistant turns for this session)
     const history = await getConversationHistory(sid);
 
     // 4. Detect mode
@@ -130,22 +139,22 @@ export async function chat(
 
     if (confirmAction) {
         // Explicit confirmation from the frontend — execute now
-        return handleAction(user, queryText, sid, context, sources, history);
+        return handleAction(user, queryText, sid, context, sources, history, orgOverview);
     }
 
     if (isConfirmation(queryText)) {
         // Check if there's a pending action in recent history
         const pendingQuery = findPendingActionQuery(history);
         if (pendingQuery) {
-            return handleAction(user, pendingQuery, sid, context, sources, history);
+            return handleAction(user, pendingQuery, sid, context, sources, history, orgOverview);
         }
     }
 
     if (isActionQuery(queryText)) {
-        return handleActionWithConfirmation(user, queryText, sid, context, sources, history);
+        return handleActionWithConfirmation(user, queryText, sid, context, sources, history, orgOverview);
     }
 
-    return handleInfoQuery(user, queryText, sid, context, sources, history);
+    return handleInfoQuery(user, queryText, sid, context, sources, history, orgOverview);
 }
 
 // ── Info Query (RAG) ────────────────────────────────────────────
@@ -156,20 +165,21 @@ async function handleInfoQuery(
     sessionId: string,
     context: string,
     sources: ChatResponse['sources'],
-    history: { role: string; content: string }[]
+    history: { role: string; content: string }[],
+    orgOverview: string
 ): Promise<ChatResponse> {
     // We use the Agent runner in ReadOnly mode.
     // This allows the LLM to fetch missing data (e.g., project lists) while strictly preventing state changes.
     const { runAgent } = await import('../agent/runner.js');
 
     const systemPrompt =
-        buildSystemPrompt(user, context) +
+        buildSystemPrompt(user, context, orgOverview) +
         `
 
 INFO MODE (Read-Only):
-You have access to data-retrieval tools. If the retrieved context doesn't contain the answer (e.g., user asks for counts or lists not in snippets), use a 'list_...' or 'get_...' tool to find it. 
+You have access to data-retrieval tools. If the organization snapshot or RAG context is not enough (e.g. exact task lists, thread messages, wiki body text), use the appropriate 'list_...' or 'get_...' tool.
 - You MUST NOT use any tools that create, update, or delete resources.
-- Answer the user's question accurately based on context and tool results.
+- Answer the user's question accurately based on snapshot, RAG context, tool results, and prior conversation turns.
 - Do not ask the user for organization IDs — tools only return data the user is allowed to see (same rules as the app: project assignments, teams, client links, wiki access). If a tool reports access denied or empty results, do not infer hidden data from other organizations or projects.`;
 
     const result = await runAgent(user, queryText, systemPrompt, history, true);
@@ -209,18 +219,20 @@ async function handleActionWithConfirmation(
     sessionId: string,
     context: string,
     sources: ChatResponse['sources'],
-    history: { role: string; content: string }[] = []
+    history: { role: string; content: string }[] = [],
+    orgOverview: string
 ): Promise<ChatResponse> {
     const { planAgent, isWriteTool } = await import('../agent/runner.js');
 
-    const systemPrompt = buildSystemPrompt(user, context) + `
+    const systemPrompt = buildSystemPrompt(user, context, orgOverview) + `
 
 AGENT MODE (Planning):
 You have access to tools to perform actions. The user asked you to do something.
 Determine which tools you need to call to fulfill the request.
 - The user's ID is: ${user.id}
 - The organization ID is: ${user.organizationId}
-- Only use tools that match the user's permissions.`;
+- Only use tools that match the user's permissions.
+- Use the organization snapshot for IDs and names where helpful; confirm with tools if unsure.`;
 
     const plan = await planAgent(user, queryText, systemPrompt, history);
 
@@ -229,7 +241,7 @@ Determine which tools you need to call to fulfill the request.
 
     if (!hasWriteTools) {
         // Pure read query (LLM misclassified or only needs to list/get)
-        return handleInfoQuery(user, queryText, sessionId, context, sources, history);
+        return handleInfoQuery(user, queryText, sessionId, context, sources, history, orgOverview);
     }
 
     // Save the pending action query to history so confirmation words can find it
@@ -260,12 +272,13 @@ async function handleAction(
     sessionId: string,
     context: string,
     sources: ChatResponse['sources'],
-    history: { role: string; content: string }[] = []
+    history: { role: string; content: string }[] = [],
+    orgOverview: string
 ): Promise<ChatResponse> {
     // Lazy import the agent runner
     const { runAgent } = await import('../agent/runner.js');
 
-    const systemPrompt = buildSystemPrompt(user, context) + `
+    const systemPrompt = buildSystemPrompt(user, context, orgOverview) + `
 
 AGENT MODE:
 You have access to tools to perform actions. Use them to fulfill the user's request.
@@ -273,6 +286,7 @@ The user has already confirmed this action — proceed immediately.
 - The user's ID is: ${user.id}
 - The organization ID is: ${user.organizationId}
 - Only use tools that match the user's permissions.
+- Use the organization snapshot for orientation; prefer tool results for precise state before mutating.
 - After completing actions, summarize what you did clearly.`;
 
     const result = await runAgent(user, queryText, systemPrompt, history);

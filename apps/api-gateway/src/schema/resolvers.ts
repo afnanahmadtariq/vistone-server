@@ -16,7 +16,10 @@ import { requireAuth, requireOrganizer, requireOrganization, requirePermission, 
 import { verifyTurnstileToken } from '../lib/turnstile';
 import { ServiceError } from '../lib/errors';
 import { enrichUserWithWorkforceData, type GraphQLLoaders } from '../lib/graphqlLoaders';
-import { provisionClientOrganizerWorkspaceHub } from '../lib/clientOrganizerHub';
+import {
+  provisionClientOrganizerWorkspaceHub,
+  syncClientOrganizerHubParticipants,
+} from '../lib/clientOrganizerHub';
 
 interface Context extends AuthContext {
   headers: Record<string, string | string[] | undefined>;
@@ -109,6 +112,43 @@ async function getAccessibleProjectIds(user: ServiceRecord): Promise<Set<string>
         projectIds.add(p.id);
       }
     });
+  }
+
+  // Client portal: CRM-linked projects (project_clients), matched by portal user id or email
+  try {
+    const clientsInOrg = await clientMgmtClient
+      .get(`/clients?organizationId=${encodeURIComponent(orgId)}`)
+      .catch(() => [] as ServiceRecord[]);
+    if (Array.isArray(clientsInOrg)) {
+      const crmIds = new Set<string>();
+      const emailNorm =
+        typeof user.email === 'string' ? user.email.trim().toLowerCase() : '';
+      for (const c of clientsInOrg) {
+        if (typeof c.portalUserId === 'string' && c.portalUserId === user.id) {
+          crmIds.add(c.id as string);
+          continue;
+        }
+        if (
+          emailNorm &&
+          typeof c.email === 'string' &&
+          c.email.trim().toLowerCase() === emailNorm
+        ) {
+          crmIds.add(c.id as string);
+        }
+      }
+      for (const cid of crmIds) {
+        const pcs = await clientMgmtClient
+          .get(`/project-clients?clientId=${encodeURIComponent(cid)}`)
+          .catch(() => [] as ServiceRecord[]);
+        if (Array.isArray(pcs)) {
+          pcs.forEach((pc: ServiceRecord) => {
+            if (typeof pc.projectId === 'string' && pc.projectId) projectIds.add(pc.projectId);
+          });
+        }
+      }
+    }
+  } catch {
+    /* non-fatal */
   }
 
   return projectIds;
@@ -1792,8 +1832,33 @@ export const resolvers = {
               c.email.trim().toLowerCase() === normalized,
           );
           if (match?.id) {
-            // Must match ClientStatus / UI filters ("Active"), not lowercase DB drift
-            await clientMgmtClient.put('/clients', match.id, { status: 'Active' });
+            const pu =
+              typeof acceptedUser?.id === 'string' && acceptedUser.id.trim()
+                ? acceptedUser.id.trim()
+                : undefined;
+            await clientMgmtClient.put('/clients', match.id, {
+              status: 'Active',
+              ...(pu ? { portalUserId: pu } : {}),
+            });
+            if (pu && orgId) {
+              const links = await clientMgmtClient
+                .get(`/project-clients?clientId=${encodeURIComponent(match.id)}`)
+                .catch(() => [] as ServiceRecord[]);
+              const pclist = Array.isArray(links) ? links : [];
+              for (const pc of pclist) {
+                if (typeof pc.projectId === 'string') {
+                  try {
+                    await syncClientOrganizerHubParticipants({
+                      organizationId: orgId,
+                      clientId: match.id,
+                      projectId: pc.projectId,
+                    });
+                  } catch (hubErr) {
+                    console.error('[acceptInvite] client–organizer hub sync:', hubErr);
+                  }
+                }
+              }
+            }
           }
         } catch (e) {
           console.error('[acceptInvite] Failed to activate client record after onboarding:', e);

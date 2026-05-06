@@ -28,6 +28,8 @@ let HumanMessage: any = null;
 let SystemMessage: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ToolMessage: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let AIMessage: any = null;
 
 async function loadLangChain() {
     if (DynamicStructuredTool) return;
@@ -43,6 +45,7 @@ async function loadLangChain() {
     HumanMessage = coreMessages.HumanMessage;
     SystemMessage = coreMessages.SystemMessage;
     ToolMessage = coreMessages.ToolMessage;
+    AIMessage = coreMessages.AIMessage;
 }
 
 // ── LLM singleton (created lazily) ──────────────────────────────
@@ -125,13 +128,12 @@ export async function runAgent(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages: any[] = [new SystemMessage(systemPrompt)];
 
-    // Add history support
+    // Prior turns (chronological): proper message types for chat models
     for (const h of history) {
         if (h.role === 'user') {
             messages.push(new HumanMessage(h.content));
-        } else {
-            // Simply use assistant for history content
-            messages.push({ role: 'assistant', content: h.content });
+        } else if (h.role === 'assistant') {
+            messages.push(new AIMessage({ content: h.content }));
         }
     }
 
@@ -248,8 +250,8 @@ export async function planAgent(
     for (const h of history) {
         if (h.role === 'user') {
             messages.push(new HumanMessage(h.content));
-        } else {
-            messages.push({ role: 'assistant', content: h.content });
+        } else if (h.role === 'assistant') {
+            messages.push(new AIMessage({ content: h.content }));
         }
     }
 
