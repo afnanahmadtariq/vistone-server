@@ -14,7 +14,7 @@ function extractBearerToken(request: FastifyRequest): string | null {
 
 export default async function autoAgentRoutes(fastify: FastifyInstance) {
   fastify.post<{
-    Body: { projectId?: string; channelId?: string; organizationId?: string };
+    Body: { projectId?: string; channelId?: string; organizationId?: string; forceExecute?: boolean };
   }>('/api/auto-agent/client-workspace', async (request, reply) => {
     if (!request.user) {
       return reply.status(401).send({ error: 'Authentication required' });
@@ -44,6 +44,7 @@ export default async function autoAgentRoutes(fastify: FastifyInstance) {
           projectId: projectId.trim(),
           channelId: channelId.trim(),
           organizationId: request.body?.organizationId?.trim() || organizationId,
+          forceExecute: !!request.body?.forceExecute,
         })
       );
       if (!result.success && result.error) {

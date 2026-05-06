@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { Message } from '../../models/message.model';
 import prisma from '../../lib/prisma';
-import { syncChatAttachmentsToWiki } from '../../lib/chatWikiSync';
+import { syncChatAttachmentsToWiki, triggerClientWorkspaceAutoAgent } from '../../lib/chatWikiSync';
 
 // GET /messages/media?channelId=xxx&cursor=xxx&limit=50
 // Returns messages that contain attachments (for the media sidebar)
@@ -165,6 +165,13 @@ export async function createMessageHandler(req: Request, res: Response) {
             messageId: String(message.id),
             senderId,
             attachments,
+            authorization: authHeader,
+            organizationId: orgId,
+        });
+        void triggerClientWorkspaceAutoAgent({
+            channelId,
+            messageId: String(message.id),
+            content: content || '',
             authorization: authHeader,
             organizationId: orgId,
         });

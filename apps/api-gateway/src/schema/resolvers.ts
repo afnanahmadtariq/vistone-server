@@ -3863,6 +3863,7 @@ export const resolvers = {
           projectId: input.projectId,
           channelId: input.channelId,
           organizationId: orgId,
+          forceExecute: !!input.forceExecute,
         },
         context.token || '',
         orgId

@@ -133,11 +133,12 @@ export interface ClientWorkspaceAutoAgentResult {
   sources?: { contentType: string; title: string; sourceId: string }[];
   actionResult?: { success: boolean; toolsUsed: string[]; iterations: number };
   skippedReason?: string;
+  pendingAction?: { description: string; tools: string[]; originalQuery: string };
 }
 
 export async function runClientWorkspaceAutoAgentPipeline(
   user: AuthenticatedUser,
-  body: { projectId: string; channelId: string; organizationId?: string }
+  body: { projectId: string; channelId: string; organizationId?: string; forceExecute?: boolean }
 ): Promise<ClientWorkspaceAutoAgentResult> {
   const organizationId = (body.organizationId || user.organizationId || '').trim();
   if (!organizationId) {
@@ -196,7 +197,7 @@ export async function runClientWorkspaceAutoAgentPipeline(
 
   const { runAgent, planAgent, isWriteTool } = await import('../agent/runner.js');
 
-  if (!pipeline.skipUserConfirmation) {
+  if (!pipeline.skipUserConfirmation && !body.forceExecute) {
     const plan = await planAgent(user, queryText, systemPrompt, history);
     const hasWrite = plan.tools.some(isWriteTool);
     if (hasWrite) {
@@ -210,6 +211,11 @@ export async function runClientWorkspaceAutoAgentPipeline(
         answer: plan.description,
         sources,
         skippedReason: 'pending_confirmation',
+        pendingAction: {
+          description: plan.description,
+          tools: plan.tools,
+          originalQuery: queryText,
+        },
       };
     }
   }

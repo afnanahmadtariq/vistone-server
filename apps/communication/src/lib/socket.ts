@@ -4,7 +4,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import Redis from 'ioredis';
 import prisma from './prisma';
 import { Message, IReaction } from '../models/message.model';
-import { syncChatAttachmentsToWiki } from './chatWikiSync';
+import { syncChatAttachmentsToWiki, triggerClientWorkspaceAutoAgent } from './chatWikiSync';
 
 // Extended socket type with auth data
 interface AuthenticatedSocket extends Socket {
@@ -193,6 +193,13 @@ export function initSocketServer(httpServer: HttpServer): Server {
                         messageId: String(message.id),
                         senderId: userId,
                         attachments: attachments || [],
+                        authorization: `Bearer ${sock.accessToken}`,
+                        organizationId: sock.organizationId,
+                    });
+                    void triggerClientWorkspaceAutoAgent({
+                        channelId,
+                        messageId: String(message.id),
+                        content: content || '',
                         authorization: `Bearer ${sock.accessToken}`,
                         organizationId: sock.organizationId,
                     });
