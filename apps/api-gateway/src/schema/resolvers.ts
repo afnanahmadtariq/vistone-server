@@ -2062,15 +2062,21 @@ export const resolvers = {
           if (org?.name) organizationName = org.name;
         } catch { /* ignore */ }
 
+        const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+        const roleEmailLogoUrl =
+          process.env.VISTONE_EMAIL_LOGO_URL?.trim() ||
+          `${frontendBase}/logo-dark.svg`;
+
         await notificationClient.postWithAuth('/emails/send', {
           to: user.email,
           subject: `Your role has been updated on Vistone`,
           html: `
-            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f4f4f5;">
-              <div style="background-color: #ffffff; padding: 30px; border-radius: 8px; text-align: center;">
-                <h2 style="color: #18181b; margin-top: 0;">Role Update 🔄</h2>
-                <p style="color: #52525b; font-size: 16px;">Hi ${user.firstName || ''},</p>
-                <p style="color: #52525b; font-size: 16px;">
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #eef2f8;">
+              <div style="background-color: #ffffff; padding: 30px; border-radius: 8px; text-align: center; border: 1px solid #e2e8f0;">
+                <img src="${roleEmailLogoUrl}" alt="Vistone" width="160" height="160" style="height: 36px; width: auto; max-width: 180px; display: inline-block; margin: 0 auto 16px; border: 0;" />
+                <h2 style="color: #0f172a; margin-top: 0;">Role Update 🔄</h2>
+                <p style="color: #64748b; font-size: 16px;">Hi ${user.firstName || ''},</p>
+                <p style="color: #64748b; font-size: 16px;">
                   <strong>${inviterName}</strong> has updated your role in <strong>${organizationName}</strong> to <strong>${targetRole.name}</strong>.
                 </p>
               </div>
