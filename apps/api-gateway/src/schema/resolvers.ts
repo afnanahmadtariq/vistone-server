@@ -1895,7 +1895,13 @@ export const resolvers = {
     },
     updateUser: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'users', 'update');
-      return authClient.put('/users', id, input);
+      const payload: ServiceRecord = { ...input };
+      // Auth DB column is `avatarUrl`; clients send `avatar` (matches GraphQL User.avatar)
+      if (payload.avatar !== undefined && payload.avatarUrl === undefined) {
+        payload.avatarUrl = payload.avatar;
+        delete payload.avatar;
+      }
+      return authClient.put('/users', id, payload);
     },
     updateUserRole: async (_: unknown, { userId, role }: { userId: string; role: string }, context: Context) => {
       const currentUser = await requireOrganizer(context);

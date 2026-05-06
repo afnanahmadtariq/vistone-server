@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../../lib/prisma";
+import { consumeValidRefreshToken, persistRefreshToken } from "../../lib/refresh-token-store";
 import * as crypto from "crypto";
 import { logActivity } from "../activity-logs/activity-logs.controller";
 import { OAuth2Client } from "google-auth-library";
@@ -20,7 +21,6 @@ const generateSlug = (name: string): string => {
     .slice(0, 50);
 };
 const tokenStore = new Map<string, { userId: string; expiresAt: Date }>();
-const refreshTokenStore = new Map<string, { userId: string; expiresAt: Date }>();
 interface OrganizationData {
   id: string;
   name: string;
@@ -222,7 +222,7 @@ export async function loginHandler(req: Request, res: Response) {
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(refreshToken, { userId: user.id, expiresAt: refreshTokenExpiry });
+    await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
 
     // Get user's team membership
     const teamMember = await getTeamMembershipWithRole(user.id);
@@ -324,7 +324,7 @@ export async function registerHandler(req: Request, res: Response) {
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(refreshToken, { userId: user.id, expiresAt: refreshTokenExpiry });
+    await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
 
     // Get team membership if exists (might have been added during invite)
     const teamMember = await getTeamMembershipWithRole(user.id);
@@ -446,7 +446,7 @@ export async function googleOauthHandler(req: Request, res: Response) {
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(refreshToken, { userId: user.id, expiresAt: refreshTokenExpiry });
+    await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
 
     // Get user's team membership
     const teamMember = await getTeamMembershipWithRole(user.id);
@@ -482,16 +482,10 @@ export async function refreshTokenHandler(req: Request, res: Response) {
       return;
     }
 
-    const tokenData = refreshTokenStore.get(refreshToken);
+    const consumed = await consumeValidRefreshToken(refreshToken);
 
-    if (!tokenData) {
+    if (!consumed) {
       res.status(401).json({ error: 'Invalid refresh token' });
-      return;
-    }
-
-    if (tokenData.expiresAt < new Date()) {
-      refreshTokenStore.delete(refreshToken);
-      res.status(401).json({ error: 'Refresh token expired' });
       return;
     }
 
@@ -503,11 +497,8 @@ export async function refreshTokenHandler(req: Request, res: Response) {
     const accessTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    tokenStore.set(newAccessToken, { userId: tokenData.userId, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(newRefreshToken, { userId: tokenData.userId, expiresAt: refreshTokenExpiry });
-
-    // Remove old refresh token
-    refreshTokenStore.delete(refreshToken);
+    tokenStore.set(newAccessToken, { userId: consumed.userId, expiresAt: accessTokenExpiry });
+    await persistRefreshToken(consumed.userId, newRefreshToken, refreshTokenExpiry);
 
     res.json({
       accessToken: newAccessToken,
@@ -722,7 +713,7 @@ export async function acceptInviteHandler(req: Request, res: Response) {
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(refreshToken, { userId: user.id, expiresAt: refreshTokenExpiry });
+    await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
 
     // Get team membership
     const teamMember = await getTeamMembershipWithRole(user.id);

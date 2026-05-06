@@ -20,6 +20,11 @@ jest.mock('../../lib/prisma', () => ({
     role: { create: jest.fn(), findFirst: jest.fn() },
     organizationMember: { findMany: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
     invitation: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+    refreshToken: {
+      findUnique: jest.fn(),
+      delete: jest.fn().mockResolvedValue(undefined),
+      create: jest.fn().mockResolvedValue({ id: 'rt1' }),
+    },
   },
 }));
 

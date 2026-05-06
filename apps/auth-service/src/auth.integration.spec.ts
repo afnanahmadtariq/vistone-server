@@ -11,9 +11,9 @@ jest.mock('google-auth-library', () => ({
   })),
 }));
 
-jest.mock('./lib/prisma', () => ({
-  __esModule: true,
-  default: {
+jest.mock('./lib/prisma', () => {
+  const prismaMock = {
+    $transaction: jest.fn(),
     user: {
       create: jest.fn(),
       findMany: jest.fn(),
@@ -62,9 +62,17 @@ jest.mock('./lib/prisma', () => ({
       create: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      deleteMany: jest.fn(),
     },
-  },
-}));
+    refreshToken: {
+      deleteMany: jest.fn(),
+    },
+  };
+  prismaMock.$transaction.mockImplementation(
+    async (fn: (tx: typeof prismaMock) => Promise<unknown>) => fn(prismaMock),
+  );
+  return { __esModule: true, default: prismaMock };
+});
 
 import request from 'supertest';
 import app from './app';

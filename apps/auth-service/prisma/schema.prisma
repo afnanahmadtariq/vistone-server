@@ -44,8 +44,23 @@ model User {
   kycData                 KycData?
   mfaSettings             MfaSetting?
   activityLogs            ActivityLog[]
+  refreshTokens           RefreshToken[]
   
   @@map("users")
+  @@schema("auth")
+}
+
+/// Opaque refresh tokens (stored as SHA-256 hashes). Survives auth-service restarts.
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
   @@schema("auth")
 }
 

@@ -13,5 +13,10 @@ export const userSchema = z.object({
       })
     });
 export const updateUserSchema = z.object({
-      body: userSchema.shape.body.partial()
+      body: userSchema.shape.body
+        .partial()
+        // GraphQL / clients send `avatar`; DB column is `avatarUrl`
+        .extend({
+          avatar: z.string().nullable().optional(),
+        }),
     });

@@ -63,9 +63,17 @@ export async function getUserByIdHandler(req: Request, res: Response) {
 
 export async function updateUserHandler(req: Request, res: Response) {
     try {
+    const raw = req.body as Record<string, unknown>;
+    const { avatar, ...rest } = raw;
+    const data = { ...rest } as Record<string, unknown>;
+    if (avatar !== undefined) {
+      data.avatarUrl = avatar;
+    }
+
     const user = await prisma.user.update({
       where: { id: req.params.id },
-      data: req.body,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: data as any,
     });
     res.json(user);
     } catch (error) {
