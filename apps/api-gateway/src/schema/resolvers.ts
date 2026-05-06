@@ -1704,8 +1704,43 @@ export const resolvers = {
 
     // Accept invitation and complete onboarding
     acceptInvite: async (_: unknown, { token, password, name, role }: { token: string; password: string; name: string; role?: string }) => {
-      // Call auth service to accept the invitation
-      return authClient.post('/auth/accept-invite', { token, password, name, role });
+      let inviteMeta: ServiceRecord | null = null;
+      try {
+        const raw = await authClient.get(`/auth/invite-details/${encodeURIComponent(token)}`);
+        inviteMeta = (Array.isArray(raw) ? raw[0] : raw) as ServiceRecord;
+      } catch {
+        // accept-invite will validate the token
+      }
+
+      const result = await authClient.post('/auth/accept-invite', { token, password, name, role });
+
+      const invRole = String(inviteMeta?.role ?? role ?? '').toLowerCase();
+      const orgId =
+        typeof inviteMeta?.organizationId === 'string' ? inviteMeta.organizationId : undefined;
+      const email =
+        typeof inviteMeta?.email === 'string' ? inviteMeta.email : undefined;
+
+      if (invRole === 'client' && orgId && email) {
+        try {
+          const clients = await clientMgmtClient.get(
+            `/clients?organizationId=${encodeURIComponent(orgId)}`,
+          );
+          const list = Array.isArray(clients) ? clients : [];
+          const normalized = email.trim().toLowerCase();
+          const match = list.find(
+            (c: ServiceRecord) =>
+              typeof c.email === 'string' &&
+              c.email.trim().toLowerCase() === normalized,
+          );
+          if (match?.id) {
+            await clientMgmtClient.put('/clients', match.id, { status: 'active' });
+          }
+        } catch (e) {
+          console.error('[acceptInvite] Failed to activate client record after onboarding:', e);
+        }
+      }
+
+      return result;
     },
 
     /**
@@ -2027,7 +2062,7 @@ export const resolvers = {
           if (org?.name) organizationName = org.name;
         } catch { /* ignore */ }
 
-        await notificationClient.post('/emails/send', {
+        await notificationClient.postWithAuth('/emails/send', {
           to: user.email,
           subject: `Your role has been updated on Vistone`,
           html: `
@@ -2041,7 +2076,7 @@ export const resolvers = {
               </div>
             </div>
           `
-        });
+        }, context.token!, organizationId);
       } catch (err) {
         console.error("Failed to send role update notification:", err);
       }
@@ -2257,7 +2292,7 @@ export const resolvers = {
 
         if (input.teamId && teamName) {
           // Send team invitation
-          await notificationClient.post('/emails/invite/team', {
+          await notificationClient.postWithAuth('/emails/invite/team', {
             email: input.email,
             inviterName,
             teamName,
@@ -2265,17 +2300,17 @@ export const resolvers = {
             inviteToken,
             recipientName,
             role: input.jobTitle || input.role,
-          });
+          }, context.token!, organizationId);
         } else {
           // Send organization invitation
-          await notificationClient.post('/emails/invite/organization', {
+          await notificationClient.postWithAuth('/emails/invite/organization', {
             email: input.email,
             inviterName,
             organizationName: organization.name,
             inviteToken,
             recipientName,
             role: input.jobTitle || input.role,
-          });
+          }, context.token!, organizationId);
         }
       } catch (emailError) {
         console.error('Failed to send invitation email:', emailError);
@@ -2508,7 +2543,7 @@ export const resolvers = {
             } catch { /* ignore */ }
           }
 
-          await notificationClient.post('/emails/invite/team', {
+          await notificationClient.postWithAuth('/emails/invite/team', {
             email: user.email,
             inviterName,
             teamName: team.name,
@@ -2516,7 +2551,7 @@ export const resolvers = {
             inviteToken: 'internal-add',
             recipientName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
             role: 'Member'
-          });
+          }, context.token!, currentUser.organizationId || undefined);
         }
       } catch (err) {
         console.error("Failed to send team addition email:", err);
@@ -2550,7 +2585,7 @@ export const resolvers = {
               } catch { /* ignore */ }
             }
   
-            await notificationClient.post('/emails/invite/team', {
+            await notificationClient.postWithAuth('/emails/invite/team', {
               email: user.email,
               inviterName,
               teamName: team.name,
@@ -2558,7 +2593,7 @@ export const resolvers = {
               inviteToken: 'internal-add',
               recipientName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || undefined,
               role: input.role || 'Member'
-            });
+            }, context.token!, currentUser.organizationId || undefined);
           }
         }
       } catch (err) {
@@ -2711,7 +2746,7 @@ export const resolvers = {
 
           for (const target of emailTargets) {
             try {
-              await notificationClient.post('/emails/project-assigned', {
+              await notificationClient.postWithAuth('/emails/project-assigned', {
                 email: target.email,
                 recipientName: `${target.firstName || ''} ${target.lastName || ''}`.trim() || undefined,
                 organizerName,
@@ -2719,7 +2754,7 @@ export const resolvers = {
                 projectName: project.name,
                 projectLink,
                 role: 'team',
-              });
+              }, context.token!, organizationId);
             } catch (e) {
               console.error(`Failed to send project notification to team member ${target.email}:`, e);
             }
@@ -2734,7 +2769,7 @@ export const resolvers = {
         try {
           const client = await clientMgmtClient.getById('/clients', input.clientId).catch(() => null);
           if (client?.email) {
-            await notificationClient.post('/emails/project-assigned', {
+            await notificationClient.postWithAuth('/emails/project-assigned', {
               email: client.email,
               recipientName: client.name || undefined,
               organizerName,
@@ -2742,7 +2777,7 @@ export const resolvers = {
               projectName: project.name,
               projectLink: `${frontendUrl}/client/projects/${project.id}`,
               role: 'client',
-            });
+            }, context.token!, organizationId);
           }
         } catch (e) {
           console.error('[createProject] Failed to send client notification:', e);
@@ -3092,7 +3127,7 @@ export const resolvers = {
             industry: input.industry,
             organizationId,
             portalAccess: true,
-            status: 'active',
+            status: 'pending',
             contactPersonId: user.id,
           });
         } else {
@@ -3101,6 +3136,7 @@ export const resolvers = {
             contactPersonId: user.id,
             address: input.address,
             industry: input.industry,
+            status: 'pending',
           });
         }
       } catch {
@@ -3130,7 +3166,7 @@ export const resolvers = {
 
       try {
         const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
-        await notificationClient.post('/emails/invite/client', {
+        await notificationClient.postWithAuth('/emails/invite/client', {
           email: input.email,
           inviterName,
           organizationName: organization.name,
@@ -3138,9 +3174,14 @@ export const resolvers = {
           inviteToken,
           recipientName: input.name,
           role: 'Client',
-        });
+        }, context.token!, organizationId);
       } catch (emailError) {
         console.error('Failed to send client invitation email:', emailError);
+        if (emailError instanceof ServiceError) {
+          console.error(
+            `  notification: HTTP ${emailError.statusCode} (${emailError.service} ${emailError.operation}) ${emailError.message}`,
+          );
+        }
       }
 
       return client;

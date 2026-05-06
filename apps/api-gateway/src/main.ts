@@ -16,6 +16,12 @@ dotenv.config();
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 4000;
 
+function parseBearerToken(authorization: unknown): string | undefined {
+  if (typeof authorization !== 'string') return undefined;
+  const m = authorization.trim().match(/^Bearer\s+(.+)$/i);
+  return m ? m[1].trim() : undefined;
+}
+
 // Parse CORS origins from environment variable (comma-separated)
 function getCorsOrigins(): string | string[] | boolean {
   const corsOrigin = process.env.CORS_ORIGIN;
@@ -81,7 +87,7 @@ async function startServer() {
   // Apollo GraphQL context
   const apolloContext = async ({ req }: { req: express.Request }) => ({
     headers: req.headers,
-    token: req.headers.authorization?.replace('Bearer ', ''),
+    token: parseBearerToken(req.headers.authorization),
     loaders: createGraphQLLoaders(),
   });
 

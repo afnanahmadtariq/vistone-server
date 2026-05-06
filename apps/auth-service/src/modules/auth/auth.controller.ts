@@ -816,6 +816,7 @@ export async function getInviteDetailsHandler(req: Request, res: Response) {
         firstName: '',
         lastName: '',
         role: invitation.role || 'Member',
+        organizationId: invitation.organizationId,
         organizationName: organization?.name || 'Unknown Organization',
       });
       return;

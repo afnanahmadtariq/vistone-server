@@ -398,6 +398,7 @@ describe('Auth Controller', () => {
         firstName: '',
         lastName: '',
         role: 'Contributor',
+        organizationId: 'org-1',
         organizationName: 'Acme',
       });
     });

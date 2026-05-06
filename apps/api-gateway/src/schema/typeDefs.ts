@@ -16,6 +16,7 @@ export const typeDefs = gql`
 
   type InviteDetails {
     role: String
+    organizationId: String
     organizationName: String
     email: String
     firstName: String
