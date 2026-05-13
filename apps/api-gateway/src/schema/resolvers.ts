@@ -411,6 +411,20 @@ async function deleteUserCrossServiceData(userId: string): Promise<void> {
         await workforceClient.delete('/user-availability', avail.id);
       }
     }
+    try {
+      const members = await authClient.get(`/organization-members?userId=${encodeURIComponent(userId)}`);
+      if (Array.isArray(members) && members.length > 0) {
+        const organizationId = members[0]?.organizationId;
+        if (typeof organizationId === 'string' && organizationId) {
+          await workforceClient.post('/attendance-logs/purge-for-user', {
+            userId,
+            organizationId,
+          });
+        }
+      }
+    } catch (e) {
+      console.error(`[deleteUserCrossServiceData] Error purging attendance for ${userId}:`, e);
+    }
   } catch (error) {
     console.error(`[deleteUserCrossServiceData] Error cleaning workforce data for ${userId}:`, error);
   }
@@ -658,6 +672,29 @@ export const resolvers = {
       await requireAuth(context);
       return workforceClient.getById('/user-availability', id);
     },
+    attendanceLogs: async (
+      _: unknown,
+      args: {
+        organizationId: string;
+        userId?: string | null;
+        workDateFrom?: string | null;
+        workDateTo?: string | null;
+      },
+      context: Context
+    ) => {
+      await requireAuth(context);
+      await requireOrganization(context, args.organizationId);
+      const params = new URLSearchParams();
+      params.set('organizationId', args.organizationId);
+      if (args.userId) params.set('userId', String(args.userId));
+      if (args.workDateFrom) params.set('workDateFrom', String(args.workDateFrom));
+      if (args.workDateTo) params.set('workDateTo', String(args.workDateTo));
+      return workforceClient.get(`/attendance-logs?${params.toString()}`);
+    },
+    attendanceLog: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.getById('/attendance-logs', id);
+    },
 
     // Projects (Project Service) â€” org-scoped
     projects: async (_: unknown, { status, search, organizationId }: { status?: string; search?: string; organizationId?: string }, context: Context) => {
@@ -703,13 +740,31 @@ export const resolvers = {
       await requirePermission(context, 'tasks', 'read');
       return projectClient.getById('/task-checklists', id);
     },
-    taskDependencies: async (_: unknown, _args: unknown, context: Context) => {
+    taskDependencies: async (
+      _: unknown,
+      args: { taskId?: string | null; projectId?: string | null },
+      context: Context
+    ) => {
       await requirePermission(context, 'tasks', 'read');
-      return projectClient.get('/task-dependencies');
+      const params = new URLSearchParams();
+      if (args.taskId) params.set('taskId', String(args.taskId));
+      if (args.projectId) params.set('projectId', String(args.projectId));
+      const q = params.toString();
+      return projectClient.get(`/task-dependencies${q ? `?${q}` : ''}`);
     },
     taskDependency: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'tasks', 'read');
       return projectClient.getById('/task-dependencies', id);
+    },
+    taskSubmissions: async (
+      _: unknown,
+      { taskId, status }: { taskId: string; status?: string | null },
+      context: Context
+    ) => {
+      await requirePermission(context, 'tasks', 'read');
+      const params = new URLSearchParams({ taskId });
+      if (status) params.set('status', status);
+      return projectClient.get(`/task-submissions?${params.toString()}`);
     },
     milestones: async (_: unknown, _args: unknown, context: Context) => {
       await requirePermission(context, 'projects', 'read');
@@ -1417,6 +1472,17 @@ export const resolvers = {
     },
   },
 
+  AttendanceLog: {
+    user: async (parent: ServiceRecord, _args: unknown, context: Context) => {
+      if (!parent.userId) return null;
+      try {
+        return await context.loaders.enrichedUser.load(String(parent.userId));
+      } catch {
+        return null;
+      }
+    },
+  },
+
   Team: {
     members: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       try {
@@ -1588,9 +1654,16 @@ export const resolvers = {
     },
     risks: async (parent: ServiceRecord) => {
       try {
-        return await projectClient.get(`/risk-registers?projectId=${parent.id}`);
+        return await projectClient.get(`/risk-register?projectId=${parent.id}`);
       } catch {
         return [];
+      }
+    },
+    riskQualityMetrics: async (parent: ServiceRecord) => {
+      try {
+        return await projectClient.getById('/risk-quality-metrics', parent.id);
+      } catch {
+        return null;
       }
     },
   },
@@ -1608,6 +1681,15 @@ export const resolvers = {
     creator: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       if (!parent.creatorId) return null;
       return context.loaders.enrichedUser.load(parent.creatorId);
+    },
+    submissions: async (parent: ServiceRecord) => {
+      if (Array.isArray(parent.submissions)) return parent.submissions;
+      if (!parent.id) return [];
+      try {
+        return await projectClient.get(`/task-submissions?taskId=${parent.id}`);
+      } catch {
+        return [];
+      }
     },
   },
 
@@ -2846,7 +2928,7 @@ export const resolvers = {
     },
     addTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }, context: Context) => {
       const currentUser = await requireAuth(context);
-      await workforceClient.post('/team-members', { teamId, userId, role: 'member' });
+      await workforceClient.post('/team-members', { teamId, userId });
       const team = await workforceClient.getById('/teams', teamId);
       
       try {
@@ -2951,6 +3033,31 @@ export const resolvers = {
     deleteUserAvailability: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requireAuth(context);
       return workforceClient.delete('/user-availability', id);
+    },
+    createAttendanceLog: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      const organizationId = String(input.organizationId || '');
+      if (!organizationId) {
+        throw new GraphQLError('organizationId is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      await requireOrganization(context, organizationId);
+      const payload: ServiceRecord = {
+        organizationId,
+        workDate: input.workDate,
+        hoursWorked: input.hoursWorked,
+        notes: input.notes ?? null,
+      };
+      return workforceClient.post('/attendance-logs', payload);
+    },
+    updateAttendanceLog: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.put('/attendance-logs', id, input);
+    },
+    deleteAttendanceLog: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requireAuth(context);
+      return workforceClient.delete('/attendance-logs', id);
     },
 
     // Projects (Project Service)
@@ -3290,6 +3397,18 @@ export const resolvers = {
       await requirePermission(context, 'tasks', 'delete');
       return projectClient.delete('/task-dependencies', id);
     },
+    createTaskSubmission: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'tasks', 'update');
+      return projectClient.post('/task-submissions', input);
+    },
+    updateTaskSubmission: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'tasks', 'update');
+      return projectClient.put('/task-submissions', id, input);
+    },
+    reviewTaskSubmission: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'tasks', 'update');
+      return projectClient.post(`/task-submissions/${id}/review`, input);
+    },
     createMilestone: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'projects', 'update');
       const milestone = await projectClient.post('/milestones', input);
@@ -3327,6 +3446,14 @@ export const resolvers = {
     deleteRiskRegister: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'projects', 'delete');
       return projectClient.delete('/risk-register', id);
+    },
+    updateRiskQualityMetrics: async (
+      _: unknown,
+      { projectId, input }: { projectId: string; input: ServiceRecord },
+      context: Context
+    ) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.put('/risk-quality-metrics', projectId, { inputs: input });
     },
     createAiInsight: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'projects', 'update');

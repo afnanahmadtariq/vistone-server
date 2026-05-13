@@ -4,6 +4,7 @@ import teamRoutes from './modules/teams/teams.routes';
 import teamMemberRoutes from './modules/team-members/team-members.routes';
 import userSkillRoutes from './modules/user-skills/user-skills.routes';
 import userAvailabilityRoutes from './modules/user-availability/user-availability.routes';
+import attendanceLogRoutes from './modules/attendance-logs/attendance-logs.routes';
 
 const app = express();
 
@@ -22,5 +23,6 @@ app.use('/teams', teamRoutes);
 app.use('/team-members', teamMemberRoutes);
 app.use('/user-skills', userSkillRoutes);
 app.use('/user-availability', userAvailabilityRoutes);
+app.use('/attendance-logs', attendanceLogRoutes);
 
 export default app;

@@ -2,11 +2,7 @@ import axios from 'axios';
 import * as crypto from 'crypto';
 
 // 🔑 Login Credentials (password: Password123!)
-// Admin: sarah.admin@vistone.io
-// Organizer: omar.organizer@vistone.io
-// Managers: emily.manager@vistone.io / james.manager@vistone.io
-// Contributors: aisha.dev@vistone.io, lucas.dev@vistone.io, sofia.design@vistone.io, raj.dev@vistone.io, mei.qa@vistone.io, david.content@vistone.io
-
+// One organizer per org in this seed (Sarah); Omar is a Manager. Managers/Contributors as listed in userDefs below.
 // ─── Service URLs ───────────────────────────────────────────────────────────────
 const SVC = {
   auth: 'http://localhost:3001',
@@ -137,7 +133,7 @@ async function seedAuth() {
   // Users — 10 people
   const userDefs = [
     { email: `sarah.organizer1.${runSuffix}@vistone.io`, firstName: 'Sarah', lastName: 'Chen', role: 'organizer' },
-    { email: `omar.organizer2.${runSuffix}@vistone.io`, firstName: 'Omar', lastName: 'Khalid', role: 'organizer' },
+    { email: `omar.organizer2.${runSuffix}@vistone.io`, firstName: 'Omar', lastName: 'Khalid', role: 'manager' },
     { email: `emily.manager.${runSuffix}@vistone.io`, firstName: 'Emily', lastName: 'Rodriguez', role: 'manager' },
     { email: `james.manager.${runSuffix}@vistone.io`, firstName: 'James', lastName: 'Park', role: 'manager' },
     { email: `aisha.dev.${runSuffix}@vistone.io`, firstName: 'Aisha', lastName: 'Patel', role: 'contributor' },

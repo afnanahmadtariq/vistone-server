@@ -17,6 +17,9 @@ jest.mock('../../lib/prisma', () => ({
       update: jest.fn(),
       delete: jest.fn(),
     },
+    role: {
+      findUnique: jest.fn(),
+    },
   },
 }));
 
@@ -34,6 +37,7 @@ const sampleMember = {
   organizationId: 'org-1',
   userId: 'user-1',
   roleId: 'role-1',
+  memberKind: 'CONTRIBUTOR',
   createdAt: new Date(),
 };
 
@@ -43,6 +47,7 @@ describe('OrganizationMembers Controller – Unit Tests', () => {
   describe('createOrganizationMemberHandler', () => {
     it('creates and returns a member', async () => {
       (prisma.organizationMember.findFirst as jest.Mock).mockResolvedValue(null);
+      (prisma.organizationMember.findUnique as jest.Mock).mockResolvedValue(null);
       (prisma.organizationMember.create as jest.Mock).mockResolvedValue(sampleMember);
       const req: any = { body: { organizationId: 'org-1', userId: 'user-1' } };
       const res = mockRes();
@@ -75,6 +80,7 @@ describe('OrganizationMembers Controller – Unit Tests', () => {
 
     it('returns 500 on error', async () => {
       (prisma.organizationMember.findFirst as jest.Mock).mockResolvedValue(null);
+      (prisma.organizationMember.findUnique as jest.Mock).mockResolvedValue(null);
       (prisma.organizationMember.create as jest.Mock).mockRejectedValue(new Error('DB'));
       const req: any = { body: { organizationId: 'org-1', userId: 'user-1' } };
       const res = mockRes();
@@ -122,6 +128,7 @@ describe('OrganizationMembers Controller – Unit Tests', () => {
   describe('updateOrganizationMemberHandler', () => {
     it('updates and returns member', async () => {
       const updated = { ...sampleMember, roleId: 'role-2' };
+      (prisma.role.findUnique as jest.Mock).mockResolvedValue({ name: 'Manager' });
       (prisma.organizationMember.update as jest.Mock).mockResolvedValue(updated);
       const req: any = { params: { id: 'mem-1' }, body: { roleId: 'role-2' } };
       const res = mockRes();

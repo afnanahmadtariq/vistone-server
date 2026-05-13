@@ -69,7 +69,9 @@ const fakeUser = {
 
 const fakeOrg = { id: 'org-1', name: 'Acme', slug: 'acme', createdAt: new Date(), updatedAt: new Date() };
 const fakeRole = { id: 'role-1', organizationId: 'org-1', name: 'Organizer', permissions: {}, isSystem: true, createdAt: new Date(), updatedAt: new Date() };
-const fakeMembership = { id: 'mem-1', organizationId: 'org-1', userId: 'u1', roleId: 'role-1', organization: fakeOrg, role: fakeRole, createdAt: new Date(), updatedAt: new Date() };
+const fakeMembership = { id: 'mem-1', organizationId: 'org-1', userId: 'u1', roleId: 'role-1', memberKind: 'ORGANIZER', organization: fakeOrg, role: fakeRole, createdAt: new Date(), updatedAt: new Date() };
+
+const fakeContributorRole = { id: 'role-c', organizationId: 'org-1', name: 'Contributor', permissions: {}, isSystem: true, createdAt: new Date(), updatedAt: new Date() };
 
 describe('Auth Controller', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -285,7 +287,7 @@ describe('Auth Controller', () => {
       (prisma.invitation.findUnique as jest.Mock).mockResolvedValue(invitation);
       (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
       (prisma.user.create as jest.Mock).mockResolvedValue({ ...fakeUser, id: 'u-new', email: 'new@test.com' });
-      (prisma.role.findFirst as jest.Mock).mockResolvedValue(fakeRole);
+      (prisma.role.findFirst as jest.Mock).mockResolvedValue(fakeContributorRole);
       (prisma.organizationMember.findFirst as jest.Mock).mockResolvedValue(null);
       (prisma.organizationMember.create as jest.Mock).mockResolvedValue(fakeMembership);
       (prisma.invitation.update as jest.Mock).mockResolvedValue({});

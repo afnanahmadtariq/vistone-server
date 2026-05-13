@@ -35,6 +35,7 @@ export async function getAllTasksHandler(req: Request, res: Response) {
       include: {
         checklists: true,
         subtasks: { select: { id: true, title: true, status: true } },
+        submissions: { orderBy: { version: 'desc' }, take: 20 },
         _count: { select: { subtasks: true, checklists: true, dependencies: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -62,6 +63,7 @@ export async function getTaskByIdHandler(req: Request, res: Response) {
         dependentOn: {
           include: { task: { select: { id: true, title: true, status: true } } },
         },
+        submissions: { orderBy: { version: 'desc' } },
         aiInsights: { orderBy: { createdAt: 'desc' } },
       },
     });

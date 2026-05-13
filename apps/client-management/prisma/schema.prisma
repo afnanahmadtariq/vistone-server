@@ -12,7 +12,7 @@ datasource db {
 
 model Client {
   id             String   @id @default(uuid())
-  organizationId String?
+  organizationId String
   name           String
   email          String?
   company        String?

@@ -6,6 +6,7 @@ import * as crypto from "crypto";
 import { logActivity } from "../activity-logs/activity-logs.controller";
 import { OAuth2Client } from "google-auth-library";
 import { ROLE_NAMES, ORGANIZER_PERMISSIONS } from "../../lib/roles";
+import { memberKindFromRoleName } from "../../lib/org-member-kind";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const generateToken = (): string => {
@@ -88,6 +89,7 @@ async function createOrganizationForUser(userId: string, organizationName: strin
       organizationId: organization.id,
       userId,
       roleId: role.id,
+      memberKind: 'ORGANIZER',
     },
   });
 
@@ -687,19 +689,22 @@ export async function acceptInviteHandler(req: Request, res: Response) {
         where: { userId: user.id, organizationId: orgId }
       });
 
+      const inviteMemberKind = memberKindFromRoleName(roleRecord.name);
+
       if (!membershipCheck) {
         await prisma.organizationMember.create({
           data: {
             userId: user.id,
             organizationId: orgId,
-            roleId: roleRecord.id
+            roleId: roleRecord.id,
+            memberKind: inviteMemberKind,
           }
         });
       } else {
         // Update role of existing membership
         await prisma.organizationMember.update({
           where: { id: membershipCheck.id },
-          data: { roleId: roleRecord.id }
+          data: { roleId: roleRecord.id, memberKind: inviteMemberKind }
         });
       }
     }

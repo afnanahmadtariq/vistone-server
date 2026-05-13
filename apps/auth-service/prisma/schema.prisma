@@ -8,6 +8,18 @@ datasource db {
   schemas  = ["auth"]
 }
 
+// Internal / external classification for organization membership rows.
+// Exactly one ORGANIZER per organization is enforced in SQL (partial unique index).
+// At most one organization membership per user is enforced with @@unique([userId]).
+enum OrganizationMemberKind {
+  ORGANIZER
+  MANAGER
+  CONTRIBUTOR
+  CLIENT
+
+  @@schema("auth")
+}
+
 // Auth Service Schema - User & Organization Management
 
 model Organization {
@@ -71,6 +83,8 @@ model OrganizationMember {
   organizationId String
   userId         String
   roleId         String?
+  /// Internal taxonomy aligned with Role.name; CLIENT for portal users with Client role.
+  memberKind     OrganizationMemberKind @default(CONTRIBUTOR)
   
   organization   Organization @relation(fields: [organizationId], references: [id])
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -79,6 +93,7 @@ model OrganizationMember {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  @@unique([userId])
   @@map("organization_members")
   @@schema("auth")
 }

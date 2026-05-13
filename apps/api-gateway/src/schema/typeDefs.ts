@@ -225,6 +225,18 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
+  type AttendanceLog {
+    id: ID!
+    organizationId: String!
+    userId: String!
+    workDate: DateTime!
+    hoursWorked: Decimal!
+    notes: String
+    createdAt: DateTime!
+    updatedAt: DateTime!
+    user: User
+  }
+
   # 3. Project Management Types
 
   type Project {
@@ -257,6 +269,7 @@ export const typeDefs = gql`
     activities: [ProjectActivity!]
     documents: [ProjectDocument!]
     risks: [RiskRegister!]
+    riskQualityMetrics: ProjectRiskQualityMetrics
   }
 
   type ProjectActivity {
@@ -311,6 +324,23 @@ export const typeDefs = gql`
     # Relations
     assignees: [User!]
     creator: User
+    submissions: [TaskSubmission!]
+  }
+
+  type TaskSubmission {
+    id: ID!
+    taskId: String!
+    version: Int!
+    submittedById: String!
+    body: String!
+    attachments: JSON
+    status: String!
+    submittedAt: DateTime
+    reviewedAt: DateTime
+    reviewedById: String
+    reviewNote: String
+    createdAt: DateTime!
+    updatedAt: DateTime!
   }
 
   type TaskChecklist {
@@ -355,6 +385,14 @@ export const typeDefs = gql`
     status: String!
     createdAt: DateTime!
     updatedAt: DateTime!
+  }
+
+  type ProjectRiskQualityMetrics {
+    id: ID
+    projectId: ID!
+    inputs: JSON!
+    computed: JSON
+    updatedAt: DateTime
   }
 
   # 4. Client Management Types
@@ -801,6 +839,13 @@ export const typeDefs = gql`
     userSkill(id: ID!): UserSkill
     userAvailability: [UserAvailability!]!
     userAvailabilityById(id: ID!): UserAvailability
+    attendanceLogs(
+      organizationId: ID!
+      userId: ID
+      workDateFrom: DateTime
+      workDateTo: DateTime
+    ): [AttendanceLog!]!
+    attendanceLog(id: ID!): AttendanceLog
 
     # Projects
     projects(status: String, search: String, organizationId: ID): [Project!]!
@@ -811,8 +856,9 @@ export const typeDefs = gql`
     task(id: ID!): Task
     taskChecklists: [TaskChecklist!]!
     taskChecklist(id: ID!): TaskChecklist
-    taskDependencies: [TaskDependency!]!
+    taskDependencies(taskId: ID, projectId: ID): [TaskDependency!]!
     taskDependency(id: ID!): TaskDependency
+    taskSubmissions(taskId: ID!, status: String): [TaskSubmission!]!
     milestones: [Milestone!]!
     milestone(id: ID!): Milestone
     riskRegisters: [RiskRegister!]!
@@ -998,6 +1044,9 @@ export const typeDefs = gql`
     createUserAvailability(input: JSON!): UserAvailability!
     updateUserAvailability(id: ID!, input: JSON!): UserAvailability!
     deleteUserAvailability(id: ID!): DeleteResponse!
+    createAttendanceLog(input: JSON!): AttendanceLog!
+    updateAttendanceLog(id: ID!, input: JSON!): AttendanceLog!
+    deleteAttendanceLog(id: ID!): DeleteResponse!
 
     # Projects
     createProject(input: CreateProjectInput!): Project!
@@ -1015,12 +1064,16 @@ export const typeDefs = gql`
     createTaskDependency(input: JSON!): TaskDependency!
     updateTaskDependency(id: ID!, input: JSON!): TaskDependency!
     deleteTaskDependency(id: ID!): DeleteResponse!
+    createTaskSubmission(input: JSON!): TaskSubmission!
+    updateTaskSubmission(id: ID!, input: JSON!): TaskSubmission!
+    reviewTaskSubmission(id: ID!, input: JSON!): TaskSubmission!
     createMilestone(input: JSON!): Milestone!
     updateMilestone(id: ID!, input: JSON!): Milestone!
     deleteMilestone(id: ID!): DeleteResponse!
     createRiskRegister(input: JSON!): RiskRegister!
     updateRiskRegister(id: ID!, input: JSON!): RiskRegister!
     deleteRiskRegister(id: ID!): DeleteResponse!
+    updateRiskQualityMetrics(projectId: ID!, input: JSON!): ProjectRiskQualityMetrics!
 
     # Clients
     createClient(input: JSON!): Client!

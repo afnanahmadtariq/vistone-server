@@ -8,6 +8,15 @@ export async function createTeamMemberHandler(req: Request, res: Response) {
     });
     res.json(teamMember);
     } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code: string }).code === 'P2002'
+    ) {
+      res.status(409).json({ error: 'This user is already on this team.' });
+      return;
+    }
     console.error(error);
     res.status(500).json({ error: 'Failed to create team member' });
     }

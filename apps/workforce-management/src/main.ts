@@ -6,6 +6,7 @@ import teamRoutes from './modules/teams/teams.routes';
 import teamMemberRoutes from './modules/team-members/team-members.routes';
 import userSkillRoutes from './modules/user-skills/user-skills.routes';
 import userAvailabilityRoutes from './modules/user-availability/user-availability.routes';
+import attendanceLogRoutes from './modules/attendance-logs/attendance-logs.routes';
 
 const host = process.env.HOST ?? 'localhost';
 const port = process.env.PORT ? Number(process.env.PORT) : 3002;
@@ -36,6 +37,7 @@ app.use('/teams', teamRoutes);
 app.use('/team-members', teamMemberRoutes);
 app.use('/user-skills', userSkillRoutes);
 app.use('/user-availability', userAvailabilityRoutes);
+app.use('/attendance-logs', attendanceLogRoutes);
 
 app.listen(port, host, () => {
   console.log(`[ ready ] Workforce Management Service running at http://${host}:${port}`);

@@ -5,8 +5,10 @@ import projectMemberRoutes from './modules/project-members/project-members.route
 import taskRoutes from './modules/tasks/tasks.routes';
 import taskChecklistRoutes from './modules/task-checklists/task-checklists.routes';
 import taskDependencyRoutes from './modules/task-dependencies/task-dependencies.routes';
+import taskSubmissionRoutes from './modules/task-submissions/task-submissions.routes';
 import milestoneRoutes from './modules/milestones/milestones.routes';
 import riskRegisterRoutes from './modules/risk-register/risk-register.routes';
+import riskQualityMetricsRoutes from './modules/risk-quality-metrics/risk-quality-metrics.routes';
 import aiInsightRoutes from './modules/ai-insights/ai-insights.routes';
 
 const app = express();
@@ -27,8 +29,10 @@ app.use('/project-members', projectMemberRoutes);
 app.use('/tasks', taskRoutes);
 app.use('/task-checklists', taskChecklistRoutes);
 app.use('/task-dependencies', taskDependencyRoutes);
+app.use('/task-submissions', taskSubmissionRoutes);
 app.use('/milestones', milestoneRoutes);
 app.use('/risk-register', riskRegisterRoutes);
+app.use('/risk-quality-metrics', riskQualityMetricsRoutes);
 app.use('/ai-insights', aiInsightRoutes);
 
 export default app;
