@@ -76,10 +76,10 @@ export function milestoneDependencyGraphIsAcyclic(edges: MilestoneDepEdge[]): bo
 export async function loadAllMilestoneDependencyEdgesForProject(
   projectId: string,
 ): Promise<MilestoneDepEdge[]> {
-  const milestones = await prisma.milestone.findMany({
+  const milestones = (await prisma.milestone.findMany({
     where: { projectId },
     select: { id: true },
-  });
+  })) as { id: string }[];
   const ids = milestones.map((m) => m.id);
   if (ids.length === 0) return [];
   const rows = await prisma.milestoneDependency.findMany({
@@ -92,12 +92,14 @@ export async function loadAllMilestoneDependencyEdgesForProject(
 export async function assertMilestonePrerequisitesMetForCompletion(
   milestoneId: string,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
-  const deps = await prisma.milestoneDependency.findMany({
+  const deps = (await prisma.milestoneDependency.findMany({
     where: { milestoneId },
     include: {
       dependsOn: { select: { id: true, title: true, completed: true } },
     },
-  });
+  })) as Array<{
+    dependsOn: { id: string; title: string; completed: boolean };
+  }>;
   const blocked = deps.filter((d) => !d.dependsOn.completed);
   if (blocked.length === 0) return { ok: true };
   const titles = blocked.map((d) => d.dependsOn.title).join(", ");

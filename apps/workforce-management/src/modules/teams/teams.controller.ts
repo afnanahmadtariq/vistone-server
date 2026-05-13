@@ -118,8 +118,24 @@ export async function createTeamHandler(req: Request, res: Response) {
       return;
     }
 
+    const raw = req.body as Record<string, unknown>;
+    const description =
+      raw.description === null || raw.description === undefined
+        ? null
+        : String(raw.description);
+    const managerRaw = raw.managerId;
+    const managerId =
+      typeof managerRaw === "string" && managerRaw.trim() !== ""
+        ? managerRaw.trim()
+        : null;
+
     const team = await prisma.team.create({
-      data: req.body,
+      data: {
+        organizationId: organizationId.trim(),
+        name: name.trim(),
+        description,
+        managerId,
+      },
     });
     res.json(team);
   } catch (error) {

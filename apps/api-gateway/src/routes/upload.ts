@@ -7,7 +7,8 @@ import { requireAuth } from '../lib/auth';
 
 const router = express.Router();
 
-// Configuration for R2
+// R2 is S3-compatible; path-style URLs match Cloudflare's presigned-URL examples and avoid
+// virtual-hosted-style mismatches against the account endpoint.
 const r2Client = new S3Client({
     region: 'auto',
     endpoint: process.env.CLOUDFLARE_R2_ENDPOINT || 'https://default.r2.cloudflarestorage.com',
@@ -15,6 +16,7 @@ const r2Client = new S3Client({
         accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '',
         secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || '',
     },
+    forcePathStyle: true,
 });
 const R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME || 'vistone-media';
 
@@ -71,11 +73,12 @@ router.post('/presign', async (req: Request, res: Response): Promise<void> => {
             // Generate Cloudinary signature
             const timestamp = Math.round((new Date).getTime() / 1000);
             const folder = `vistone/${context}`;
+            // Cloudinary: `resource_type` must not be part of the signature string when using
+            // `/image/upload` or `/video/upload` URLs (it is implied by the path). Including it
+            // breaks signature verification on upload.
             const paramsToSign = {
                 folder,
                 timestamp,
-                resource_type: isVideo ? 'video' : 'image',
-                // For client-side uploads, quality/fetch_format transformations are typically applied on the delivery URL or via upload presets
             };
 
             const signature = cloudinary.utils.api_sign_request(paramsToSign, process.env.CLOUDINARY_API_SECRET || '');
@@ -92,7 +95,6 @@ router.post('/presign', async (req: Request, res: Response): Promise<void> => {
                         timestamp,
                         signature,
                         folder,
-                        resource_type: isVideo ? 'video' : 'image',
                     },
                     // The client won't know the exact final URL until cloudinary returns it in the response, but we can structure what we expect
                     expectedDeliveryUrl: `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/${isVideo ? 'video' : 'image'}/upload/v${timestamp}/${folder}/[public_id].${fileExtension}`
@@ -109,7 +111,9 @@ router.post('/presign', async (req: Request, res: Response): Promise<void> => {
             // URL expires in 15 minutes (900 seconds)
             const signedUrl = await getSignedUrl(r2Client, command, { expiresIn: 900 });
 
-            const r2PublicDomain = process.env.CLOUDFLARE_R2_PUBLIC_DOMAIN || 'https://pub-media.vistone.com';
+            const r2PublicDomain = (
+                process.env.CLOUDFLARE_R2_PUBLIC_DOMAIN || 'https://pub-media.vistone.com'
+            ).replace(/\/+$/, '');
             const finalUrl = `${r2PublicDomain}/${objectKey}`;
 
             res.status(200).json({

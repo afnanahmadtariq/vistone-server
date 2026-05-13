@@ -72,7 +72,14 @@ describe('Teams Controller – Unit Tests', () => {
       const req: any = { body: { organizationId: 'org-1', name: 'Engineering' } };
       const res = mockRes();
       await createTeamHandler(req, res);
-      expect(prisma.team.create).toHaveBeenCalledWith({ data: req.body });
+      expect(prisma.team.create).toHaveBeenCalledWith({
+        data: {
+          organizationId: 'org-1',
+          name: 'Engineering',
+          description: null,
+          managerId: null,
+        },
+      });
       expect(res.json).toHaveBeenCalledWith(created);
     });
 

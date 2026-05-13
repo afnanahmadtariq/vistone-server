@@ -87,6 +87,28 @@ function getUserOrganizationId(user: ServiceRecord): string {
   });
 }
 
+/** Organizers are org-wide; clients are portal-only — neither should have workforce team rows. */
+async function assertOrgMemberMayJoinTeams(userId: string, organizationId: string): Promise<void> {
+  const memberships = await authClient.get(
+    `/organization-members?userId=${encodeURIComponent(userId)}&organizationId=${encodeURIComponent(organizationId)}`,
+  );
+  if (!Array.isArray(memberships) || memberships.length === 0) {
+    throw new GraphQLError('User is not a member of this organization', {
+      extensions: { code: 'NOT_FOUND', statusCode: 404 },
+    });
+  }
+  const membership = memberships[0] as ServiceRecord;
+  const roles = await authClient.get(`/roles?organizationId=${organizationId}`);
+  const rolesList = Array.isArray(roles) ? roles : [];
+  const roleRow = rolesList.find((r: ServiceRecord) => r.id === membership.roleId);
+  const rn = (roleRow?.name || '').toString().toLowerCase();
+  if (rn === 'organizer' || rn === 'client' || rn === 'clients') {
+    throw new GraphQLError('Organizers and clients cannot be added to a team.', {
+      extensions: { code: 'FORBIDDEN', statusCode: 403 },
+    });
+  }
+}
+
 async function getAccessibleProjectIds(user: ServiceRecord): Promise<Set<string>> {
   const projectIds = new Set<string>();
 
@@ -2449,11 +2471,17 @@ export const resolvers = {
       }
       const membership = memberships[0];
 
-      // Find or create the role
       const roles = await authClient.get(`/roles?organizationId=${organizationId}`);
-      let targetRole = Array.isArray(roles)
-        ? roles.find((r: ServiceRecord) => r.name.toLowerCase() === role.toLowerCase())
-        : null;
+      const rolesList = Array.isArray(roles) ? roles : [];
+      const membershipRole = rolesList.find((r: ServiceRecord) => r.id === membership.roleId);
+      if ((membershipRole?.name || '').toString().toLowerCase() === 'organizer') {
+        throw new GraphQLError('The Organizer role cannot be changed.', {
+          extensions: { code: 'FORBIDDEN', statusCode: 403 },
+        });
+      }
+
+      let targetRole =
+        rolesList.find((r: ServiceRecord) => r.name.toLowerCase() === role.toLowerCase()) ?? null;
 
       if (!targetRole) {
         // Role doesn't exist - create it with predefined permissions
@@ -2588,6 +2616,18 @@ export const resolvers = {
           extensions: { code: 'NOT_FOUND', statusCode: 404 },
         });
       }
+
+      const inviteRoleNorm = String(input.role || '').toLowerCase();
+      const roleCannotJoinTeam =
+        inviteRoleNorm === 'organizer' ||
+        inviteRoleNorm === 'client' ||
+        inviteRoleNorm === 'clients';
+      if (roleCannotJoinTeam && input.teamId) {
+        throw new GraphQLError('Organizers and clients cannot be assigned to a team.', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      const effectiveTeamId = roleCannotJoinTeam ? null : input.teamId;
 
       // Create user if doesn't exist, or get existing user
       let user;
@@ -2748,13 +2788,13 @@ export const resolvers = {
 
       // If teamId provided, add user to team
       let teamName;
-      if (input.teamId) {
+      if (effectiveTeamId) {
         try {
-          const team = await workforceClient.getById('/teams', input.teamId);
+          const team = await workforceClient.getById('/teams', effectiveTeamId);
           teamName = team?.name;
 
           await workforceClient.post('/team-members', {
-            teamId: input.teamId,
+            teamId: effectiveTeamId,
             userId: user.id,
             role: input.role || 'member',
           });
@@ -2768,7 +2808,7 @@ export const resolvers = {
         const inviterName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.email;
         const recipientName = `${input.firstName || ''} ${input.lastName || ''}`.trim() || undefined;
 
-        if (input.teamId && teamName) {
+        if (effectiveTeamId && teamName) {
           // Send team invitation
           await notificationClient.postWithAuth('/emails/invite/team', {
             email: input.email,
@@ -2989,12 +3029,15 @@ export const resolvers = {
     createTeam: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       const currentUser = await requireAuth(context);
 
-      // Auto-assign organizationId from current user if not provided
-      if (!input.organizationId && currentUser.organizationId) {
-        input.organizationId = currentUser.organizationId;
+      const payload: ServiceRecord = { ...input };
+      if (!payload.organizationId && currentUser.organizationId) {
+        payload.organizationId = currentUser.organizationId;
+      }
+      if (!payload.managerId || payload.managerId === '') {
+        delete payload.managerId;
       }
 
-      return workforceClient.post('/teams', input);
+      return workforceClient.post('/teams', payload);
     },
     updateTeam: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
       await requireAuth(context);
@@ -3006,6 +3049,13 @@ export const resolvers = {
     },
     addTeamMember: async (_: unknown, { teamId, userId }: { teamId: string; userId: string }, context: Context) => {
       const currentUser = await requireAuth(context);
+      const organizationId = currentUser.organizationId;
+      if (!organizationId) {
+        throw new GraphQLError('Organization context is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      await assertOrgMemberMayJoinTeams(userId, organizationId);
       await workforceClient.post('/team-members', { teamId, userId });
       const team = await workforceClient.getById('/teams', teamId);
       
@@ -3047,6 +3097,10 @@ export const resolvers = {
     },
     createTeamMember: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       const currentUser = await requireAuth(context);
+      const organizationId = currentUser.organizationId;
+      if (typeof input.userId === 'string' && organizationId) {
+        await assertOrgMemberMayJoinTeams(input.userId, organizationId);
+      }
       const teamMember = await workforceClient.post('/team-members', input);
       
       try {

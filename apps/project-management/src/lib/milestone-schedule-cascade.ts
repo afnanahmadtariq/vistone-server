@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "./prisma-namespace";
 
 const LINK_TYPES = new Set(["FS", "SS", "FF", "SF"]);
 

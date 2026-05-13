@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../../lib/prisma";
+import type { Prisma } from "../../lib/prisma-namespace";
 import { assertMilestonePrerequisitesMetForCompletion } from "../../lib/milestone-dependency-utils";
 import {
   calendarSlipDays,
@@ -103,7 +104,7 @@ export async function updateMilestoneHandler(req: Request, res: Response) {
 
     delete data.dependsOnIds;
 
-    const milestone = await prisma.$transaction(async (tx) => {
+    const milestone = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updated = await tx.milestone.update({
         where: { id },
         data,

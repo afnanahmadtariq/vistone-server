@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../../lib/prisma";
+import type { Prisma } from "../../lib/prisma-namespace";
 import { syncMilestoneWorkflowForMilestoneId } from "../../lib/milestone-task-sync";
 
 async function assertMilestoneBelongsToProject(
@@ -48,7 +49,7 @@ export async function createTaskHandler(req: Request, res: Response) {
     }
 
     const task = await prisma.task.create({
-      data: data as Parameters<typeof prisma.task.create>[0]["data"],
+      data: data as Prisma.TaskUncheckedCreateInput,
     });
 
     if (task.milestoneId) {
@@ -155,7 +156,7 @@ export async function updateTaskHandler(req: Request, res: Response) {
 
     const task = await prisma.task.update({
       where: { id: req.params.id },
-      data: data as Parameters<typeof prisma.task.update>[0]["data"],
+      data: data as Prisma.TaskUncheckedUpdateInput,
     });
 
     const prevMilestone = existing.milestoneId ?? null;

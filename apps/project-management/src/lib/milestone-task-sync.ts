@@ -22,14 +22,14 @@ export async function syncMilestoneWorkflowForMilestoneId(
   });
   if (!milestone || milestone.completed) return;
 
-  const tasks = await prisma.task.findMany({
+  const tasks = (await prisma.task.findMany({
     where: {
       milestoneId,
       projectId: milestone.projectId,
       parentId: null,
     },
     select: { status: true },
-  });
+  })) as { status: string | null }[];
 
   let nextStatus: string;
   if (tasks.length === 0) {

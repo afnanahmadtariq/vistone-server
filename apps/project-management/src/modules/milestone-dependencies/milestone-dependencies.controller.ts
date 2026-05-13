@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../../lib/prisma";
+import type { Prisma } from "../../lib/prisma-namespace";
 import {
   loadAllMilestoneDependencyEdgesForProject,
   normalizeMilestoneDepType,
@@ -16,10 +17,10 @@ export async function getAllMilestoneDependenciesHandler(req: Request, res: Resp
     if (typeof milestoneId === "string" && milestoneId.length > 0) {
       where.milestoneId = milestoneId;
     } else if (typeof projectId === "string" && projectId.length > 0) {
-      const milestones = await prisma.milestone.findMany({
+      const milestones = (await prisma.milestone.findMany({
         where: { projectId },
         select: { id: true },
-      });
+      })) as { id: string }[];
       const ids = milestones.map((m) => m.id);
       if (ids.length === 0) {
         res.json([]);
@@ -144,7 +145,7 @@ export async function replaceMilestoneDependenciesHandler(req: Request, res: Res
       return;
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.milestoneDependency.deleteMany({ where: { milestoneId } });
       for (const dependsOnId of unique) {
         await tx.milestoneDependency.create({
