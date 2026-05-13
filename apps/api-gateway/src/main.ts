@@ -8,6 +8,7 @@ import { typeDefs } from './schema/typeDefs';
 import { resolvers } from './schema/resolvers';
 import { formatGraphQLError } from './lib/errors';
 import { createGraphQLLoaders } from './lib/graphqlLoaders';
+import { getCurrentUser } from './lib/auth';
 import { gatewayAuthStore } from './lib/requestAuthContext';
 import uploadRouter from './routes/upload';
 
@@ -84,12 +85,32 @@ async function startServer() {
 
   await apolloServer.start();
 
-  // Apollo GraphQL context
-  const apolloContext = async ({ req }: { req: express.Request }) => ({
-    headers: req.headers,
-    token: parseBearerToken(req.headers.authorization),
-    loaders: createGraphQLLoaders(),
-  });
+  // Apollo GraphQL context — resolve user once so downstream microservices can skip auth-service when env flags allow.
+  const apolloContext = async ({ req }: { req: express.Request }) => {
+    const token = parseBearerToken(req.headers.authorization);
+    const headers = req.headers as Record<string, string | string[] | undefined>;
+    const user = await getCurrentUser({ headers, token });
+    const store = gatewayAuthStore.getStore();
+    if (store) {
+      if (user && process.env.FORWARD_GATEWAY_IDENTITY_TO_SERVICES === 'true') {
+        store.forwardedIdentity = {
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+          status: user.status,
+          organizationId: user.organizationId ?? null,
+        };
+      } else {
+        store.forwardedIdentity = undefined;
+      }
+    }
+    return {
+      headers,
+      token,
+      loaders: createGraphQLLoaders(),
+      user: user ?? undefined,
+    };
+  };
 
   // Health check endpoint (must be before GraphQL middleware)
   app.get('/health', (_req, res) => {

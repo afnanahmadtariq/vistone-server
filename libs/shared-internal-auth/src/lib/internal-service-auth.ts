@@ -10,6 +10,53 @@ export interface InternalAuthUser {
 
 export type RequestWithInternalUser = Request & { internalUser?: InternalAuthUser };
 
+/** Lowercase header names — gateway sets these; microservices may trust them on private networks only. */
+export const GATEWAY_FORWARDED_IDENTITY_HEADERS = {
+  USER_ID: 'x-internal-user-id',
+  EMAIL: 'x-internal-user-email',
+  ROLE: 'x-internal-user-role',
+  STATUS: 'x-internal-user-status',
+  ORG_ID: 'x-internal-org-id',
+} as const;
+
+function firstHeader(req: Request, name: string): string | undefined {
+  const v = req.headers[name];
+  if (typeof v === 'string') return v.trim() || undefined;
+  if (Array.isArray(v) && v.length > 0) return String(v[0]).trim() || undefined;
+  return undefined;
+}
+
+/**
+ * When `TRUST_GATEWAY_IDENTITY_HEADERS=true`, builds `InternalAuthUser` from gateway-forwarded headers
+ * and skips auth-service. Intended for dev / private VPC where only the API gateway calls services.
+ */
+export function parseTrustedGatewayIdentity(req: Request): InternalAuthUser | null {
+  if (process.env.TRUST_GATEWAY_IDENTITY_HEADERS !== 'true') {
+    return null;
+  }
+
+  const id = firstHeader(req, GATEWAY_FORWARDED_IDENTITY_HEADERS.USER_ID);
+  if (!id) {
+    return null;
+  }
+
+  const email = firstHeader(req, GATEWAY_FORWARDED_IDENTITY_HEADERS.EMAIL) ?? '';
+  const role = firstHeader(req, GATEWAY_FORWARDED_IDENTITY_HEADERS.ROLE) ?? '';
+  const status = firstHeader(req, GATEWAY_FORWARDED_IDENTITY_HEADERS.STATUS);
+  const orgFromInternal = firstHeader(req, GATEWAY_FORWARDED_IDENTITY_HEADERS.ORG_ID);
+  const orgFromClient = firstHeader(req, 'x-organization-id');
+  const organizationIdRaw = orgFromInternal ?? orgFromClient ?? '';
+  const organizationId = organizationIdRaw.length > 0 ? organizationIdRaw : null;
+
+  return {
+    id,
+    email,
+    role,
+    status,
+    organizationId,
+  };
+}
+
 export interface BearerAuthMiddlewareOptions {
   /** Base URL of auth-service, e.g. http://localhost:3001 (no trailing slash) */
   authServiceUrl: string;
@@ -41,6 +88,17 @@ export function bearerAuthMiddleware(options: BearerAuthMiddlewareOptions): Requ
     }
 
     const rreq = req as RequestWithInternalUser;
+
+    const trusted = parseTrustedGatewayIdentity(req);
+    if (trusted) {
+      if (trusted.status === 'paused') {
+        res.status(403).json({ error: 'Account paused' });
+        return;
+      }
+      rreq.internalUser = trusted;
+      next();
+      return;
+    }
 
     const raw = req.headers.authorization;
     const token =

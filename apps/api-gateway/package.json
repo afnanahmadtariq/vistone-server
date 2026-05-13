@@ -104,6 +104,7 @@
   },
   "dependencies": {
     "@aws-sdk/s3-request-presigner": "^3.1004.0",
+    "@vistone-server/shared-internal-auth": "*",
     "express": "^4.21.2"
   }
 }

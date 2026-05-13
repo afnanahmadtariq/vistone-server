@@ -1,6 +1,7 @@
 import http from 'http';
 import https from 'https';
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { GATEWAY_FORWARDED_IDENTITY_HEADERS } from '@vistone-server/shared-internal-auth';
 import { ServiceError } from '../lib/errors';
 import { gatewayAuthStore } from '../lib/requestAuthContext';
 
@@ -42,6 +43,22 @@ class ServiceClient {
       const orgId = store?.organizationId;
       if (orgId) {
         config.headers['X-Organization-Id'] = orgId;
+      }
+      const forwardIdentity =
+        process.env.FORWARD_GATEWAY_IDENTITY_TO_SERVICES === 'true' &&
+        this.serviceName !== 'Auth Service';
+      const identity = store?.forwardedIdentity;
+      if (forwardIdentity && identity) {
+        const H = GATEWAY_FORWARDED_IDENTITY_HEADERS;
+        config.headers[H.USER_ID] = identity.userId;
+        config.headers[H.EMAIL] = identity.email;
+        config.headers[H.ROLE] = identity.role;
+        if (identity.status) {
+          config.headers[H.STATUS] = identity.status;
+        }
+        if (identity.organizationId) {
+          config.headers[H.ORG_ID] = identity.organizationId;
+        }
       }
       return config;
     });
