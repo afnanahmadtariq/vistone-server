@@ -9,10 +9,14 @@ import {
 jest.mock('../../lib/prisma', () => ({
   __esModule: true,
   default: {
+    task: {
+      findUnique: jest.fn(),
+    },
     taskDependency: {
       create: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
     },
@@ -41,6 +45,10 @@ describe('TaskDependencies Controller – Unit Tests', () => {
 
   describe('createTaskDependencyHandler', () => {
     it('creates and returns a task dependency', async () => {
+      (prisma.task.findUnique as jest.Mock)
+        .mockResolvedValueOnce({ projectId: 'p1' })
+        .mockResolvedValueOnce({ projectId: 'p1' });
+      (prisma.taskDependency.findFirst as jest.Mock).mockResolvedValue(null);
       (prisma.taskDependency.create as jest.Mock).mockResolvedValue(sample);
       const req: any = { body: { taskId: 'task-1', dependsOnId: 'task-2' } };
       const res = mockRes();

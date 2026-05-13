@@ -4,7 +4,7 @@
  * Uses the shared database pool. LangChain loaded lazily for embeddings.
  *
  * VERIFIED against actual Prisma schemas:
- *   auth:       users, organizations, organization_members, roles
+ *   auth:       users (incl. professionalProfile JSON), organizations, organization_members, roles
  *   project:    projects, tasks, milestones, risk_register
  *   workforce:  teams, team_members, user_skills
  *   client:     clients, proposals, project_clients
@@ -51,6 +51,62 @@ function splitText(text: string): string[] {
 
 function contentHash(text: string): string {
     return crypto.createHash('md5').update(text).digest('hex');
+}
+
+/** Flatten auth.users.professionalProfile JSON for RAG (skill tags + experiences). */
+function professionalProfileToPlainText(
+    profile: unknown,
+    firstName: string | null,
+    lastName: string | null,
+    email: string | null
+): string {
+    let parsed: unknown = profile;
+    if (typeof parsed === 'string') {
+        try {
+            parsed = JSON.parse(parsed) as unknown;
+        } catch {
+            return '';
+        }
+    }
+    if (!parsed || typeof parsed !== 'object') return '';
+
+    const o = parsed as Record<string, unknown>;
+    const parts: string[] = [];
+    const name = `${firstName || ''} ${lastName || ''}`.trim();
+    parts.push(`Contributor: ${name || email || 'Unknown'}${email ? ` (${email})` : ''}.`);
+
+    const tags = o.skillTags;
+    const tagNames: string[] = [];
+    if (Array.isArray(tags)) {
+        for (const t of tags) {
+            if (t && typeof t === 'object' && 'name' in t) {
+                const n = (t as { name?: unknown }).name;
+                if (typeof n === 'string' && n.trim()) tagNames.push(n.trim());
+            }
+        }
+    }
+    if (tagNames.length) parts.push(`Skill tags: ${tagNames.join(', ')}.`);
+
+    const ex = o.experiences;
+    if (Array.isArray(ex) && ex.length) {
+        parts.push('Experience:');
+        for (const e of ex) {
+            if (!e || typeof e !== 'object') continue;
+            const x = e as Record<string, unknown>;
+            const bits: string[] = [];
+            for (const k of ['jobTitle', 'employer', 'startYear', 'endYear', 'description'] as const) {
+                const v = x[k];
+                if (v != null && String(v).trim() !== '') bits.push(String(v).trim());
+            }
+            if (x.isPresent === true) bits.push('present');
+            const line = bits.join(' — ');
+            if (line) parts.push(`- ${line}`);
+        }
+    }
+
+    if (tagNames.length === 0 && (!Array.isArray(ex) || ex.length === 0)) return '';
+
+    return parts.join('\n');
 }
 
 // ── Index a Single Document ─────────────────────────────────────
@@ -247,6 +303,66 @@ export async function syncMembers(orgId: string): Promise<SyncResult> {
 }
 
 /**
+ * auth.users.professionalProfile (JSON) for org members — indexed separately from members rows
+ * so RAG can retrieve skill tags and experience text for the AI agent.
+ */
+export async function syncContributorProfessionalProfiles(orgId: string): Promise<SyncResult> {
+    return syncQuery(
+        orgId,
+        'auth',
+        'user_professional_profiles',
+        `SELECT u.id, u."firstName", u."lastName", u.email, u."professionalProfile"
+     FROM auth.users u
+     INNER JOIN auth.organization_members om ON om."userId" = u.id
+     WHERE om."organizationId" = $1 AND u."professionalProfile" IS NOT NULL`,
+        'contributor_profile',
+        (r) => {
+            const content = professionalProfileToPlainText(
+                r.professionalProfile,
+                r.firstName as string | null,
+                r.lastName as string | null,
+                r.email as string | null
+            );
+            return {
+                title: `Contributor profile: ${r.firstName || ''} ${r.lastName || ''}`.trim() || (r.email as string),
+                content,
+                metadata: { userId: r.id, email: r.email },
+            };
+        }
+    );
+}
+
+/**
+ * workforce.user_skills for users who belong to the organization (for AI / matching).
+ */
+export async function syncContributorSkills(orgId: string): Promise<SyncResult> {
+    return syncQuery(
+        orgId,
+        'workforce',
+        'user_skills',
+        `SELECT us.id, us."userId", us."skillName", us.proficiency,
+            u."firstName", u."lastName", u.email
+     FROM workforce.user_skills us
+     INNER JOIN auth.users u ON u.id = us."userId"
+     INNER JOIN auth.organization_members om ON om."userId" = u.id
+     WHERE om."organizationId" = $1`,
+        'contributor_skill',
+        (r) => {
+            const who = `${r.firstName || ''} ${r.lastName || ''}`.trim() || (r.email as string);
+            const prof =
+                typeof r.proficiency === 'number' && !Number.isNaN(r.proficiency)
+                    ? `Proficiency: ${r.proficiency}/10.`
+                    : '';
+            return {
+                title: `Skill: ${r.skillName} (${who})`,
+                content: `${who} (${r.email}) — Skill: ${r.skillName}. ${prof}`.trim(),
+                metadata: { userId: r.userId, skillName: r.skillName, proficiency: r.proficiency },
+            };
+        }
+    );
+}
+
+/**
  * client.clients: id, organizationId, name, email, company, industry, status
  */
 export async function syncClients(orgId: string): Promise<SyncResult> {
@@ -370,6 +486,7 @@ export async function syncProposals(orgId: string): Promise<SyncResult> {
 export async function syncAllData(orgId: string) {
     const fns = [
         syncProjects, syncTasks, syncTeams, syncMembers,
+        syncContributorProfessionalProfiles, syncContributorSkills,
         syncClients, syncMilestones, syncRisks,
         syncWikiPages, syncDocuments, syncProposals,
     ];

@@ -12,7 +12,7 @@ import {
   aiEngineClient,
   ServiceRecord,
 } from '../services/backendClient';
-import { requireAuth, requireOrganizer, requireOrganization, requirePermission, hasMetaPermission, isOrganizer, getOrgId, AuthContext } from '../lib/auth';
+import { requireAuth, requireOrganizer, requireOrganization, requirePermission, hasMetaPermission, isOrganizer, getOrgId, AuthContext, getCurrentUser, hasRole } from '../lib/auth';
 import { verifyTurnstileToken } from '../lib/turnstile';
 import { ServiceError } from '../lib/errors';
 import { enrichUserWithWorkforceData, type GraphQLLoaders } from '../lib/graphqlLoaders';
@@ -20,11 +20,39 @@ import {
   provisionClientOrganizerWorkspaceHub,
   syncClientOrganizerHubParticipants,
 } from '../lib/clientOrganizerHub';
+import { processDeadlineDelayNotificationsForOrganization } from '../lib/deadlineDelayNotifications';
 
 interface Context extends AuthContext {
   headers: Record<string, string | string[] | undefined>;
   token?: string;
   loaders: GraphQLLoaders;
+}
+
+/** Project.metadata flags for client portal (default: visible). */
+function portalMetaAllowsTasks(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== 'object') return true;
+  return (metadata as Record<string, unknown>).clientCanViewTasks !== false;
+}
+
+function portalMetaAllowsMilestones(metadata: unknown): boolean {
+  if (!metadata || typeof metadata !== 'object') return true;
+  return (metadata as Record<string, unknown>).clientCanViewMilestones !== false;
+}
+
+/** Align task priority with app UI labels (Low / Medium / High / Urgent). */
+function normalizeTaskPriorityForGraphQL(raw: unknown): string {
+  if (raw == null || raw === '') return 'Medium';
+  const s = String(raw).trim();
+  const lower = s.toLowerCase();
+  const canonical: Record<string, string> = {
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    urgent: 'Urgent',
+  };
+  if (canonical[lower]) return canonical[lower];
+  if (s.length === 0) return 'Medium';
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
 /**
@@ -755,6 +783,18 @@ export const resolvers = {
     taskDependency: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'tasks', 'read');
       return projectClient.getById('/task-dependencies', id);
+    },
+    milestoneDependencies: async (
+      _: unknown,
+      args: { milestoneId?: string | null; projectId?: string | null },
+      context: Context
+    ) => {
+      await requirePermission(context, 'projects', 'read');
+      const params = new URLSearchParams();
+      if (args.milestoneId) params.set('milestoneId', String(args.milestoneId));
+      if (args.projectId) params.set('projectId', String(args.projectId));
+      const q = params.toString();
+      return projectClient.get(`/milestone-dependencies${q ? `?${q}` : ''}`);
     },
     taskSubmissions: async (
       _: unknown,
@@ -1522,14 +1562,22 @@ export const resolvers = {
   },
 
   Project: {
-    tasks: async (parent: ServiceRecord) => {
+    tasks: async (parent: ServiceRecord, _args: unknown, context: Context) => {
+      const user = await getCurrentUser(context);
+      if (user && hasRole(user, 'client') && !portalMetaAllowsTasks(parent.metadata)) {
+        return [];
+      }
       try {
         return await projectClient.get(`/tasks?projectId=${parent.id}`);
       } catch {
         return [];
       }
     },
-    milestones: async (parent: ServiceRecord) => {
+    milestones: async (parent: ServiceRecord, _args: unknown, context: Context) => {
+      const user = await getCurrentUser(context);
+      if (user && hasRole(user, 'client') && !portalMetaAllowsMilestones(parent.metadata)) {
+        return [];
+      }
       try {
         return await projectClient.get(`/milestones?projectId=${parent.id}`);
       } catch {
@@ -1669,7 +1717,7 @@ export const resolvers = {
   },
 
   Task: {
-    priority: (parent: ServiceRecord) => parent.priority ?? 'medium',
+    priority: (parent: ServiceRecord) => normalizeTaskPriorityForGraphQL(parent.priority),
     assignees: async (parent: ServiceRecord, _args: unknown, context: Context) => {
       // If there's an assigneeId, return that user as a single-element array
       if (parent.assigneeId) {
@@ -1691,13 +1739,43 @@ export const resolvers = {
         return [];
       }
     },
+    checklists: async (parent: ServiceRecord) => {
+      if (Array.isArray(parent.checklists)) return parent.checklists;
+      if (!parent.id) return [];
+      try {
+        const task = await projectClient.getById('/tasks', parent.id);
+        if (task && Array.isArray((task as ServiceRecord).checklists)) {
+          return (task as ServiceRecord).checklists;
+        }
+        return [];
+      } catch {
+        return [];
+      }
+    },
   },
 
   Milestone: {
     name: (parent: ServiceRecord) => parent.name ?? parent.title,
-    completed: (parent: ServiceRecord) => parent.completed ?? (parent.status === 'completed'),
+    completed: (parent: ServiceRecord) =>
+      Boolean(parent.completed) ||
+      String(parent.status ?? "").toLowerCase() === "completed" ||
+      String(parent.status ?? "").toUpperCase() === "COMPLETED",
     completedAt: (parent: ServiceRecord) => parent.completedAt ?? null,
     dueDate: (parent: ServiceRecord) => parent.dueDate ?? new Date(),
+    dependencies: (parent: ServiceRecord) =>
+      Array.isArray(parent.dependencies) ? parent.dependencies : [],
+  },
+
+  MilestoneDependency: {
+    dependsOn: async (parent: ServiceRecord, _args: unknown, context: Context) => {
+      if (parent.dependsOn && typeof parent.dependsOn === "object") return parent.dependsOn;
+      if (!parent.dependsOnId) return null;
+      try {
+        return await projectClient.getById("/milestones", parent.dependsOnId);
+      } catch {
+        return null;
+      }
+    },
   },
 
   Client: {
@@ -3239,16 +3317,38 @@ export const resolvers = {
       if (input.progress !== undefined) projectData.progress = input.progress;
       if (input.budget !== undefined) projectData.budget = input.budget;
       if (input.spentBudget !== undefined) projectData.spentBudget = input.spentBudget;
-      if (input.type !== undefined || input.visibility !== undefined ||
-        input.notifyTeam !== undefined || input.notifyClient !== undefined) {
+      const needsMetadataMerge =
+        input.type !== undefined ||
+        input.visibility !== undefined ||
+        input.notifyTeam !== undefined ||
+        input.notifyClient !== undefined ||
+        input.clientCanViewTasks !== undefined ||
+        input.clientCanViewMilestones !== undefined ||
+        input.taskKanbanStatuses !== undefined;
+
+      if (needsMetadataMerge) {
         const existingProject = await projectClient.getById('/projects', id);
-        const existingMetadata = existingProject?.metadata || {};
+        const existingMetadata =
+          existingProject?.metadata && typeof existingProject.metadata === 'object'
+            ? { ...(existingProject.metadata as Record<string, unknown>) }
+            : {};
         projectData.metadata = {
           ...existingMetadata,
           ...(input.type !== undefined && { type: input.type }),
           ...(input.visibility !== undefined && { visibility: input.visibility }),
           ...(input.notifyTeam !== undefined && { notifyTeam: input.notifyTeam }),
           ...(input.notifyClient !== undefined && { notifyClient: input.notifyClient }),
+          ...(input.clientCanViewTasks !== undefined && {
+            clientCanViewTasks: input.clientCanViewTasks,
+          }),
+          ...(input.clientCanViewMilestones !== undefined && {
+            clientCanViewMilestones: input.clientCanViewMilestones,
+          }),
+          ...(Array.isArray(input.taskKanbanStatuses) && {
+            taskKanbanStatuses: input.taskKanbanStatuses.filter(
+              (s: unknown) => typeof s === 'string' && s.trim().length > 0,
+            ),
+          }),
         };
       }
 
@@ -3382,7 +3482,7 @@ export const resolvers = {
       return projectClient.put('/task-checklists', id, input);
     },
     deleteTaskChecklist: async (_: unknown, { id }: { id: string }, context: Context) => {
-      await requirePermission(context, 'tasks', 'delete');
+      await requirePermission(context, 'tasks', 'update');
       return projectClient.delete('/task-checklists', id);
     },
     createTaskDependency: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
@@ -3434,6 +3534,18 @@ export const resolvers = {
     deleteMilestone: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'projects', 'delete');
       return projectClient.delete('/milestones', id);
+    },
+    createMilestoneDependency: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.post('/milestone-dependencies', input);
+    },
+    deleteMilestoneDependency: async (_: unknown, { id }: { id: string }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.delete('/milestone-dependencies', id);
+    },
+    replaceMilestoneDependencies: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      await requirePermission(context, 'projects', 'update');
+      return projectClient.post('/milestone-dependencies/replace', input);
     },
     createRiskRegister: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await requirePermission(context, 'projects', 'update');
@@ -4118,6 +4230,118 @@ export const resolvers = {
         console.error('Error marking all notifications as read:', error);
         return { count: 0, success: false };
       }
+    },
+
+    broadcastOrganizationAnnouncement: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      const organizer = await requireOrganizer(context);
+      const orgId = getOrgId(organizer);
+      const raw = input && typeof input === 'object' ? input : {};
+      const message = typeof raw.message === 'string' ? raw.message.trim() : '';
+      const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+      const channelId = typeof raw.channelId === 'string' ? raw.channelId.trim() : '';
+      const postToChannel = raw.postToChannel !== false;
+
+      if (!message) {
+        throw new GraphQLError('message is required', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      if (message.length > 8000) {
+        throw new GraphQLError('message must be 8000 characters or less', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+
+      const members = await authClient.get(`/organization-members?organizationId=${orgId}`);
+      if (!Array.isArray(members) || members.length === 0) {
+        throw new GraphQLError('No organization members found', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+
+      const userIds = [
+        ...new Set(
+          members
+            .map((m: ServiceRecord) => m.userId)
+            .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0),
+        ),
+      ];
+
+      const orgName = organizer.organization?.name?.trim() || 'Your organization';
+      const senderLabel = `${organizer.firstName || ''} ${organizer.lastName || ''}`.trim() || organizer.email;
+      const headerLine = title ? `📢 ${title}` : `📢 Announcement from ${orgName}`;
+      const notificationBody = `${headerLine}\n\n${message}\n\n— ${senderLabel}`;
+
+      const results = await Promise.allSettled(
+        userIds.map((userId) =>
+          notificationClient.post('/notifications', {
+            userId,
+            content: notificationBody,
+            type: 'org_announcement',
+            isRead: false,
+          }),
+        ),
+      );
+      const notificationCount = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.length - notificationCount;
+
+      let postedToChannel = false;
+      if (postToChannel && channelId) {
+        try {
+          const channel = await communicationClient.getById('/chat-channels', channelId);
+          if (channel?.organizationId !== orgId) {
+            throw new Error('Channel does not belong to this organization');
+          }
+          const channelMembers = await communicationClient.get(`/channel-members?channelId=${channelId}`);
+          const memberIds = new Set(
+            Array.isArray(channelMembers)
+              ? channelMembers.map((cm: ServiceRecord) => cm.userId).filter(Boolean)
+              : [],
+          );
+          if (!memberIds.has(organizer.id)) {
+            throw new Error('You must be a member of this channel to post an announcement here');
+          }
+          const chatLine = title
+            ? `📢 **Organization announcement:** ${title}\n\n${message}`
+            : `📢 **Organization announcement**\n\n${message}`;
+          await communicationClient.post('/messages', {
+            channelId,
+            senderId: organizer.id,
+            content: `${chatLine}\n\n_Sent to all members as a notification._`,
+            type: 'system',
+          });
+          postedToChannel = true;
+        } catch (e) {
+          console.error('[broadcastOrganizationAnnouncement] Channel post failed:', e);
+          if (notificationCount === 0) {
+            throw new GraphQLError(
+              e instanceof Error ? e.message : 'Failed to post to channel and no notifications were created',
+              { extensions: { code: 'BAD_REQUEST', statusCode: 400 } },
+            );
+          }
+        }
+      }
+
+      const success = notificationCount > 0;
+      const messageOut = success
+        ? failed > 0
+          ? `Sent ${notificationCount} of ${userIds.length} notifications.${postedToChannel ? ' Posted to channel.' : ''} ${failed} failed.`
+          : `Sent ${notificationCount} notifications.${postedToChannel ? ' Posted to channel.' : ''}`
+        : 'No notifications were delivered.';
+
+      return {
+        success,
+        recipientCount: userIds.length,
+        notificationCount,
+        postedToChannel,
+        message: messageOut,
+      };
+    },
+
+    processDeadlineDelayNotifications: async (_: unknown, __: unknown, context: Context) => {
+      const user = await requireOrganizer(context);
+      const orgId = getOrgId(user);
+      return processDeadlineDelayNotificationsForOrganization(orgId);
     },
 
     // AI Engine — forward organizationId so ai-engine auth/me + outbound tools match the user's workspace

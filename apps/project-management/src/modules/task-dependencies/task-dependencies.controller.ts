@@ -32,6 +32,28 @@ export async function createTaskDependencyHandler(req: Request, res: Response) {
       res.status(400).json({ error: "A task cannot depend on itself" });
       return;
     }
+
+    const [t1, t2] = await Promise.all([
+      prisma.task.findUnique({ where: { id: taskId }, select: { projectId: true } }),
+      prisma.task.findUnique({ where: { id: dependsOnId }, select: { projectId: true } }),
+    ]);
+    if (!t1 || !t2) {
+      res.status(400).json({ error: "One or both tasks were not found" });
+      return;
+    }
+    if (t1.projectId !== t2.projectId) {
+      res.status(400).json({ error: "Tasks must belong to the same project" });
+      return;
+    }
+
+    const dup = await prisma.taskDependency.findFirst({
+      where: { taskId, dependsOnId },
+    });
+    if (dup) {
+      res.status(400).json({ error: "This task dependency already exists" });
+      return;
+    }
+
     const normalized = normalizeLinkType(type);
     const taskDependency = await prisma.taskDependency.create({
       data: { taskId, dependsOnId, type: normalized },

@@ -5,6 +5,7 @@ import projectMemberRoutes from './modules/project-members/project-members.route
 import taskRoutes from './modules/tasks/tasks.routes';
 import taskChecklistRoutes from './modules/task-checklists/task-checklists.routes';
 import taskDependencyRoutes from './modules/task-dependencies/task-dependencies.routes';
+import milestoneDependencyRoutes from './modules/milestone-dependencies/milestone-dependencies.routes';
 import taskSubmissionRoutes from './modules/task-submissions/task-submissions.routes';
 import milestoneRoutes from './modules/milestones/milestones.routes';
 import riskRegisterRoutes from './modules/risk-register/risk-register.routes';
@@ -29,6 +30,7 @@ app.use('/project-members', projectMemberRoutes);
 app.use('/tasks', taskRoutes);
 app.use('/task-checklists', taskChecklistRoutes);
 app.use('/task-dependencies', taskDependencyRoutes);
+app.use('/milestone-dependencies', milestoneDependencyRoutes);
 app.use('/task-submissions', taskSubmissionRoutes);
 app.use('/milestones', milestoneRoutes);
 app.use('/risk-register', riskRegisterRoutes);

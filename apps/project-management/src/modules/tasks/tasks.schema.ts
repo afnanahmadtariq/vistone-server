@@ -4,6 +4,7 @@ export const taskSchema = z.object({
       body: z.object({
         projectId: z.string().min(1),
         parentId: z.string().nullable().optional(),
+        milestoneId: z.string().nullable().optional(),
         assigneeId: z.string().nullable().optional(),
         creatorId: z.string().nullable().optional(),
         title: z.string().min(1),

@@ -307,6 +307,7 @@ export const typeDefs = gql`
     id: ID!
     projectId: String!
     parentId: String
+    milestoneId: String
     assigneeId: String
     title: String!
     description: String
@@ -325,6 +326,7 @@ export const typeDefs = gql`
     assignees: [User!]
     creator: User
     submissions: [TaskSubmission!]
+    checklists: [TaskChecklist!]
   }
 
   type TaskSubmission {
@@ -361,6 +363,16 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
+  type MilestoneDependency {
+    id: ID!
+    milestoneId: String!
+    dependsOnId: String!
+    type: String!
+    dependsOn: Milestone
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
   type Milestone {
     id: ID!
     projectId: String!
@@ -373,6 +385,7 @@ export const typeDefs = gql`
     completedAt: DateTime
     createdAt: DateTime!
     updatedAt: DateTime!
+    dependencies: [MilestoneDependency!]
   }
 
   type RiskRegister {
@@ -858,6 +871,7 @@ export const typeDefs = gql`
     taskChecklist(id: ID!): TaskChecklist
     taskDependencies(taskId: ID, projectId: ID): [TaskDependency!]!
     taskDependency(id: ID!): TaskDependency
+    milestoneDependencies(milestoneId: ID, projectId: ID): [MilestoneDependency!]!
     taskSubmissions(taskId: ID!, status: String): [TaskSubmission!]!
     milestones: [Milestone!]!
     milestone(id: ID!): Milestone
@@ -1070,6 +1084,9 @@ export const typeDefs = gql`
     createMilestone(input: JSON!): Milestone!
     updateMilestone(id: ID!, input: JSON!): Milestone!
     deleteMilestone(id: ID!): DeleteResponse!
+    createMilestoneDependency(input: JSON!): MilestoneDependency!
+    deleteMilestoneDependency(id: ID!): DeleteResponse!
+    replaceMilestoneDependencies(input: JSON!): [MilestoneDependency!]!
     createRiskRegister(input: JSON!): RiskRegister!
     updateRiskRegister(id: ID!, input: JSON!): RiskRegister!
     deleteRiskRegister(id: ID!): DeleteResponse!
@@ -1154,6 +1171,8 @@ export const typeDefs = gql`
     deleteNotification(id: ID!): DeleteResponse!
     markNotificationAsRead(id: ID!): Notification!
     markAllNotificationsAsRead: MarkAllNotificationsResponse!
+    broadcastOrganizationAnnouncement(input: JSON!): BroadcastOrganizationAnnouncementResult!
+    processDeadlineDelayNotifications: ProcessDeadlineDelayNotificationsResult!
 
     # Dashboards
     createDashboard(input: JSON!): Dashboard!
@@ -1191,6 +1210,23 @@ export const typeDefs = gql`
   type MarkAllNotificationsResponse {
     count: Int!
     success: Boolean!
+  }
+
+  type BroadcastOrganizationAnnouncementResult {
+    success: Boolean!
+    recipientCount: Int!
+    notificationCount: Int!
+    postedToChannel: Boolean!
+    message: String
+  }
+
+  type ProcessDeadlineDelayNotificationsResult {
+    success: Boolean!
+    message: String!
+    organizerUserId: String
+    projectDelaysNotified: Int!
+    milestoneDelaysNotified: Int!
+    taskDelaysNotified: Int!
   }
 
   # Analytics Types
@@ -1334,6 +1370,7 @@ export const typeDefs = gql`
     priority: String
     projectId: ID!
     assigneeId: ID
+    milestoneId: ID
     dueDate: DateTime
     startDate: DateTime
     estimatedHours: Float
@@ -1345,6 +1382,7 @@ export const typeDefs = gql`
     status: String
     priority: String
     assigneeId: ID
+    milestoneId: ID
     dueDate: DateTime
     startDate: DateTime
     estimatedHours: Float
@@ -1363,6 +1401,7 @@ export const typeDefs = gql`
     description: String
     dueDate: DateTime
     completed: Boolean
+    status: String
   }
 
   input CreateProjectInput {
@@ -1390,6 +1429,12 @@ export const typeDefs = gql`
     visibility: String
     notifyTeam: Boolean
     notifyClient: Boolean
+    """When false, linked portal clients do not see task lists/counts on the client project view."""
+    clientCanViewTasks: Boolean
+    """When false, linked portal clients do not see the milestones section on the client project view."""
+    clientCanViewMilestones: Boolean
+    """Ordered task Kanban column labels (stored in project metadata)."""
+    taskKanbanStatuses: [String!]
     contributors: [String!]
     clientId: String
     startDate: String

@@ -74,6 +74,7 @@ model Task {
   id             String   @id @default(uuid())
   projectId      String
   parentId       String?
+  milestoneId    String?
   assigneeId     String?
   creatorId      String?
   title          String
@@ -86,9 +87,10 @@ model Task {
   actualHours    Float?
   aiSuggestions  Json?
   
-  project        Project  @relation(fields: [projectId], references: [id])
-  parent         Task?    @relation("Subtasks", fields: [parentId], references: [id])
-  subtasks       Task[]   @relation("Subtasks")
+  project        Project   @relation(fields: [projectId], references: [id])
+  milestone      Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  parent         Task?     @relation("Subtasks", fields: [parentId], references: [id])
+  subtasks       Task[]    @relation("Subtasks")
   
   checklists     TaskChecklist[]
   dependencies   TaskDependency[] @relation("TaskDependencies")
@@ -171,11 +173,35 @@ model Milestone {
   completedAt DateTime?
   
   project     Project  @relation(fields: [projectId], references: [id])
+  tasks       Task[]
+  /// This milestone depends on prerequisite milestones (see dependsOnId).
+  dependencies MilestoneDependency[] @relation("MilestoneDependencySuccessor")
+  /// Other milestones list this one as a prerequisite.
+  dependentFor MilestoneDependency[] @relation("MilestoneDependencyPredecessor")
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("milestones")
+  @@schema("project")
+}
+
+/// Milestone B depends on milestone A: A must be completed before B can be approved.
+model MilestoneDependency {
+  id          String   @id @default(uuid())
+  milestoneId String
+  dependsOnId String
+  /// FS / SS / FF / SF (same semantics as task dependencies).
+  type        String
+
+  milestone   Milestone @relation("MilestoneDependencySuccessor", fields: [milestoneId], references: [id], onDelete: Cascade)
+  dependsOn   Milestone @relation("MilestoneDependencyPredecessor", fields: [dependsOnId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([milestoneId, dependsOnId])
+  @@map("milestone_dependencies")
   @@schema("project")
 }
 

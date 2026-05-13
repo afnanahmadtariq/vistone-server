@@ -137,7 +137,18 @@ export async function getProjectByIdHandler(req: Request, res: Response) {
           },
           orderBy: { createdAt: 'desc' },
         },
-        milestones: { orderBy: { dueDate: 'asc' } },
+        milestones: {
+          orderBy: { dueDate: "asc" },
+          include: {
+            dependencies: {
+              include: {
+                dependsOn: {
+                  select: { id: true, title: true, completed: true, status: true },
+                },
+              },
+            },
+          },
+        },
         risks: { orderBy: { createdAt: 'desc' } },
         aiInsights: { orderBy: { createdAt: 'desc' } },
       },
