@@ -5,6 +5,7 @@
   "nx": {
     "targets": {
       "build": {
+        "dependsOn": ["prisma:generate"],
         "executor": "@nx/esbuild:esbuild",
         "outputs": [
           "{options.outputPath}"
@@ -98,7 +99,6 @@
         "executor": "@nx/js:node",
         "defaultConfiguration": "development",
         "dependsOn": [
-          "prisma:generate",
           "build"
         ],
         "options": {
