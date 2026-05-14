@@ -7,7 +7,7 @@
  *   Project Mgmt  (3003): /projects, /tasks, /milestones, /risk-register, /project-members
  *   Client Mgmt   (3004): /clients, /proposals, /project-clients, /client-feedback
  *   Workforce     (3002): /teams, /team-members, /user-skills, /user-availability
- *   Communication (3006): /chat-channels, /chat-messages, /channel-members, /message-mentions
+ *   Communication (3006): /chat-channels, /messages, /channel-members
  *   Notification   (3008): /notifications, /notifications/user/:userId
  *   Knowledge Hub (3005): /documents, /wiki-pages, /document-folders
  */
@@ -528,7 +528,7 @@ export function buildToolDefs(user: AuthenticatedUser, scope: AiDataScope): Tool
 
         // ═══════════════════════════════════════════════════════════
         // Communication Service (port 3006)
-        // Routes: /chat-channels, /chat-messages, /channel-members
+        // Routes: /chat-channels, /messages, /channel-members
         // ═══════════════════════════════════════════════════════════
         {
             name: 'send_message',
@@ -540,8 +540,13 @@ export function buildToolDefs(user: AuthenticatedUser, scope: AiDataScope): Tool
                 type: z.enum(['text', 'file', 'image', 'system']).optional().default('text').describe('Message type'),
             }),
             func: async (input) => {
-                // POST /chat-messages
-                const r = await safeCall(() => communicationClient().post('/chat-messages', input));
+                const body = {
+                    ...input,
+                    type: input.type ?? 'text',
+                    mentions: [],
+                    attachments: [],
+                };
+                const r = await safeCall(() => communicationClient().post('/messages', body));
                 return JSON.stringify(r);
             },
         },
@@ -553,9 +558,8 @@ export function buildToolDefs(user: AuthenticatedUser, scope: AiDataScope): Tool
                 limit: z.number().optional().default(50),
             }),
             func: async ({ channelId, limit }) => {
-                // GET /chat-messages?channelId=...&limit=...
                 const r = await safeCall(() =>
-                    communicationClient().get(`/chat-messages?channelId=${channelId}&limit=${limit}`)
+                    communicationClient().get(`/messages?channelId=${channelId}&limit=${limit}`)
                 );
                 return JSON.stringify(r);
             },

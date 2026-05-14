@@ -7,6 +7,7 @@ import { getOrgAutoAgentSettings } from './org-settings.service';
 const mockCommunicationGet = jest.fn();
 const mockCommunicationPost = jest.fn();
 const mockKnowledgeGet = jest.fn();
+const mockProjectGet = jest.fn();
 
 jest.mock('./connectors', () => ({
   communicationClient: jest.fn(() => ({
@@ -15,6 +16,12 @@ jest.mock('./connectors', () => ({
   })),
   knowledgeClient: jest.fn(() => ({
     get: mockKnowledgeGet,
+  })),
+  projectClient: jest.fn(() => ({
+    get: mockProjectGet,
+  })),
+  workforceClient: jest.fn(() => ({
+    get: jest.fn(),
   })),
   safeCall: jest.fn(async (fn: () => Promise<{ data: unknown }>) => {
     try {
@@ -44,6 +51,10 @@ jest.mock('./rag.service', () => ({
 
 jest.mock('./client-workspace-clarity.service', () => ({
   assessClientWorkspaceMessageClarity: jest.fn(),
+}));
+
+jest.mock('./access-scope.service', () => ({
+  presetAiDataScopeForClientWorkspaceChannel: jest.fn(async () => undefined),
 }));
 
 jest.mock('../agent/runner.js', () => ({
@@ -89,6 +100,26 @@ describe('runClientWorkspaceAutoAgentPipeline', () => {
     mockKnowledgeClient.mockReturnValue({
       get: mockKnowledgeGet,
     } as any);
+    mockProjectGet.mockImplementation((path: string) => {
+      const p = String(path);
+      if (p.includes('/tasks')) return Promise.resolve({ data: [] });
+      if (p.includes('/milestones')) return Promise.resolve({ data: [] });
+      if (p.includes('/project-members')) return Promise.resolve({ data: [] });
+      return Promise.resolve({
+        data: {
+          id: 'p1',
+          name: 'Test Project',
+          description: 'desc',
+          status: 'ACTIVE',
+          progress: 0,
+          startDate: null,
+          endDate: null,
+          managerId: '',
+          teamId: '',
+          clientId: '',
+        },
+      });
+    });
     mockGetOrgAutoAgentSettings.mockResolvedValue({
       createTasksFromClientRequirements: true,
       autoMilestonesFromTasks: false,

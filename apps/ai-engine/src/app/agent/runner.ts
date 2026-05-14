@@ -86,6 +86,29 @@ function toLangChainTools(defs: ToolDef[]) {
     );
 }
 
+/** Tools allowed for message-triggered client_workspace automation when the JWT is a portal client (narrow RBAC). */
+const CLIENT_WORKSPACE_AUTOMATION_TOOLS: readonly string[] = [
+    'create_task',
+    'update_task',
+    'list_tasks',
+    'get_task',
+    'create_milestone',
+    'list_milestones',
+    'get_project',
+    'list_projects',
+    'get_user_skills',
+    'send_message',
+    'list_messages',
+];
+
+export type RunAgentOptions = {
+    /**
+     * When true, re-inject a minimal task/milestone/channel/skills tool set for validated
+     * client_workspace auto runs (portal clients normally lack tasks:create in JWT permissions).
+     */
+    clientWorkspaceAutomation?: boolean;
+};
+
 // ── Run the Agent ───────────────────────────────────────────────
 
 export async function runAgent(
@@ -93,7 +116,8 @@ export async function runAgent(
     query: string,
     systemPrompt: string,
     history: { role: string; content: string }[] = [],
-    readOnly = false
+    readOnly = false,
+    options?: RunAgentOptions
 ): Promise<ActionResult & { response: string }> {
     // Load LangChain lazily
     await loadLangChain();
@@ -101,6 +125,18 @@ export async function runAgent(
     const scope = await ensureAiDataScope(user);
     const allDefs = buildToolDefs(user, scope);
     let allowedDefs = filterToolsByPermission(user, allDefs);
+
+    if (options?.clientWorkspaceAutomation) {
+        const allowed = new Set(allowedDefs.map((d) => d.name));
+        const byName = new Map(allDefs.map((d) => [d.name, d]));
+        for (const name of CLIENT_WORKSPACE_AUTOMATION_TOOLS) {
+            const def = byName.get(name);
+            if (def && !allowed.has(name)) {
+                allowedDefs.push(def);
+                allowed.add(name);
+            }
+        }
+    }
 
     // If readOnly is true, filter out non-read tools
     if (readOnly) {

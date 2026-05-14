@@ -4518,11 +4518,14 @@ export const resolvers = {
     // AI Engine — forward organizationId so ai-engine auth/me + outbound tools match the user's workspace
     aiChat: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
       await validateAiRequest(context, input.organizationId, input.userId);
-      const body = {
+      const body: ServiceRecord = {
         query: input.query,
         sessionId: input.sessionId,
         confirmAction: input.confirmAction,
       };
+      if (input.enableAgent !== undefined) body.enableAgent = input.enableAgent;
+      if (Array.isArray(input.enabledToolCategories)) body.enabledToolCategories = input.enabledToolCategories;
+      if (Array.isArray(input.contentTypes)) body.contentTypes = input.contentTypes;
       const result = await aiEngineClient.postWithAuth(
         '/api/chat',
         body,

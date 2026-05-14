@@ -14,7 +14,7 @@
  *   6. This time the service runs `runAgent` to actually execute.
  */
 import { config } from '../config';
-import type { AuthenticatedUser, ChatResponse } from '../types';
+import type { AuthenticatedUser, ChatResponse, ChatRequestOptions } from '../types';
 import { describePermissions } from './rbac.service';
 import {
     searchSimilar,
@@ -106,9 +106,11 @@ export async function chat(
     user: AuthenticatedUser,
     queryText: string,
     sessionId?: string,
-    confirmAction?: boolean
+    confirmAction?: boolean,
+    options?: ChatRequestOptions
 ): Promise<ChatResponse> {
     const sid = sessionId || uuidv4();
+    const enableAgent = !!options?.enableAgent;
 
     // 1. Scope check
     if (isOutOfScope(queryText)) {
@@ -134,8 +136,8 @@ export async function chat(
     // 4. Detect mode
     //    a) If confirmAction is explicitly true, execute immediately (user already confirmed)
     //    b) If it's a simple confirmation word AND there's a pending action in history, execute the original query
-    //    c) If it's an action query, do a dry-run first
-    //    d) Otherwise, it's an info query
+    //    c) If enableAgent (sidebar) or classic action-keyword phrasing → plan first (writes require confirmation)
+    //    d) Otherwise, informational query (read-only tools)
 
     if (confirmAction) {
         // Explicit confirmation from the frontend — execute now
@@ -150,7 +152,8 @@ export async function chat(
         }
     }
 
-    if (isActionQuery(queryText)) {
+    // c) Agent-capable UI (enableAgent) or classic action-keyword phrasing → plan first (writes require confirmation)
+    if (enableAgent || isActionQuery(queryText)) {
         return handleActionWithConfirmation(user, queryText, sid, context, sources, history, orgOverview);
     }
 

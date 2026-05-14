@@ -15,11 +15,12 @@ export async function createClientHandler(req: Request, res: Response) {
 
 export async function getAllClientsHandler(req: Request, res: Response) {
   try {
-    const { organizationId, search, status, industry, contactPersonId } = req.query;
+    const { organizationId, search, status, industry, contactPersonId, portalUserId } = req.query;
     const where: Record<string, unknown> = {};
 
     if (organizationId) where.organizationId = organizationId as string;
     if (contactPersonId) where.contactPersonId = contactPersonId as string;
+    if (portalUserId) where.portalUserId = portalUserId as string;
     if (status) where.status = status as string;
     if (industry) where.industry = industry as string;
     if (search) {

@@ -68,7 +68,15 @@ export interface ChatRequest {
     sessionId?: string;
     /** When true, execute the previously proposed pending action */
     confirmAction?: boolean;
+    /** When true, run the agent planning path for in-scope queries (not only keyword-detected “action” phrasing). */
+    enableAgent?: boolean;
+    /** Optional filter forwarded from the app (reserved for future tool-category scoping). */
+    enabledToolCategories?: string[];
+    /** Optional RAG / retrieval hints from the app (reserved for future use). */
+    contentTypes?: string[];
 }
+
+export type ChatRequestOptions = Pick<ChatRequest, 'enableAgent' | 'enabledToolCategories' | 'contentTypes'>;
 
 export interface PendingAction {
     /** Human-readable description of what the agent wants to do */

@@ -111,6 +111,31 @@ async function collectMyProjectIds(user: AuthenticatedUser): Promise<Set<string>
         }
     }
 
+    /** Portal client accounts: CRM Client.portalUserId links auth user → projects via project-clients. */
+    const portalClientsRes = await safeCall(() =>
+        clientClient().get(
+            `/clients?organizationId=${encodeURIComponent(orgId)}&portalUserId=${encodeURIComponent(user.id)}`
+        )
+    );
+    if (portalClientsRes.success && Array.isArray(portalClientsRes.data)) {
+        for (const client of portalClientsRes.data) {
+            const cid = typeof client?.id === 'string' ? client.id : '';
+            if (!cid) continue;
+            const pcs = await safeCall(() => clientClient().get(`/project-clients?clientId=${cid}`));
+            if (pcs.success && Array.isArray(pcs.data)) {
+                pcs.data.forEach((pc: ServiceRecord) => {
+                    if (typeof pc?.projectId === 'string' && pc.projectId) projectIds.add(pc.projectId);
+                });
+            }
+            const cap = await safeCall(() => projectClient().get(`/projects?clientId=${cid}`));
+            if (cap.success && Array.isArray(cap.data)) {
+                cap.data.forEach((p: ServiceRecord) => {
+                    if (typeof p?.id === 'string' && p.id) projectIds.add(p.id);
+                });
+            }
+        }
+    }
+
     return projectIds;
 }
 
@@ -218,6 +243,32 @@ export async function ensureAiDataScope(user: AuthenticatedUser): Promise<AiData
         ctx.aiDataScope = scope;
     }
     return scope;
+}
+
+/**
+ * After the client_workspace channel is validated against `projectId`, union that project into
+ * the AI data scope so RAG and tools match the hub project (portal clients may not appear in
+ * generic membership queries alone).
+ */
+export async function presetAiDataScopeForClientWorkspaceChannel(
+    user: AuthenticatedUser,
+    projectId: string
+): Promise<void> {
+    const ctx = getServiceRequestContext();
+    if (!ctx) return;
+    const base = await buildAiDataScope(user);
+    const pid = projectId.trim();
+    if (!pid) return;
+    if (base.projectScope.allInOrganization) {
+        ctx.aiDataScope = base;
+        return;
+    }
+    const ids = new Set(base.projectScope.ids);
+    ids.add(pid);
+    ctx.aiDataScope = {
+        ...base,
+        projectScope: { allInOrganization: false, ids },
+    };
 }
 
 export function filterRagDocumentsByDataScope(

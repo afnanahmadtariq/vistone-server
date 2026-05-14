@@ -25,7 +25,7 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Authentication required' });
     }
 
-    const { query, sessionId, confirmAction } = request.body;
+    const { query, sessionId, confirmAction, enableAgent, enabledToolCategories, contentTypes } = request.body;
 
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
       return reply.status(400).send({ error: 'Query is required' });
@@ -46,7 +46,11 @@ export default async function chatRoutes(fastify: FastifyInstance) {
 
     try {
       const result = await runWithServiceRequestContextAsync({ token, organizationId }, () =>
-        chat(request.user!, query.trim(), sessionId, confirmAction)
+        chat(request.user!, query.trim(), sessionId, confirmAction, {
+          enableAgent: !!enableAgent,
+          enabledToolCategories: Array.isArray(enabledToolCategories) ? enabledToolCategories : undefined,
+          contentTypes: Array.isArray(contentTypes) ? contentTypes : undefined,
+        })
       );
       return reply.send(result);
     } catch (err: unknown) {
