@@ -20,9 +20,7 @@
           "bundle": false,
           "main": "apps/notification/src/main.ts",
           "tsConfig": "apps/notification/tsconfig.app.json",
-          "assets": [
-            "apps/notification/src/assets"
-          ],
+          "assets": [],
           "esbuildOptions": {
             "sourcemap": true,
             "outExtension": {

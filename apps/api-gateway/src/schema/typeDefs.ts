@@ -230,8 +230,10 @@ export const typeDefs = gql`
     organizationId: String!
     userId: String!
     workDate: DateTime!
-    hoursWorked: Decimal!
+    hoursWorked: Decimal
     notes: String
+    startedAt: DateTime
+    endedAt: DateTime
     createdAt: DateTime!
     updatedAt: DateTime!
     user: User
@@ -1061,6 +1063,8 @@ export const typeDefs = gql`
     createAttendanceLog(input: JSON!): AttendanceLog!
     updateAttendanceLog(id: ID!, input: JSON!): AttendanceLog!
     deleteAttendanceLog(id: ID!): DeleteResponse!
+    clockInAttendance(organizationId: ID!): AttendanceLog!
+    clockOutAttendance(organizationId: ID!, logId: ID): AttendanceLog!
 
     # Projects
     createProject(input: CreateProjectInput!): Project!

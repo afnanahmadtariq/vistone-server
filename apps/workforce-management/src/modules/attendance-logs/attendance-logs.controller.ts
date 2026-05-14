@@ -20,15 +20,16 @@ function parseWorkDate(raw: string): Date | null {
   return new Date(Date.UTC(y, mo, d));
 }
 
+/** Calendar date (UTC midnight) for an instant — used as payroll workDate for a live session. */
+function workDateUtcFromInstant(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
 export async function purgeAttendanceForUserHandler(req: Request, res: Response) {
   try {
     const u = internalUser(req);
     if (!u?.id) {
       res.status(401).json({ error: "Authentication required" });
-      return;
-    }
-    if (!isOrganizerRole(u.role)) {
-      res.status(403).json({ error: "Only organizers can purge attendance records" });
       return;
     }
     const { userId, organizationId } = req.body as { userId: string; organizationId: string };
@@ -38,6 +39,11 @@ export async function purgeAttendanceForUserHandler(req: Request, res: Response)
     }
     if (u.organizationId !== organizationId) {
       res.status(403).json({ error: "Organization mismatch" });
+      return;
+    }
+    const isSelfPurge = u.id === userId;
+    if (!isOrganizerRole(u.role) && !isSelfPurge) {
+      res.status(403).json({ error: "Only organizers can purge attendance records" });
       return;
     }
     const result = await prisma.attendanceLog.deleteMany({
@@ -50,6 +56,7 @@ export async function purgeAttendanceForUserHandler(req: Request, res: Response)
   }
 }
 
+/** Deprecated: staff must use clock-in / clock-out. */
 export async function createAttendanceLogHandler(req: Request, res: Response) {
   try {
     const u = internalUser(req);
@@ -57,34 +64,132 @@ export async function createAttendanceLogHandler(req: Request, res: Response) {
       res.status(401).json({ error: "Authentication required" });
       return;
     }
-    const { organizationId, workDate, hoursWorked, notes } = req.body as {
-      organizationId: string;
-      workDate: string;
-      hoursWorked: number;
-      notes?: string | null;
-    };
+    const organizationId = (req.body as { organizationId?: string })?.organizationId;
+    if (organizationId && organizationId !== u.organizationId) {
+      res.status(403).json({ error: "Cannot log attendance for another organization" });
+      return;
+    }
+    res.status(403).json({
+      error:
+        "Manual day/hour entries are disabled. Use Start now and End now on the Attendance page so hours are calculated automatically.",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to create attendance log" });
+  }
+}
+
+export async function clockInAttendanceHandler(req: Request, res: Response) {
+  try {
+    const u = internalUser(req);
+    if (!u?.id || !u.organizationId) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    const { organizationId } = req.body as { organizationId: string };
     if (organizationId !== u.organizationId) {
       res.status(403).json({ error: "Cannot log attendance for another organization" });
       return;
     }
-    const wd = parseWorkDate(workDate);
-    if (!wd) {
-      res.status(400).json({ error: "Invalid workDate" });
+    if (isOrganizerRole(u.role)) {
+      res.status(403).json({ error: "Organizers can view attendance but cannot clock in" });
       return;
     }
+    const open = await prisma.attendanceLog.findFirst({
+      where: {
+        organizationId,
+        userId: u.id,
+        startedAt: { not: null },
+        endedAt: null,
+      },
+    });
+    if (open) {
+      res.status(409).json({ error: "You already have an active session. End it before starting a new one." });
+      return;
+    }
+    const startedAt = new Date();
+    const workDate = workDateUtcFromInstant(startedAt);
     const row = await prisma.attendanceLog.create({
       data: {
         organizationId,
         userId: u.id,
-        workDate: wd,
+        workDate,
+        startedAt,
+        endedAt: null,
+        hoursWorked: null,
+        notes: null,
+      },
+    });
+    res.status(201).json(row);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to clock in" });
+  }
+}
+
+export async function clockOutAttendanceHandler(req: Request, res: Response) {
+  try {
+    const u = internalUser(req);
+    if (!u?.id || !u.organizationId) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    const { organizationId, logId } = req.body as { organizationId: string; logId?: string };
+    if (organizationId !== u.organizationId) {
+      res.status(403).json({ error: "Cannot log attendance for another organization" });
+      return;
+    }
+    if (isOrganizerRole(u.role)) {
+      res.status(403).json({ error: "Organizers can view attendance but cannot clock out" });
+      return;
+    }
+    const open = logId
+      ? await prisma.attendanceLog.findFirst({
+          where: {
+            id: logId,
+            organizationId,
+            userId: u.id,
+            startedAt: { not: null },
+            endedAt: null,
+          },
+        })
+      : await prisma.attendanceLog.findFirst({
+          where: {
+            organizationId,
+            userId: u.id,
+            startedAt: { not: null },
+            endedAt: null,
+          },
+        });
+    if (!open || !open.startedAt) {
+      res.status(404).json({ error: "No active session to end." });
+      return;
+    }
+    const endedAt = new Date();
+    const rawHours = (endedAt.getTime() - open.startedAt.getTime()) / 3_600_000;
+    if (rawHours > 24) {
+      res.status(400).json({ error: "Session is longer than 24 hours. Contact an organizer if this is a mistake." });
+      return;
+    }
+    if (rawHours < 0) {
+      res.status(400).json({ error: "Invalid session times." });
+      return;
+    }
+    const rounded = Math.round(rawHours * 100) / 100;
+    const hoursVal = Math.max(1 / 60, rounded);
+    const hoursWorked = Number(hoursVal.toFixed(2));
+
+    const row = await prisma.attendanceLog.update({
+      where: { id: open.id },
+      data: {
+        endedAt,
         hoursWorked,
-        notes: notes ?? null,
       },
     });
     res.json(row);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: "Failed to create attendance log" });
+    res.status(500).json({ error: "Failed to clock out" });
   }
 }
 
@@ -104,10 +209,25 @@ export async function listAttendanceLogsHandler(req: Request, res: Response) {
     const workDateTo = req.query.workDateTo as string | undefined;
     const requestedUserId = req.query.userId as string | undefined;
 
+    const openShiftClause = {
+      startedAt: { not: null } as const,
+      endedAt: null,
+    };
+
+    const workDateFilter: { gte?: Date; lte?: Date } = {};
+    if (workDateFrom) {
+      const from = parseWorkDate(workDateFrom);
+      if (from) workDateFilter.gte = from;
+    }
+    if (workDateTo) {
+      const to = parseWorkDate(workDateTo);
+      if (to) workDateFilter.lte = to;
+    }
+
     const where: {
       organizationId: string;
       userId?: string;
-      workDate?: { gte?: Date; lte?: Date };
+      OR?: Array<Record<string, unknown>>;
     } = { organizationId };
 
     if (isOrganizerRole(u.role)) {
@@ -118,21 +238,13 @@ export async function listAttendanceLogsHandler(req: Request, res: Response) {
       where.userId = u.id;
     }
 
-    if (workDateFrom || workDateTo) {
-      where.workDate = {};
-      if (workDateFrom) {
-        const from = parseWorkDate(workDateFrom);
-        if (from) where.workDate.gte = from;
-      }
-      if (workDateTo) {
-        const to = parseWorkDate(workDateTo);
-        if (to) where.workDate.lte = to;
-      }
+    if (Object.keys(workDateFilter).length > 0) {
+      where.OR = [{ workDate: workDateFilter }, openShiftClause];
     }
 
     const rows = await prisma.attendanceLog.findMany({
       where,
-      orderBy: [{ workDate: "desc" }, { createdAt: "desc" }],
+      orderBy: [{ endedAt: "desc" }, { workDate: "desc" }, { createdAt: "desc" }],
     });
     res.json(rows);
   } catch (error) {
@@ -192,24 +304,10 @@ export async function updateAttendanceLogHandler(req: Request, res: Response) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    const body = req.body as { workDate?: string; hoursWorked?: number; notes?: string | null };
-    const data: Record<string, unknown> = {};
-    if (body.workDate !== undefined) {
-      const wd = parseWorkDate(body.workDate);
-      if (!wd) {
-        res.status(400).json({ error: "Invalid workDate" });
-        return;
-      }
-      data.workDate = wd;
-    }
-    if (body.hoursWorked !== undefined) data.hoursWorked = body.hoursWorked;
-    if (body.notes !== undefined) data.notes = body.notes;
-
-    const row = await prisma.attendanceLog.update({
-      where: { id: req.params.id },
-      data,
+    res.status(403).json({
+      error:
+        "Attendance entries cannot be edited. Hours come from Start/End times; delete a row only if it was logged by mistake.",
     });
-    res.json(row);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to update attendance log" });
@@ -236,6 +334,10 @@ export async function deleteAttendanceLogHandler(req: Request, res: Response) {
     }
     if (!isOrganizerRole(u.role) && existing.userId !== u.id) {
       res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (isOrganizerRole(u.role)) {
+      res.status(403).json({ error: "Organizers can view attendance but cannot delete entries" });
       return;
     }
     await prisma.attendanceLog.delete({ where: { id: req.params.id } });

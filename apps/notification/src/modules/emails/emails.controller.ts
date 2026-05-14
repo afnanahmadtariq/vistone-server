@@ -9,7 +9,8 @@ export async function sendOrganizationMemberInvitationEmailHandler(req: Request,
       organizationName,
       inviteToken,
       recipientName,
-      role = 'Contributor' // Default to Contributor if not provided
+      role = 'Contributor', // Canonical auth role (Organizer/Manager/Contributor/Client)
+      jobTitle, // Optional display label for the email body
     } = req.body;
 
     if (!email || !inviterName || !organizationName || !inviteToken) {
@@ -27,6 +28,7 @@ export async function sendOrganizationMemberInvitationEmailHandler(req: Request,
       inviteLink,
       recipientName,
       role,
+      jobTitle,
     });
 
     const sent = await sendEmail({
@@ -103,7 +105,9 @@ export async function sendTeamInvitationEmailHandler(req: Request, res: Response
       organizationName,
       inviteToken,
       recipientName,
-      role = 'Contributor'
+      role = 'Contributor',
+      // jobTitle is accepted for parity with the org invite payload, but the
+      // team invite template doesn't currently display a title.
     } = req.body;
 
     if (!email || !inviterName || !teamName || !organizationName) {

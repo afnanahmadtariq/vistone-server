@@ -13,6 +13,13 @@ export async function logActivity(data: {
   ipAddress?: string;
 }) {
   try {
+    const userExists = await prisma.user.findUnique({
+      where: { id: data.userId },
+      select: { id: true },
+    });
+    if (!userExists) {
+      return null;
+    }
     return await prisma.activityLog.create({
       data: {
         userId: data.userId,

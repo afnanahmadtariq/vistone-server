@@ -87,8 +87,16 @@ function getUserOrganizationId(user: ServiceRecord): string {
   });
 }
 
-/** Organizers are org-wide; clients are portal-only — neither should have workforce team rows. */
-async function assertOrgMemberMayJoinTeams(userId: string, organizationId: string): Promise<void> {
+/**
+ * Resolve the canonical role name of `userId` inside `organizationId`,
+ * or `null` if no membership exists. Throws when the membership is missing
+ * (callers can adapt). Used to centralise role-based gates on team rows
+ * across `createTeam`, `updateTeam`, and `addTeamMember`/`createTeamMember`.
+ */
+async function getOrgMemberRoleName(
+  userId: string,
+  organizationId: string,
+): Promise<string> {
   const memberships = await authClient.get(
     `/organization-members?userId=${encodeURIComponent(userId)}&organizationId=${encodeURIComponent(organizationId)}`,
   );
@@ -101,11 +109,34 @@ async function assertOrgMemberMayJoinTeams(userId: string, organizationId: strin
   const roles = await authClient.get(`/roles?organizationId=${organizationId}`);
   const rolesList = Array.isArray(roles) ? roles : [];
   const roleRow = rolesList.find((r: ServiceRecord) => r.id === membership.roleId);
-  const rn = (roleRow?.name || '').toString().toLowerCase();
+  return (roleRow?.name || '').toString().toLowerCase();
+}
+
+/** Organizers are org-wide; clients are portal-only — neither should have workforce team rows. */
+async function assertOrgMemberMayJoinTeams(userId: string, organizationId: string): Promise<void> {
+  const rn = await getOrgMemberRoleName(userId, organizationId);
   if (rn === 'organizer' || rn === 'client' || rn === 'clients') {
     throw new GraphQLError('Organizers and clients cannot be added to a team.', {
       extensions: { code: 'FORBIDDEN', statusCode: 403 },
     });
+  }
+}
+
+/**
+ * Only the `Manager` role may be assigned as a team manager. Organizers are
+ * org-wide and already have full access to every team, contributors are
+ * individual contributors, and clients are portal-only.
+ */
+async function assertOrgMemberMayManageTeam(
+  userId: string,
+  organizationId: string,
+): Promise<void> {
+  const rn = await getOrgMemberRoleName(userId, organizationId);
+  if (rn !== 'manager') {
+    throw new GraphQLError(
+      'Only Managers can be assigned as a team manager.',
+      { extensions: { code: 'FORBIDDEN', statusCode: 403 } },
+    );
   }
 }
 
@@ -2443,13 +2474,45 @@ export const resolvers = {
       return authClient.post('/users', input);
     },
     updateUser: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requirePermission(context, 'users', 'update');
+      // Self-update (changing my own avatar, name, email, skills, etc.) is
+      // always allowed for any authenticated user — that's not the same as
+      // the org-wide `users:update` permission, which is for managing other
+      // people. Only fall back to the permission check when editing somebody
+      // else's row.
+      const currentUser = await requireAuth(context);
+      const isSelfUpdate = currentUser.id === id;
+      if (!isSelfUpdate) {
+        await requirePermission(context, 'users', 'update');
+      }
+
       const payload: ServiceRecord = { ...input };
+
       // Auth DB column is `avatarUrl`; clients send `avatar` (matches GraphQL User.avatar)
       if (payload.avatar !== undefined && payload.avatarUrl === undefined) {
         payload.avatarUrl = payload.avatar;
         delete payload.avatar;
       }
+
+      if (isSelfUpdate) {
+        // Block self-elevation: a non-organizer must not be able to flip
+        // their own role/status/permissions via this mutation. Dedicated
+        // resolvers (`updateUserRole`, `updateMemberPermissions`) handle
+        // those flows with their own gates.
+        const FORBIDDEN_SELF_FIELDS = [
+          'role',
+          'roleId',
+          'status',
+          'permissions',
+          'organizationId',
+          'organizationMemberships',
+        ];
+        for (const field of FORBIDDEN_SELF_FIELDS) {
+          if (field in payload) {
+            delete payload[field];
+          }
+        }
+      }
+
       return authClient.put('/users', id, payload);
     },
     updateUserRole: async (_: unknown, { userId, role }: { userId: string; role: string }, context: Context) => {
@@ -2809,7 +2872,10 @@ export const resolvers = {
         const recipientName = `${input.firstName || ''} ${input.lastName || ''}`.trim() || undefined;
 
         if (effectiveTeamId && teamName) {
-          // Send team invitation
+          // Send team invitation. `role` is the canonical auth role used
+          // to build the onboarding URL (drives the manager/contributor
+          // skills step); `jobTitle` is the human-friendly display label
+          // shown in the email body.
           await notificationClient.postWithAuth('/emails/invite/team', {
             email: input.email,
             inviterName,
@@ -2817,7 +2883,8 @@ export const resolvers = {
             organizationName: organization.name,
             inviteToken,
             recipientName,
-            role: input.jobTitle || input.role,
+            role: input.role,
+            jobTitle: input.jobTitle,
           }, context.token!, organizationId);
         } else {
           // Send organization invitation
@@ -2827,7 +2894,8 @@ export const resolvers = {
             organizationName: organization.name,
             inviteToken,
             recipientName,
-            role: input.jobTitle || input.role,
+            role: input.role,
+            jobTitle: input.jobTitle,
           }, context.token!, organizationId);
         }
       } catch (emailError) {
@@ -3037,11 +3105,44 @@ export const resolvers = {
         delete payload.managerId;
       }
 
+      if (typeof payload.managerId === 'string' && payload.managerId) {
+        const orgId =
+          typeof payload.organizationId === 'string'
+            ? payload.organizationId
+            : currentUser.organizationId;
+        if (!orgId) {
+          throw new GraphQLError('Organization context is required', {
+            extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+          });
+        }
+        await assertOrgMemberMayManageTeam(payload.managerId, orgId);
+      }
+
       return workforceClient.post('/teams', payload);
     },
     updateTeam: async (_: unknown, { id, input }: { id: string; input: ServiceRecord }, context: Context) => {
-      await requireAuth(context);
-      return workforceClient.put('/teams', id, input);
+      const currentUser = await requireAuth(context);
+      const payload: ServiceRecord = { ...input };
+
+      if (typeof payload.managerId === 'string' && payload.managerId) {
+        let orgId: string | null | undefined =
+          typeof payload.organizationId === 'string'
+            ? payload.organizationId
+            : currentUser.organizationId;
+        if (!orgId) {
+          const existing = await workforceClient.getById('/teams', id);
+          const existingOrg = (existing as ServiceRecord | null)?.organizationId;
+          orgId = typeof existingOrg === 'string' ? existingOrg : null;
+        }
+        if (!orgId) {
+          throw new GraphQLError('Organization context is required', {
+            extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+          });
+        }
+        await assertOrgMemberMayManageTeam(payload.managerId, orgId);
+      }
+
+      return workforceClient.put('/teams', id, payload);
     },
     deleteTeam: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requireAuth(context);
@@ -3190,6 +3291,22 @@ export const resolvers = {
     deleteAttendanceLog: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requireAuth(context);
       return workforceClient.delete('/attendance-logs', id);
+    },
+    clockInAttendance: async (_: unknown, { organizationId }: { organizationId: string }, context: Context) => {
+      await requireAuth(context);
+      await requireOrganization(context, organizationId);
+      return workforceClient.post('/attendance-logs/clock-in', { organizationId });
+    },
+    clockOutAttendance: async (
+      _: unknown,
+      { organizationId, logId }: { organizationId: string; logId?: string | null },
+      context: Context
+    ) => {
+      await requireAuth(context);
+      await requireOrganization(context, organizationId);
+      const body: ServiceRecord = { organizationId };
+      if (logId) body.logId = logId;
+      return workforceClient.post('/attendance-logs/clock-out', body);
     },
 
     // Projects (Project Service)

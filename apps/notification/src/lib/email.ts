@@ -1,5 +1,10 @@
-import nodemailer from 'nodemailer';
-import { VISTONE_EMAIL, emailGradientHeaderHtml } from './email-brand';
+import nodemailer, { type SendMailOptions } from 'nodemailer';
+import {
+  VISTONE_EMAIL,
+  emailGradientHeaderHtml,
+  getVistoneEmailLogoAttachment,
+  VISTONE_EMAIL_LOGO_CID,
+} from './email-brand';
 
 // Gmail SMTP configuration
 const transporter = nodemailer.createTransport({
@@ -19,21 +24,38 @@ transporter.verify((error) => {
   }
 });
 
+type Attachment = NonNullable<SendMailOptions['attachments']>[number];
+
 export interface EmailOptions {
   to: string;
   subject: string;
   html: string;
   text?: string;
+  /**
+   * Extra attachments (e.g. user-uploaded files). The Vistone brand logo is
+   * always added automatically and embedded via `cid:vistone-logo`, so
+   * `emailGradientHeaderHtml` renders without depending on any external URL.
+   */
+  attachments?: Attachment[];
 }
 
 export async function sendEmail(options: EmailOptions): Promise<boolean> {
   try {
+    const callerAttachments = options.attachments ?? [];
+    const callerHasBrandCid = callerAttachments.some(
+      (a) => 'cid' in a && a.cid === VISTONE_EMAIL_LOGO_CID,
+    );
+    const attachments: Attachment[] = callerHasBrandCid
+      ? callerAttachments
+      : [getVistoneEmailLogoAttachment(), ...callerAttachments];
+
     await transporter.sendMail({
       from: `"Vistone" <${process.env.GMAIL_USER}>`,
       to: options.to,
       subject: options.subject,
       html: options.html,
       text: options.text || options.html.replace(/<[^>]*>/g, ''),
+      attachments,
     });
     console.log(`Email sent to ${options.to}`);
     return true;
@@ -49,7 +71,10 @@ export const emailTemplates = {
     inviterName: string;
     organizationName: string;
     inviteLink: string;
+    /** Canonical auth role used to build the onboarding URL. */
     role?: string;
+    /** Friendly job title shown in the email body (falls back to `role`). */
+    jobTitle?: string;
     recipientName?: string;
   }) => ({
     subject: `You've been invited to join ${data.organizationName} on Vistone`,
@@ -59,7 +84,6 @@ export const emailTemplates = {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Organization Invitation</title>
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: ${VISTONE_EMAIL.background};">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: ${VISTONE_EMAIL.card};">
@@ -77,7 +101,7 @@ export const emailTemplates = {
                 Hi${data.recipientName ? ` ${data.recipientName}` : ''},
               </p>
               <p style="margin: 0 0 15px; color: ${VISTONE_EMAIL.mutedForeground}; font-size: 16px; line-height: 1.6;">
-                <strong>${data.inviterName}</strong> has invited you to join <strong>${data.organizationName}</strong> as a <strong>${data.role || 'Member'}</strong> on Vistone - the modern project management platform.
+                <strong>${data.inviterName}</strong> has invited you to join <strong>${data.organizationName}</strong> as a <strong>${data.jobTitle || data.role || 'Member'}</strong> on Vistone - the modern project management platform.
               </p>
               <p style="margin: 0 0 30px; color: ${VISTONE_EMAIL.mutedForeground}; font-size: 16px; line-height: 1.6;">
                 Click the button below to accept the invitation and get started:
@@ -126,7 +150,6 @@ export const emailTemplates = {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Client Portal Invitation</title>
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: ${VISTONE_EMAIL.background};">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: ${VISTONE_EMAIL.card};">
@@ -204,7 +227,6 @@ export const emailTemplates = {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Team Invitation</title>
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: ${VISTONE_EMAIL.background};">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: ${VISTONE_EMAIL.card};">
@@ -265,7 +287,6 @@ export const emailTemplates = {
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Project Assignment</title>
       </head>
       <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: ${VISTONE_EMAIL.background};">
         <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: ${VISTONE_EMAIL.card};">

@@ -70,16 +70,19 @@ model UserAvailability {
 }
 
 /// Per-user workday hours for payroll / reporting (logged by contributor or manager; organizers can view org-wide).
+/// Live clock: startedAt set, endedAt null while in progress; hoursWorked null until clock-out (legacy rows have hoursWorked only).
 model AttendanceLog {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   organizationId String
   userId         String
-  workDate       DateTime @db.Date
-  hoursWorked    Decimal  @db.Decimal(6, 2)
+  workDate       DateTime  @db.Date
+  hoursWorked    Decimal?  @db.Decimal(6, 2)
   notes          String?
+  startedAt      DateTime?
+  endedAt        DateTime?
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([organizationId, workDate])
   @@index([organizationId, userId, workDate])
