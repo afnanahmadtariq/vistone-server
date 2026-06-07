@@ -14,13 +14,35 @@ export async function createUserHandler(req: Request, res: Response) {
 }
 
 export async function getAllUsersHandler(req: Request, res: Response) {
-    try {
+  try {
+    const email = req.query?.email;
+    if (typeof email === "string" && email.trim() !== "") {
+      const user = await prisma.user.findFirst({
+        where: { email: { equals: email.trim(), mode: "insensitive" } },
+      });
+      res.json(user ? [user] : []);
+      return;
+    }
+
+    const organizationId = req.query?.organizationId;
+    if (typeof organizationId === "string" && organizationId.trim() !== "") {
+      const users = await prisma.user.findMany({
+        where: {
+          organizationMemberships: {
+            some: { organizationId: organizationId.trim() },
+          },
+        },
+      });
+      res.json(users);
+      return;
+    }
+
     const users = await prisma.user.findMany();
     res.json(users);
-    } catch (error) {
+  } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to fetch users' });
-    }
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
 }
 
 export async function getUserByIdHandler(req: Request, res: Response) {
@@ -41,9 +63,17 @@ export async function getUserByIdHandler(req: Request, res: Response) {
 
 export async function updateUserHandler(req: Request, res: Response) {
     try {
+    const raw = req.body as Record<string, unknown>;
+    const { avatar, ...rest } = raw;
+    const data = { ...rest } as Record<string, unknown>;
+    if (avatar !== undefined) {
+      data.avatarUrl = avatar;
+    }
+
     const user = await prisma.user.update({
       where: { id: req.params.id },
-      data: req.body,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: data as any,
     });
     res.json(user);
     } catch (error) {
@@ -54,8 +84,21 @@ export async function updateUserHandler(req: Request, res: Response) {
 
 export async function deleteUserHandler(req: Request, res: Response) {
     try {
-    await prisma.user.delete({
-      where: { id: req.params.id },
+    await prisma.$transaction(async (tx: {
+      activityLog: {
+        deleteMany: (args: { where: { userId: string } }) => Promise<unknown>;
+      };
+      user: {
+        delete: (args: { where: { id: string } }) => Promise<unknown>;
+      };
+    }) => {
+      await tx.activityLog.deleteMany({
+        where: { userId: req.params.id },
+      });
+
+      await tx.user.delete({
+        where: { id: req.params.id },
+      });
     });
     res.json({ success: true, message: 'User deleted' });
     } catch (error) {

@@ -2,11 +2,18 @@
  * AI Engine — Agent Runner (Lazy LangChain)
  * Executes the LLM tool-calling loop.
  * LangChain is only imported when runAgent() is first called.
+ *
+ * Supports two modes:
+ *   - planAgent(): Dry-run — asks LLM what tools it *would* call, but
+ *     does NOT execute them. Returns a human-readable description for the
+ *     user to confirm.
+ *   - runAgent():  Full execution — actually calls the tools.
  */
 import { config } from '../config';
 import type { AuthenticatedUser, ActionResult } from '../types';
 import { filterToolsByPermission } from '../services/rbac.service';
-import { getAllToolDefs, type ToolDef } from './tools';
+import { ensureAiDataScope } from '../services/access-scope.service';
+import { buildToolDefs, type ToolDef } from './tools';
 import { TOOL_PERMISSIONS } from '../types';
 
 // ── Lazy LangChain imports ─────────────────────────────────────
@@ -21,6 +28,8 @@ let HumanMessage: any = null;
 let SystemMessage: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ToolMessage: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let AIMessage: any = null;
 
 async function loadLangChain() {
     if (DynamicStructuredTool) return;
@@ -36,6 +45,7 @@ async function loadLangChain() {
     HumanMessage = coreMessages.HumanMessage;
     SystemMessage = coreMessages.SystemMessage;
     ToolMessage = coreMessages.ToolMessage;
+    AIMessage = coreMessages.AIMessage;
 }
 
 // ── LLM singleton (created lazily) ──────────────────────────────
@@ -55,6 +65,13 @@ function getLLM() {
     return _llm;
 }
 
+// ── Helper: is a tool a write (non-read) action? ───────────────
+
+export function isWriteTool(toolName: string): boolean {
+    const perm = TOOL_PERMISSIONS[toolName];
+    return !!perm && perm.action !== 'read';
+}
+
 // ── Convert plain ToolDefs → LangChain DynamicStructuredTools ───
 
 function toLangChainTools(defs: ToolDef[]) {
@@ -69,6 +86,29 @@ function toLangChainTools(defs: ToolDef[]) {
     );
 }
 
+/** Tools allowed for message-triggered client_workspace automation when the JWT is a portal client (narrow RBAC). */
+const CLIENT_WORKSPACE_AUTOMATION_TOOLS: readonly string[] = [
+    'create_task',
+    'update_task',
+    'list_tasks',
+    'get_task',
+    'create_milestone',
+    'list_milestones',
+    'get_project',
+    'list_projects',
+    'get_user_skills',
+    'send_message',
+    'list_messages',
+];
+
+export type RunAgentOptions = {
+    /**
+     * When true, re-inject a minimal task/milestone/channel/skills tool set for validated
+     * client_workspace auto runs (portal clients normally lack tasks:create in JWT permissions).
+     */
+    clientWorkspaceAutomation?: boolean;
+};
+
 // ── Run the Agent ───────────────────────────────────────────────
 
 export async function runAgent(
@@ -76,14 +116,27 @@ export async function runAgent(
     query: string,
     systemPrompt: string,
     history: { role: string; content: string }[] = [],
-    readOnly = false
+    readOnly = false,
+    options?: RunAgentOptions
 ): Promise<ActionResult & { response: string }> {
     // Load LangChain lazily
     await loadLangChain();
 
-    // Get tools filtered by user's RBAC permissions
-    const allDefs = getAllToolDefs();
+    const scope = await ensureAiDataScope(user);
+    const allDefs = buildToolDefs(user, scope);
     let allowedDefs = filterToolsByPermission(user, allDefs);
+
+    if (options?.clientWorkspaceAutomation) {
+        const allowed = new Set(allowedDefs.map((d) => d.name));
+        const byName = new Map(allDefs.map((d) => [d.name, d]));
+        for (const name of CLIENT_WORKSPACE_AUTOMATION_TOOLS) {
+            const def = byName.get(name);
+            if (def && !allowed.has(name)) {
+                allowedDefs.push(def);
+                allowed.add(name);
+            }
+        }
+    }
 
     // If readOnly is true, filter out non-read tools
     if (readOnly) {
@@ -111,13 +164,12 @@ export async function runAgent(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages: any[] = [new SystemMessage(systemPrompt)];
 
-    // Add history support
+    // Prior turns (chronological): proper message types for chat models
     for (const h of history) {
         if (h.role === 'user') {
             messages.push(new HumanMessage(h.content));
-        } else {
-            // Simply use assistant for history content
-            messages.push({ role: 'assistant', content: h.content });
+        } else if (h.role === 'assistant') {
+            messages.push(new AIMessage({ content: h.content }));
         }
     }
 
@@ -198,4 +250,92 @@ export async function runAgent(
         toolsUsed: [...new Set(toolsUsed)],
         iterations,
     };
+}
+
+// ── Plan Agent (Dry-Run) ────────────────────────────────────────
+// Asks the LLM what tools it would call for the query, collects
+// their names, then asks it to produce a human-readable summary
+// WITHOUT actually executing anything.
+
+export async function planAgent(
+    user: AuthenticatedUser,
+    query: string,
+    systemPrompt: string,
+    history: { role: string; content: string }[] = []
+): Promise<{ description: string; tools: string[] }> {
+    await loadLangChain();
+
+    const scope = await ensureAiDataScope(user);
+    const allDefs = buildToolDefs(user, scope);
+    const allowedDefs = filterToolsByPermission(user, allDefs);
+
+    if (allowedDefs.length === 0) {
+        return {
+            description: "I don't have any tools available for your permission level.",
+            tools: [],
+        };
+    }
+
+    const tools = toLangChainTools(allowedDefs);
+    const llm = getLLM();
+    const llmWithTools = llm.bindTools(tools);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const messages: any[] = [new SystemMessage(systemPrompt)];
+
+    for (const h of history) {
+        if (h.role === 'user') {
+            messages.push(new HumanMessage(h.content));
+        } else if (h.role === 'assistant') {
+            messages.push(new AIMessage({ content: h.content }));
+        }
+    }
+
+    messages.push(new HumanMessage(query));
+
+    // Single LLM call — we only need the first set of tool_calls
+    const response = await llmWithTools.invoke(messages);
+
+    const toolCalls = response.tool_calls;
+    if (!toolCalls || toolCalls.length === 0) {
+        // LLM didn't want to call any tools — it answered directly
+        return {
+            description: response.content || query,
+            tools: [],
+        };
+    }
+
+    const plannedTools = toolCalls.map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (tc: any) => tc.name as string
+    ) as string[];
+
+    // Ask the LLM to describe what it's about to do in plain English
+    if (!response.content || response.content.trim() === '' || response.content === ' ') {
+        response.content = ' ';
+    }
+    messages.push(response);
+
+    // Provide fake tool results so the LLM can summarise
+    for (const tc of toolCalls) {
+        messages.push(
+            new ToolMessage({
+                tool_call_id: tc.id,
+                name: tc.name,
+                content: JSON.stringify({ pending: true, message: 'Awaiting user confirmation.' }),
+            })
+        );
+    }
+
+    messages.push(
+        new HumanMessage(
+            'Do NOT execute any actions. Instead, list exactly what you are about to do in a short bullet-point summary so the user can confirm. Start with "I\'d like to:"'
+        )
+    );
+
+    const summaryResponse = await llm.invoke(messages);
+    const description =
+        (summaryResponse.content as string) || plannedTools.map((t) => `• ${t}`).join('\n');
+
+    return { description, tools: [...new Set(plannedTools)] };
 }

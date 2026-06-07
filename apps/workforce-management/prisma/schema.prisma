@@ -30,6 +30,7 @@ model TeamMember {
   id        String   @id @default(uuid())
   teamId    String
   userId    String
+  /// Optional label (e.g. job title). Team manager is always `teams.manager_id`, not a second manager row.
   role      String?
   
   team      Team     @relation(fields: [teamId], references: [id])
@@ -37,6 +38,7 @@ model TeamMember {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([teamId, userId])
   @@map("team_members")
   @@schema("workforce")
 }
@@ -64,5 +66,26 @@ model UserAvailability {
   updatedAt   DateTime @updatedAt
 
   @@map("user_availability")
+  @@schema("workforce")
+}
+
+/// Per-user workday hours for payroll / reporting (logged by contributor or manager; organizers can view org-wide).
+/// Live clock: startedAt set, endedAt null while in progress; hoursWorked null until clock-out (legacy rows have hoursWorked only).
+model AttendanceLog {
+  id             String    @id @default(uuid())
+  organizationId String
+  userId         String
+  workDate       DateTime  @db.Date
+  hoursWorked    Decimal?  @db.Decimal(6, 2)
+  notes          String?
+  startedAt      DateTime?
+  endedAt        DateTime?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId, workDate])
+  @@index([organizationId, userId, workDate])
+  @@map("attendance_logs")
   @@schema("workforce")
 }

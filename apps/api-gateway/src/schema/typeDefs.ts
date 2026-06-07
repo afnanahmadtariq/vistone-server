@@ -16,6 +16,7 @@ export const typeDefs = gql`
 
   type InviteDetails {
     role: String
+    organizationId: String
     organizationName: String
     email: String
     firstName: String
@@ -34,9 +35,14 @@ export const typeDefs = gql`
     lastName: String
     email: String!
     role: String
+    jobTitle: String
     avatar: String
     status: String
     skills: [String]
+    """
+    Structured professional data for contributors/managers (JSON v1: version, skillTags, experiences[], updatedAt). Optimized for AI tooling.
+    """
+    professionalProfile: JSON
     teamId: ID
     joinedAt: DateTime
     organizationId: ID
@@ -75,11 +81,14 @@ export const typeDefs = gql`
     firstName: String
     lastName: String
     role: String
+    jobTitle: String
     avatar: String
     status: String
     skills: [String]
+    professionalProfile: JSON
     teamId: ID
     joinedAt: DateTime
+    permissions: JSON
     createdAt: DateTime!
     updatedAt: DateTime!
     deletedAt: DateTime
@@ -129,14 +138,16 @@ export const typeDefs = gql`
 
   type ActivityLog {
     id: ID!
-    userId: String
+    userId: String!
     action: String!
     entityType: String!
     entityId: String
+    description: String
     metadata: JSON
     ipAddress: String
     userAgent: String
     createdAt: DateTime!
+    user: User
   }
 
   # 2. Team & Workforce Types
@@ -168,6 +179,7 @@ export const typeDefs = gql`
     id: ID!
     name: String
     role: String
+    jobTitle: String
     email: String
     status: String
     avatar: String
@@ -213,6 +225,20 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
+  type AttendanceLog {
+    id: ID!
+    organizationId: String!
+    userId: String!
+    workDate: DateTime!
+    hoursWorked: Decimal
+    notes: String
+    startedAt: DateTime
+    endedAt: DateTime
+    createdAt: DateTime!
+    updatedAt: DateTime!
+    user: User
+  }
+
   # 3. Project Management Types
 
   type Project {
@@ -245,6 +271,7 @@ export const typeDefs = gql`
     activities: [ProjectActivity!]
     documents: [ProjectDocument!]
     risks: [RiskRegister!]
+    riskQualityMetrics: ProjectRiskQualityMetrics
   }
 
   type ProjectActivity {
@@ -282,11 +309,12 @@ export const typeDefs = gql`
     id: ID!
     projectId: String!
     parentId: String
+    milestoneId: String
     assigneeId: String
     title: String!
     description: String
     status: String!
-    priority: String!
+    priority: String
     dueDate: DateTime
     startDate: DateTime
     estimatedHours: Float
@@ -299,6 +327,24 @@ export const typeDefs = gql`
     # Relations
     assignees: [User!]
     creator: User
+    submissions: [TaskSubmission!]
+    checklists: [TaskChecklist!]
+  }
+
+  type TaskSubmission {
+    id: ID!
+    taskId: String!
+    version: Int!
+    submittedById: String!
+    body: String!
+    attachments: JSON
+    status: String!
+    submittedAt: DateTime
+    reviewedAt: DateTime
+    reviewedById: String
+    reviewNote: String
+    createdAt: DateTime!
+    updatedAt: DateTime!
   }
 
   type TaskChecklist {
@@ -319,6 +365,16 @@ export const typeDefs = gql`
     updatedAt: DateTime!
   }
 
+  type MilestoneDependency {
+    id: ID!
+    milestoneId: String!
+    dependsOnId: String!
+    type: String!
+    dependsOn: Milestone
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
   type Milestone {
     id: ID!
     projectId: String!
@@ -331,6 +387,7 @@ export const typeDefs = gql`
     completedAt: DateTime
     createdAt: DateTime!
     updatedAt: DateTime!
+    dependencies: [MilestoneDependency!]
   }
 
   type RiskRegister {
@@ -343,6 +400,14 @@ export const typeDefs = gql`
     status: String!
     createdAt: DateTime!
     updatedAt: DateTime!
+  }
+
+  type ProjectRiskQualityMetrics {
+    id: ID
+    projectId: ID!
+    inputs: JSON!
+    computed: JSON
+    updatedAt: DateTime
   }
 
   # 4. Client Management Types
@@ -418,8 +483,34 @@ export const typeDefs = gql`
 
   # 5. Documentation & Knowledge Types
 
+  type Wiki {
+    id: ID!
+    organizationId: String!
+    name: String!
+    description: String
+    metadata: JSON
+    createdAt: DateTime!
+    updatedAt: DateTime!
+  }
+
+  type WikiProjectLink {
+    id: ID!
+    wikiId: String!
+    projectId: String!
+    createdAt: DateTime!
+  }
+
+  type WikiMember {
+    id: ID!
+    wikiId: String!
+    userId: String!
+    role: String!
+    createdAt: DateTime!
+  }
+
   type WikiPage {
     id: ID!
+    wikiId: String!
     title: String!
     content: String
     parentId: String
@@ -437,7 +528,7 @@ export const typeDefs = gql`
 
   type DocumentFolder {
     id: ID!
-    organizationId: String!
+    wikiId: String!
     name: String!
     parentId: String
     createdAt: DateTime!
@@ -446,15 +537,25 @@ export const typeDefs = gql`
 
   type Document {
     id: ID!
-    organizationId: String!
+    wikiId: String!
     folderId: String
-    projectId: String
     name: String!
     url: String!
     version: Int!
     metadata: JSON
+    uploadedById: String
     createdAt: DateTime!
     updatedAt: DateTime!
+  }
+
+  type DocumentVersion {
+    id: ID!
+    documentId: String!
+    name: String!
+    url: String!
+    version: Int!
+    uploadedById: String
+    createdAt: DateTime!
   }
 
   type DocumentPermission {
@@ -466,24 +567,19 @@ export const typeDefs = gql`
     createdAt: DateTime!
     updatedAt: DateTime!
   }
-
-  type DocumentLink {
-    id: ID!
-    documentId: String!
-    entityType: String!
-    entityId: String!
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
   # 6. Communication Types
 
   type ChatChannel {
     id: ID!
+    organizationId: String!
     name: String
+    description: String
     type: String!
-    teamId: String
     projectId: String
+    syncWikiId: String
+    createdBy: String!
+    isArchived: Boolean!
+    members: [ChannelMember!]
     createdAt: DateTime!
     updatedAt: DateTime!
   }
@@ -492,41 +588,27 @@ export const typeDefs = gql`
     id: ID!
     channelId: String!
     userId: String!
-    role: String
+    role: String!
     createdAt: DateTime!
     updatedAt: DateTime!
   }
 
-  type ChatMessage {
-    id: ID!
-    channelId: String!
-    senderId: String!
-    content: String!
-    aiFlags: JSON
-    createdAt: DateTime!
-    updatedAt: DateTime!
-  }
-
-  type MessageMention {
-    id: ID!
-    messageId: String!
-    userId: String!
-    createdAt: DateTime!
-  }
-
-  type MessageAttachment {
-    id: ID!
-    messageId: String!
+  type ChannelMediaItem {
     url: String!
     fileType: String!
-    createdAt: DateTime!
+    fileName: String
+    fileSize: Int
+    thumbnailUrl: String
+    messageId: String!
+    senderId: String!
+    channelId: String!
+    sentAt: String!
   }
 
-  type CommunicationLog {
-    id: ID!
-    type: String!
-    details: JSON!
-    createdAt: DateTime!
+  type ChannelMediaResponse {
+    media: [ChannelMediaItem!]!
+    hasMore: Boolean!
+    nextCursor: String
   }
 
   # 7. AI & Automation Types
@@ -689,7 +771,14 @@ export const typeDefs = gql`
     isOutOfScope: Boolean!
     isActionResponse: Boolean
     actionResult: AiActionResult
+    pendingAction: AiPendingAction
     sources: [AiSource!]!
+  }
+
+  type AiPendingAction {
+    description: String!
+    tools: [String!]!
+    originalQuery: String!
   }
 
   type AiActionResult {
@@ -753,7 +842,7 @@ export const typeDefs = gql`
     kycDataById(id: ID!): KycData
     mfaSettings: [MfaSetting!]!
     mfaSetting(id: ID!): MfaSetting
-    activityLogs: [ActivityLog!]!
+    activityLogs(organizationId: ID, userId: String, action: String, entityType: String, limit: Int, offset: Int): [ActivityLog!]!
     activityLog(id: ID!): ActivityLog
 
     # Teams
@@ -765,6 +854,13 @@ export const typeDefs = gql`
     userSkill(id: ID!): UserSkill
     userAvailability: [UserAvailability!]!
     userAvailabilityById(id: ID!): UserAvailability
+    attendanceLogs(
+      organizationId: ID!
+      userId: ID
+      workDateFrom: DateTime
+      workDateTo: DateTime
+    ): [AttendanceLog!]!
+    attendanceLog(id: ID!): AttendanceLog
 
     # Projects
     projects(status: String, search: String, organizationId: ID): [Project!]!
@@ -775,8 +871,10 @@ export const typeDefs = gql`
     task(id: ID!): Task
     taskChecklists: [TaskChecklist!]!
     taskChecklist(id: ID!): TaskChecklist
-    taskDependencies: [TaskDependency!]!
+    taskDependencies(taskId: ID, projectId: ID): [TaskDependency!]!
     taskDependency(id: ID!): TaskDependency
+    milestoneDependencies(milestoneId: ID, projectId: ID): [MilestoneDependency!]!
+    taskSubmissions(taskId: ID!, status: String): [TaskSubmission!]!
     milestones: [Milestone!]!
     milestone(id: ID!): Milestone
     riskRegisters: [RiskRegister!]!
@@ -793,32 +891,25 @@ export const typeDefs = gql`
     proposal(id: ID!): Proposal
 
     # Documentation
-    wikiPages: [WikiPage!]!
+    wikis(organizationId: ID!): [Wiki!]!
+    wiki(id: ID!): Wiki
+    wikiProjectLinks(projectId: String, wikiId: String): [WikiProjectLink!]!
+    wikiMembers(wikiId: ID!): [WikiMember!]!
+    wikiPages(wikiId: ID!): [WikiPage!]!
     wikiPage(id: ID!): WikiPage
-    wikiPageVersions: [WikiPageVersion!]!
-    wikiPageVersion(id: ID!): WikiPageVersion
-    documentFolders: [DocumentFolder!]!
+    wikiPageVersions(wikiPageId: ID!): [WikiPageVersion!]!
+    documentFolders(wikiId: ID!): [DocumentFolder!]!
     documentFolder(id: ID!): DocumentFolder
-    documents: [Document!]!
+    documents(wikiId: ID!, folderId: ID): [Document!]!
     document(id: ID!): Document
-    documentPermissions: [DocumentPermission!]!
-    documentPermission(id: ID!): DocumentPermission
-    documentLinks: [DocumentLink!]!
-    documentLink(id: ID!): DocumentLink
+    documentVersions(documentId: ID!): [DocumentVersion!]!
+    documentPermissions(documentId: ID!): [DocumentPermission!]!
 
     # Communication
-    chatChannels: [ChatChannel!]!
+    chatChannels(organizationId: ID!, userId: ID, type: String, projectId: ID): [ChatChannel!]!
     chatChannel(id: ID!): ChatChannel
-    channelMembers: [ChannelMember!]!
-    channelMember(id: ID!): ChannelMember
-    chatMessages: [ChatMessage!]!
-    chatMessage(id: ID!): ChatMessage
-    messageMentions: [MessageMention!]!
-    messageMention(id: ID!): MessageMention
-    messageAttachments: [MessageAttachment!]!
-    messageAttachment(id: ID!): MessageAttachment
-    communicationLogs: [CommunicationLog!]!
-    communicationLog(id: ID!): CommunicationLog
+    channelMembers(channelId: ID!): [ChannelMember!]!
+    channelMedia(channelId: ID!, cursor: String, limit: Int, fileType: String): ChannelMediaResponse!
 
     # AI & Automation
     aiConversations: [AiConversation!]!
@@ -864,9 +955,38 @@ export const typeDefs = gql`
     myProjects: [Project!]!
     analyticsOverview(organizationId: ID!, dateRange: DateRangeInput!): AnalyticsOverview!
     dashboardStats(organizationId: ID!): DashboardStats!
+    clientDashboardStats: ClientDashboardStats!
 
     # AI Engine
     aiChatStats(organizationId: String!): AiIndexingStats!
+  }
+
+  type ClientDashboardStats {
+    totalProjects: Int!
+    ongoingProjects: Int!
+    completedProjects: Int!
+    pendingApprovals: Int!
+    totalContractValue: Float!
+    recentActivities: [ActivityItem!]!
+  }
+
+  """One row of work history; seniority uses lowercase industry labels (intern … executive)."""
+  input ExperienceEntryInput {
+    id: ID
+    title: String
+    description: String!
+    organization: String
+    seniority: String!
+    durationMonths: Int
+    durationLabel: String
+    startDate: String
+    endDate: String
+    isCurrent: Boolean
+  }
+
+  input UpdateProfessionalProfileInput {
+    skillTags: [String!]!
+    experiences: [ExperienceEntryInput!]!
   }
 
   # Mutation Type
@@ -875,6 +995,10 @@ export const typeDefs = gql`
     login(email: String!, password: String!, turnstileToken: String!): AuthPayload!
     register(name: String!, email: String!, password: String!, organizationName: String, turnstileToken: String!): AuthPayload!
     acceptInvite(token: String!, password: String!, name: String!, role: String): AuthPayload!
+    """
+    Contributors and managers: persist skill tags + structured experience for the authenticated user (JSON v1 on User; workforce skills synced). Not available for organizers or clients.
+    """
+    updateMyProfessionalProfile(input: UpdateProfessionalProfileInput!): AuthUser!
     googleLogin(idToken: String!): AuthPayload!
     googleSignup(idToken: String!): AuthPayload!
     refreshToken(refreshToken: String!): TokenPayload!
@@ -936,6 +1060,11 @@ export const typeDefs = gql`
     createUserAvailability(input: JSON!): UserAvailability!
     updateUserAvailability(id: ID!, input: JSON!): UserAvailability!
     deleteUserAvailability(id: ID!): DeleteResponse!
+    createAttendanceLog(input: JSON!): AttendanceLog!
+    updateAttendanceLog(id: ID!, input: JSON!): AttendanceLog!
+    deleteAttendanceLog(id: ID!): DeleteResponse!
+    clockInAttendance(organizationId: ID!): AttendanceLog!
+    clockOutAttendance(organizationId: ID!, logId: ID): AttendanceLog!
 
     # Projects
     createProject(input: CreateProjectInput!): Project!
@@ -953,12 +1082,19 @@ export const typeDefs = gql`
     createTaskDependency(input: JSON!): TaskDependency!
     updateTaskDependency(id: ID!, input: JSON!): TaskDependency!
     deleteTaskDependency(id: ID!): DeleteResponse!
+    createTaskSubmission(input: JSON!): TaskSubmission!
+    updateTaskSubmission(id: ID!, input: JSON!): TaskSubmission!
+    reviewTaskSubmission(id: ID!, input: JSON!): TaskSubmission!
     createMilestone(input: JSON!): Milestone!
     updateMilestone(id: ID!, input: JSON!): Milestone!
     deleteMilestone(id: ID!): DeleteResponse!
+    createMilestoneDependency(input: JSON!): MilestoneDependency!
+    deleteMilestoneDependency(id: ID!): DeleteResponse!
+    replaceMilestoneDependencies(input: JSON!): [MilestoneDependency!]!
     createRiskRegister(input: JSON!): RiskRegister!
     updateRiskRegister(id: ID!, input: JSON!): RiskRegister!
     deleteRiskRegister(id: ID!): DeleteResponse!
+    updateRiskQualityMetrics(projectId: ID!, input: JSON!): ProjectRiskQualityMetrics!
 
     # Clients
     createClient(input: JSON!): Client!
@@ -976,6 +1112,13 @@ export const typeDefs = gql`
     deleteProposal(id: ID!): DeleteResponse!
 
     # Documentation
+    createWiki(input: JSON!): Wiki!
+    updateWiki(id: ID!, input: JSON!): Wiki!
+    deleteWiki(id: ID!): DeleteResponse!
+    createWikiProjectLink(input: JSON!): WikiProjectLink!
+    deleteWikiProjectLink(id: ID!): DeleteResponse!
+    createWikiMember(input: JSON!): WikiMember!
+    deleteWikiMember(id: ID!): DeleteResponse!
     createWikiPage(input: JSON!): WikiPage!
     updateWikiPage(id: ID!, input: JSON!): WikiPage!
     deleteWikiPage(id: ID!): DeleteResponse!
@@ -989,23 +1132,13 @@ export const typeDefs = gql`
     createDocumentPermission(input: JSON!): DocumentPermission!
     updateDocumentPermission(id: ID!, input: JSON!): DocumentPermission!
     deleteDocumentPermission(id: ID!): DeleteResponse!
-    createDocumentLink(input: JSON!): DocumentLink!
-    updateDocumentLink(id: ID!, input: JSON!): DocumentLink!
-    deleteDocumentLink(id: ID!): DeleteResponse!
 
     # Communication
     createChatChannel(input: JSON!): ChatChannel!
     updateChatChannel(id: ID!, input: JSON!): ChatChannel!
     deleteChatChannel(id: ID!): DeleteResponse!
     createChannelMember(input: JSON!): ChannelMember!
-    updateChannelMember(id: ID!, input: JSON!): ChannelMember!
     deleteChannelMember(id: ID!): DeleteResponse!
-    createChatMessage(input: JSON!): ChatMessage!
-    updateChatMessage(id: ID!, input: JSON!): ChatMessage!
-    deleteChatMessage(id: ID!): DeleteResponse!
-    createMessageMention(input: JSON!): MessageMention!
-    createMessageAttachment(input: JSON!): MessageAttachment!
-    createCommunicationLog(input: JSON!): CommunicationLog!
 
     # AI & Automation
     createAiConversation(input: JSON!): AiConversation!
@@ -1042,6 +1175,8 @@ export const typeDefs = gql`
     deleteNotification(id: ID!): DeleteResponse!
     markNotificationAsRead(id: ID!): Notification!
     markAllNotificationsAsRead: MarkAllNotificationsResponse!
+    broadcastOrganizationAnnouncement(input: JSON!): BroadcastOrganizationAnnouncementResult!
+    processDeadlineDelayNotifications: ProcessDeadlineDelayNotificationsResult!
 
     # Dashboards
     createDashboard(input: JSON!): Dashboard!
@@ -1058,6 +1193,8 @@ export const typeDefs = gql`
 
     # AI Engine
     aiChat(input: AiChatInput!): AiChatResponse!
+    """Organizer-only. Runs client_workspace automation using organization settings.autoAgent (tasks, milestones, skill/load assignment)."""
+    runClientWorkspaceAutoAgent(input: JSON!): JSON
     aiClearHistory(sessionId: String!): DeleteResponse!
     aiSyncAll(organizationId: String!): AiSyncResponse!
     aiSyncType(organizationId: String!, type: String!): AiSyncResponse!
@@ -1077,6 +1214,23 @@ export const typeDefs = gql`
   type MarkAllNotificationsResponse {
     count: Int!
     success: Boolean!
+  }
+
+  type BroadcastOrganizationAnnouncementResult {
+    success: Boolean!
+    recipientCount: Int!
+    notificationCount: Int!
+    postedToChannel: Boolean!
+    message: String
+  }
+
+  type ProcessDeadlineDelayNotificationsResult {
+    success: Boolean!
+    message: String!
+    organizerUserId: String
+    projectDelaysNotified: Int!
+    milestoneDelaysNotified: Int!
+    taskDelaysNotified: Int!
   }
 
   # Analytics Types
@@ -1159,6 +1313,7 @@ export const typeDefs = gql`
     firstName: String
     lastName: String
     role: String
+    jobTitle: String
     teamId: ID
     organizationId: ID!
   }
@@ -1194,6 +1349,8 @@ export const typeDefs = gql`
     name: String!
     company: String
     phone: String
+    address: String
+    industry: String
     projectId: ID
     organizationId: ID!
   }
@@ -1217,6 +1374,7 @@ export const typeDefs = gql`
     priority: String
     projectId: ID!
     assigneeId: ID
+    milestoneId: ID
     dueDate: DateTime
     startDate: DateTime
     estimatedHours: Float
@@ -1228,6 +1386,7 @@ export const typeDefs = gql`
     status: String
     priority: String
     assigneeId: ID
+    milestoneId: ID
     dueDate: DateTime
     startDate: DateTime
     estimatedHours: Float
@@ -1246,6 +1405,7 @@ export const typeDefs = gql`
     description: String
     dueDate: DateTime
     completed: Boolean
+    status: String
   }
 
   input CreateProjectInput {
@@ -1273,6 +1433,12 @@ export const typeDefs = gql`
     visibility: String
     notifyTeam: Boolean
     notifyClient: Boolean
+    """When false, linked portal clients do not see task lists/counts on the client project view."""
+    clientCanViewTasks: Boolean
+    """When false, linked portal clients do not see the milestones section on the client project view."""
+    clientCanViewMilestones: Boolean
+    """Ordered task Kanban column labels (stored in project metadata)."""
+    taskKanbanStatuses: [String!]
     contributors: [String!]
     clientId: String
     startDate: String
@@ -1296,6 +1462,8 @@ export const typeDefs = gql`
     enableAgent: Boolean
     # Tool categories: projectManagement, clientManagement, workforceManagement, communication, notification, knowledgeHub
     enabledToolCategories: [String!]
+    # Set to true when user confirms a pending action
+    confirmAction: Boolean
   }
 
   input AiIndexDocumentInput {

@@ -9,7 +9,8 @@ export async function sendOrganizationMemberInvitationEmailHandler(req: Request,
       organizationName,
       inviteToken,
       recipientName,
-      role,
+      role = 'Contributor', // Canonical auth role (Organizer/Manager/Contributor/Client)
+      jobTitle, // Optional display label for the email body
     } = req.body;
 
     if (!email || !inviterName || !organizationName || !inviteToken) {
@@ -19,7 +20,7 @@ export async function sendOrganizationMemberInvitationEmailHandler(req: Request,
       return;
     }
 
-    const inviteLink = `${process.env.FRONTEND_URL || 'https://vistone-app.vercel.app'}/invite/accept?token=${inviteToken}`;
+    const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/onboarding?token=${inviteToken}&role=${encodeURIComponent(role)}`;
 
     const template = emailTemplates.organizationInvite({
       inviterName,
@@ -27,6 +28,7 @@ export async function sendOrganizationMemberInvitationEmailHandler(req: Request,
       inviteLink,
       recipientName,
       role,
+      jobTitle,
     });
 
     const sent = await sendEmail({
@@ -56,6 +58,7 @@ export async function sendClientPortalInvitationEmailHandler(req: Request, res: 
       projectName,
       inviteToken,
       recipientName,
+      role = 'Client' // Default role for client
     } = req.body;
 
     if (!email || !inviterName || !organizationName || !inviteToken) {
@@ -65,7 +68,7 @@ export async function sendClientPortalInvitationEmailHandler(req: Request, res: 
       return;
     }
 
-    const inviteLink = `${process.env.FRONTEND_URL || 'https://vistone-app.vercel.app'}/client/invite?token=${inviteToken}`;
+    const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/onboarding?token=${inviteToken}&role=${encodeURIComponent(role)}`;
 
     const template = emailTemplates.clientInvite({
       inviterName,
@@ -102,6 +105,9 @@ export async function sendTeamInvitationEmailHandler(req: Request, res: Response
       organizationName,
       inviteToken,
       recipientName,
+      role = 'Contributor',
+      // jobTitle is accepted for parity with the org invite payload, but the
+      // team invite template doesn't currently display a title.
     } = req.body;
 
     if (!email || !inviterName || !teamName || !organizationName) {
@@ -111,7 +117,7 @@ export async function sendTeamInvitationEmailHandler(req: Request, res: Response
       return;
     }
 
-    const inviteLink = `${process.env.FRONTEND_URL || 'https://vistone-app.vercel.app'}/teams/${inviteToken || ''}`;
+    const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/onboarding?token=${inviteToken || ''}&role=${encodeURIComponent(role)}`;
 
     const template = emailTemplates.teamInvite({
       inviterName,
@@ -157,5 +163,50 @@ export async function genericEmailSendingEndpointHandler(req: Request, res: Resp
   } catch (error) {
     console.error('Send email error:', error);
     res.status(500).json({ error: 'Failed to send email' });
+  }
+}
+export async function sendProjectAssignmentEmailHandler(req: Request, res: Response) {
+  try {
+    const {
+      email,
+      recipientName,
+      organizerName,
+      organizationName,
+      projectName,
+      projectLink,
+      role = 'team', // 'team' or 'client'
+    } = req.body;
+
+    if (!email || !organizerName || !organizationName || !projectName || !projectLink) {
+      res.status(400).json({
+        error: 'Missing required fields: email, organizerName, organizationName, projectName, projectLink'
+      });
+      return;
+    }
+
+    const template = emailTemplates.projectAssignment({
+      recipientName,
+      organizerName,
+      organizationName,
+      projectName,
+      projectLink,
+      role,
+    });
+
+    const sent = await sendEmail({
+      to: email,
+      subject: template.subject,
+      html: template.html,
+    });
+
+    if (sent) {
+      console.log(`Project assignment email sent to ${email}`);
+      res.json({ success: true, message: 'Project assignment email sent successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to send project assignment email' });
+    }
+  } catch (error) {
+    console.error('Project assignment email error:', error);
+    res.status(500).json({ error: 'Failed to send project assignment email' });
   }
 }

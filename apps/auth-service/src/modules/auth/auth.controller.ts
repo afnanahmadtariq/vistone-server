@@ -1,9 +1,12 @@
 import { Request, Response } from "express";
+import { v4 as uuidv4 } from "uuid";
 import prisma from "../../lib/prisma";
+import { consumeValidRefreshToken, persistRefreshToken } from "../../lib/refresh-token-store";
 import * as crypto from "crypto";
 import { logActivity } from "../activity-logs/activity-logs.controller";
 import { OAuth2Client } from "google-auth-library";
 import { ROLE_NAMES, ORGANIZER_PERMISSIONS } from "../../lib/roles";
+import { memberKindFromRoleName } from "../../lib/org-member-kind";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const generateToken = (): string => {
@@ -20,7 +23,6 @@ const generateSlug = (name: string): string => {
     .slice(0, 50);
 };
 const tokenStore = new Map<string, { userId: string; expiresAt: Date }>();
-const refreshTokenStore = new Map<string, { userId: string; expiresAt: Date }>();
 interface OrganizationData {
   id: string;
   name: string;
@@ -87,6 +89,7 @@ async function createOrganizationForUser(userId: string, organizationName: strin
       organizationId: organization.id,
       userId,
       roleId: role.id,
+      memberKind: 'ORGANIZER',
     },
   });
 
@@ -100,6 +103,7 @@ interface UserData {
   avatarUrl?: string | null;
   status?: string;
   createdAt: Date;
+  professionalProfile?: unknown | null;
 }
 interface TeamMemberData {
   role: string | null;
@@ -125,6 +129,11 @@ function formatAuthUser(
   // Combine firstName and lastName into name
   const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || null;
 
+  const prof = user.professionalProfile as { skillTags?: string[] } | null | undefined;
+  const skillTags = Array.isArray(prof?.skillTags)
+    ? prof.skillTags.filter((t): t is string => typeof t === 'string' && t.length > 0)
+    : [];
+
   return {
     id: user.id,
     name,
@@ -134,7 +143,8 @@ function formatAuthUser(
     role: role?.name || teamMember?.role || 'member',
     avatar: user.avatarUrl || null,
     status: user.status || 'active',
-    skills: [], // Could be extended to fetch from workforce service
+    skills: skillTags,
+    professionalProfile: user.professionalProfile ?? null,
     teamId: teamMember?.teamId || null,
     joinedAt: user.createdAt,
     organizationId: organization?.id || null,
@@ -222,7 +232,7 @@ export async function loginHandler(req: Request, res: Response) {
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(refreshToken, { userId: user.id, expiresAt: refreshTokenExpiry });
+    await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
 
     // Get user's team membership
     const teamMember = await getTeamMembershipWithRole(user.id);
@@ -324,7 +334,7 @@ export async function registerHandler(req: Request, res: Response) {
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(refreshToken, { userId: user.id, expiresAt: refreshTokenExpiry });
+    await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
 
     // Get team membership if exists (might have been added during invite)
     const teamMember = await getTeamMembershipWithRole(user.id);
@@ -446,7 +456,7 @@ export async function googleOauthHandler(req: Request, res: Response) {
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(refreshToken, { userId: user.id, expiresAt: refreshTokenExpiry });
+    await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
 
     // Get user's team membership
     const teamMember = await getTeamMembershipWithRole(user.id);
@@ -482,16 +492,10 @@ export async function refreshTokenHandler(req: Request, res: Response) {
       return;
     }
 
-    const tokenData = refreshTokenStore.get(refreshToken);
+    const consumed = await consumeValidRefreshToken(refreshToken);
 
-    if (!tokenData) {
+    if (!consumed) {
       res.status(401).json({ error: 'Invalid refresh token' });
-      return;
-    }
-
-    if (tokenData.expiresAt < new Date()) {
-      refreshTokenStore.delete(refreshToken);
-      res.status(401).json({ error: 'Refresh token expired' });
       return;
     }
 
@@ -503,11 +507,8 @@ export async function refreshTokenHandler(req: Request, res: Response) {
     const accessTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    tokenStore.set(newAccessToken, { userId: tokenData.userId, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(newRefreshToken, { userId: tokenData.userId, expiresAt: refreshTokenExpiry });
-
-    // Remove old refresh token
-    refreshTokenStore.delete(refreshToken);
+    tokenStore.set(newAccessToken, { userId: consumed.userId, expiresAt: accessTokenExpiry });
+    await persistRefreshToken(consumed.userId, newRefreshToken, refreshTokenExpiry);
 
     res.json({
       accessToken: newAccessToken,
@@ -605,7 +606,13 @@ export async function acceptInviteHandler(req: Request, res: Response) {
             password: hashPassword(password),
             firstName: firstName || user.firstName,
             lastName: lastName || user.lastName,
+            status: 'active',
           },
+        });
+      } else if (user.status === 'pending') {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { status: 'active' },
         });
       }
     }
@@ -650,6 +657,18 @@ export async function acceptInviteHandler(req: Request, res: Response) {
             reports: ['read'],
             notifications: ['read', 'update'],
           },
+          client: {
+            users: [],
+            teams: [],
+            projects: ['read'],
+            tasks: ['read'],
+            clients: [],
+            wiki: [],
+            channels: ['read', 'update'],
+            settings: [],
+            reports: ['read'],
+            notifications: ['read'],
+          },
         };
 
         const normalizedRole = fallbackRole.toLowerCase();
@@ -670,19 +689,22 @@ export async function acceptInviteHandler(req: Request, res: Response) {
         where: { userId: user.id, organizationId: orgId }
       });
 
+      const inviteMemberKind = memberKindFromRoleName(roleRecord.name);
+
       if (!membershipCheck) {
         await prisma.organizationMember.create({
           data: {
             userId: user.id,
             organizationId: orgId,
-            roleId: roleRecord.id
+            roleId: roleRecord.id,
+            memberKind: inviteMemberKind,
           }
         });
       } else {
         // Update role of existing membership
         await prisma.organizationMember.update({
           where: { id: membershipCheck.id },
-          data: { roleId: roleRecord.id }
+          data: { roleId: roleRecord.id, memberKind: inviteMemberKind }
         });
       }
     }
@@ -704,7 +726,7 @@ export async function acceptInviteHandler(req: Request, res: Response) {
     const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
     tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
-    refreshTokenStore.set(refreshToken, { userId: user.id, expiresAt: refreshTokenExpiry });
+    await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
 
     // Get team membership
     const teamMember = await getTeamMembershipWithRole(user.id);
@@ -761,13 +783,11 @@ export async function getCurrentUserMeHandler(req: Request, res: Response) {
 
     const teamMember = await getTeamMembershipWithRole(user.id);
 
-    // Get user's organization and role
-    const membership = await prisma.organizationMember.findFirst({
-      where: { userId: user.id },
-      include: { organization: true, role: true },
-    });
+    // Get user's organization and role, respecting requested organizationId
+    const requestedOrgId = (req.body?.organizationId || req.headers['x-organization-id']) as string;
+    const { memberships, activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
 
-    res.json(formatAuthUser(user, teamMember, membership?.organization, membership?.role));
+    res.json(formatAuthUser(user, teamMember, activeMembership?.organization, activeMembership?.role, memberships));
   } catch (error) {
     console.error('Get me error:', error);
     res.status(500).json({ error: 'Failed to get user' });
@@ -808,6 +828,7 @@ export async function getInviteDetailsHandler(req: Request, res: Response) {
         firstName: '',
         lastName: '',
         role: invitation.role || 'Member',
+        organizationId: invitation.organizationId,
         organizationName: organization?.name || 'Unknown Organization',
       });
       return;
@@ -820,8 +841,6 @@ export async function getInviteDetailsHandler(req: Request, res: Response) {
   }
 }
 
-import { v4 as uuidv4 } from 'uuid';
-
 export async function createInvitationHandler(req: Request, res: Response) {
   try {
     const { email, role, organizationId } = req.body;
@@ -831,12 +850,52 @@ export async function createInvitationHandler(req: Request, res: Response) {
       return;
     }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!normalizedEmail) {
+      res.status(400).json({ error: 'Email is required' });
+      return;
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+    });
+
+    if (existingUser) {
+      const membership = await prisma.organizationMember.findFirst({
+        where: { organizationId, userId: existingUser.id },
+      });
+      if (membership) {
+        res.status(409).json({
+          error:
+            'This email is already part of your organization. Remove the existing membership before inviting again with a different role.',
+        });
+        return;
+      }
+    }
+
+    const now = new Date();
+    const pendingInvite = await prisma.invitation.findFirst({
+      where: {
+        organizationId,
+        acceptedAt: null,
+        expiresAt: { gt: now },
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+      },
+    });
+
+    if (pendingInvite) {
+      res.status(409).json({
+        error: 'An invitation is already pending for this email.',
+      });
+      return;
+    }
+
     const token = uuidv4();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
 
     const invitation = await prisma.invitation.create({
       data: {
-        email,
+        email: normalizedEmail,
         role: role || 'Member',
         token,
         organizationId,

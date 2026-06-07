@@ -4,7 +4,7 @@
  * Uses the shared database pool. LangChain loaded lazily for embeddings.
  *
  * VERIFIED against actual Prisma schemas:
- *   auth:       users, organizations, organization_members, roles
+ *   auth:       users (incl. professionalProfile JSON), organizations, organization_members, roles
  *   project:    projects, tasks, milestones, risk_register
  *   workforce:  teams, team_members, user_skills
  *   client:     clients, proposals, project_clients
@@ -51,6 +51,62 @@ function splitText(text: string): string[] {
 
 function contentHash(text: string): string {
     return crypto.createHash('md5').update(text).digest('hex');
+}
+
+/** Flatten auth.users.professionalProfile JSON for RAG (skill tags + experiences). */
+function professionalProfileToPlainText(
+    profile: unknown,
+    firstName: string | null,
+    lastName: string | null,
+    email: string | null
+): string {
+    let parsed: unknown = profile;
+    if (typeof parsed === 'string') {
+        try {
+            parsed = JSON.parse(parsed) as unknown;
+        } catch {
+            return '';
+        }
+    }
+    if (!parsed || typeof parsed !== 'object') return '';
+
+    const o = parsed as Record<string, unknown>;
+    const parts: string[] = [];
+    const name = `${firstName || ''} ${lastName || ''}`.trim();
+    parts.push(`Contributor: ${name || email || 'Unknown'}${email ? ` (${email})` : ''}.`);
+
+    const tags = o.skillTags;
+    const tagNames: string[] = [];
+    if (Array.isArray(tags)) {
+        for (const t of tags) {
+            if (t && typeof t === 'object' && 'name' in t) {
+                const n = (t as { name?: unknown }).name;
+                if (typeof n === 'string' && n.trim()) tagNames.push(n.trim());
+            }
+        }
+    }
+    if (tagNames.length) parts.push(`Skill tags: ${tagNames.join(', ')}.`);
+
+    const ex = o.experiences;
+    if (Array.isArray(ex) && ex.length) {
+        parts.push('Experience:');
+        for (const e of ex) {
+            if (!e || typeof e !== 'object') continue;
+            const x = e as Record<string, unknown>;
+            const bits: string[] = [];
+            for (const k of ['jobTitle', 'employer', 'startYear', 'endYear', 'description'] as const) {
+                const v = x[k];
+                if (v != null && String(v).trim() !== '') bits.push(String(v).trim());
+            }
+            if (x.isPresent === true) bits.push('present');
+            const line = bits.join(' — ');
+            if (line) parts.push(`- ${line}`);
+        }
+    }
+
+    if (tagNames.length === 0 && (!Array.isArray(ex) || ex.length === 0)) return '';
+
+    return parts.join('\n');
 }
 
 // ── Index a Single Document ─────────────────────────────────────
@@ -183,7 +239,7 @@ export async function syncProjects(orgId: string): Promise<SyncResult> {
         (r) => ({
             title: `Project: ${r.name}`,
             content: `Project "${r.name}" - Status: ${r.status}, Progress: ${r.progress || 0}%${r.description ? `. ${r.description}` : ''}`,
-            metadata: { status: r.status, progress: r.progress, budget: r.budget },
+            metadata: { status: r.status, progress: r.progress, budget: r.budget, projectId: r.id },
         })
     );
 }
@@ -247,6 +303,66 @@ export async function syncMembers(orgId: string): Promise<SyncResult> {
 }
 
 /**
+ * auth.users.professionalProfile (JSON) for org members — indexed separately from members rows
+ * so RAG can retrieve skill tags and experience text for the AI agent.
+ */
+export async function syncContributorProfessionalProfiles(orgId: string): Promise<SyncResult> {
+    return syncQuery(
+        orgId,
+        'auth',
+        'user_professional_profiles',
+        `SELECT u.id, u."firstName", u."lastName", u.email, u."professionalProfile"
+     FROM auth.users u
+     INNER JOIN auth.organization_members om ON om."userId" = u.id
+     WHERE om."organizationId" = $1 AND u."professionalProfile" IS NOT NULL`,
+        'contributor_profile',
+        (r) => {
+            const content = professionalProfileToPlainText(
+                r.professionalProfile,
+                r.firstName as string | null,
+                r.lastName as string | null,
+                r.email as string | null
+            );
+            return {
+                title: `Contributor profile: ${r.firstName || ''} ${r.lastName || ''}`.trim() || (r.email as string),
+                content,
+                metadata: { userId: r.id, email: r.email },
+            };
+        }
+    );
+}
+
+/**
+ * workforce.user_skills for users who belong to the organization (for AI / matching).
+ */
+export async function syncContributorSkills(orgId: string): Promise<SyncResult> {
+    return syncQuery(
+        orgId,
+        'workforce',
+        'user_skills',
+        `SELECT us.id, us."userId", us."skillName", us.proficiency,
+            u."firstName", u."lastName", u.email
+     FROM workforce.user_skills us
+     INNER JOIN auth.users u ON u.id = us."userId"
+     INNER JOIN auth.organization_members om ON om."userId" = u.id
+     WHERE om."organizationId" = $1`,
+        'contributor_skill',
+        (r) => {
+            const who = `${r.firstName || ''} ${r.lastName || ''}`.trim() || (r.email as string);
+            const prof =
+                typeof r.proficiency === 'number' && !Number.isNaN(r.proficiency)
+                    ? `Proficiency: ${r.proficiency}/10.`
+                    : '';
+            return {
+                title: `Skill: ${r.skillName} (${who})`,
+                content: `${who} (${r.email}) — Skill: ${r.skillName}. ${prof}`.trim(),
+                metadata: { userId: r.userId, skillName: r.skillName, proficiency: r.proficiency },
+            };
+        }
+    );
+}
+
+/**
  * client.clients: id, organizationId, name, email, company, industry, status
  */
 export async function syncClients(orgId: string): Promise<SyncResult> {
@@ -299,7 +415,7 @@ export async function syncRisks(orgId: string): Promise<SyncResult> {
         (r) => ({
             title: `Risk in ${r.projectName || 'Unknown'}`,
             content: `Risk in project "${r.projectName || 'Unknown'}" - Probability: ${r.probability || 'N/A'}, Impact: ${r.impact || 'N/A'}, Status: ${r.status}. ${r.description || ''}${r.mitigationPlan ? ` Mitigation: ${r.mitigationPlan}` : ''}`,
-            metadata: { probability: r.probability, impact: r.impact, status: r.status },
+            metadata: { probability: r.probability, impact: r.impact, status: r.status, projectId: r.projectId },
         })
     );
 }
@@ -310,37 +426,21 @@ export async function syncRisks(orgId: string): Promise<SyncResult> {
  * We sync all wiki pages and match to org via parent context if needed.
  */
 export async function syncWikiPages(orgId: string): Promise<SyncResult> {
-    // Wiki pages don't have organizationId — sync all for now
-    const result: SyncResult = { synced: 0, errors: [] };
-
-    try {
-        const res = await query(`SELECT id, title, content FROM knowledge.wiki_pages`, []);
-
-        for (const row of res.rows) {
-            try {
-                if (!row.content || (row.content as string).trim().length === 0) continue;
-
-                const indexed = await indexDocument({
-                    organizationId: orgId,
-                    sourceSchema: 'knowledge',
-                    sourceTable: 'wiki_pages',
-                    sourceId: row.id as string,
-                    title: `Wiki: ${row.title}`,
-                    content: row.content as string,
-                    contentType: 'wiki',
-                });
-                if (indexed) result.synced++;
-            } catch (err: unknown) {
-                const message = err instanceof Error ? err.message : 'Unknown error';
-                result.errors.push(`wiki_pages/${row.id}: ${message}`);
-            }
-        }
-    } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        result.errors.push(`wiki_pages: ${message}`);
-    }
-
-    return result;
+    return syncQuery(
+        orgId,
+        'knowledge',
+        'wiki_pages',
+        `SELECT wp.id, wp.title, wp.content, wp."wikiId"
+     FROM knowledge.wiki_pages wp
+     INNER JOIN knowledge.wikis w ON w.id = wp."wikiId"
+     WHERE w."organizationId" = $1`,
+        'wiki',
+        (r) => ({
+            title: `Wiki: ${r.title}`,
+            content: (r.content as string) || '',
+            metadata: { wikiId: r.wikiId },
+        })
+    );
 }
 
 /**
@@ -350,12 +450,12 @@ export async function syncWikiPages(orgId: string): Promise<SyncResult> {
 export async function syncDocuments(orgId: string): Promise<SyncResult> {
     return syncQuery(
         orgId, 'knowledge', 'documents',
-        `SELECT id, name, url, version, metadata FROM knowledge.documents WHERE "organizationId" = $1`,
+        `SELECT id, name, url, version, metadata, "wikiId" FROM knowledge.documents WHERE "organizationId" = $1`,
         'document',
         (r) => ({
             title: `Document: ${r.name}`,
             content: `Document "${r.name}" (v${r.version || 1}) - URL: ${r.url || 'N/A'}`,
-            metadata: { url: r.url, version: r.version },
+            metadata: { url: r.url, version: r.version, wikiId: r.wikiId },
         })
     );
 }
@@ -367,7 +467,7 @@ export async function syncDocuments(orgId: string): Promise<SyncResult> {
 export async function syncProposals(orgId: string): Promise<SyncResult> {
     return syncQuery(
         orgId, 'client', 'proposals',
-        `SELECT pr.id, pr.title, pr.content, pr.status,
+        `SELECT pr.id, pr.title, pr.content, pr.status, pr."clientId",
             c.name AS "clientName"
      FROM client.proposals pr
      LEFT JOIN client.clients c ON c.id = pr."clientId"
@@ -376,7 +476,7 @@ export async function syncProposals(orgId: string): Promise<SyncResult> {
         (r) => ({
             title: `Proposal: ${r.title}`,
             content: `Proposal "${r.title}" for client "${r.clientName || 'Unknown'}" - Status: ${r.status}${r.content ? `. ${r.content}` : ''}`,
-            metadata: { status: r.status },
+            metadata: { status: r.status, clientId: r.clientId },
         })
     );
 }
@@ -386,6 +486,7 @@ export async function syncProposals(orgId: string): Promise<SyncResult> {
 export async function syncAllData(orgId: string) {
     const fns = [
         syncProjects, syncTasks, syncTeams, syncMembers,
+        syncContributorProfessionalProfiles, syncContributorSkills,
         syncClients, syncMilestones, syncRisks,
         syncWikiPages, syncDocuments, syncProposals,
     ];

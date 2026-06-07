@@ -96,13 +96,15 @@ export function describePermissions(user: AuthenticatedUser): string {
     if (!perms) return 'You have no specific permissions loaded.';
 
     const lines: string[] = [];
+    lines.push(`You are acting as a ${user.role}. Your current permissions allow you to:`);
 
     for (const [resource, actions] of Object.entries(perms)) {
         if (resource === '_meta' || !Array.isArray(actions) || actions.length === 0) continue;
-        lines.push(`- ${resource}: ${actions.join(', ')}`);
+        const formattedActions = actions.map(a => a === '*' ? 'all actions' : a).join(', ');
+        lines.push(`- ${resource.charAt(0).toUpperCase() + resource.slice(1)}: ${formattedActions}`);
     }
 
-    if (lines.length === 0) return 'The user has minimal permissions.';
+    if (lines.length === 1) return 'The user has minimal permissions.';
 
-    return `User permissions:\n${lines.join('\n')}`;
+    return lines.join('\n');
 }

@@ -15,7 +15,21 @@ export async function createNotificationHandler(req: Request, res: Response) {
 
 export async function getAllNotificationsHandler(req: Request, res: Response) {
     try {
-    const notifications = await prisma.notification.findMany();
+    const userId = req.query.userId;
+    const where: { userId?: string } = {};
+    if (typeof userId === "string" && userId.trim() !== "") {
+      where.userId = userId.trim();
+    }
+    const limitRaw = req.query.limit;
+    const limit =
+      typeof limitRaw === "string"
+        ? Math.min(Math.max(parseInt(limitRaw, 10) || 500, 1), 1000)
+        : 500;
+    const notifications = await prisma.notification.findMany({
+      ...(Object.keys(where).length ? { where } : {}),
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
     res.json(notifications);
     } catch (error) {
     console.error(error);

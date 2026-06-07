@@ -1,5 +1,7 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { bearerAuthMiddleware, defaultInternalAuthSkip } from '@vistone-server/shared-internal-auth';
 import clientRoutes from './modules/clients/clients.routes';
 import projectClientRoutes from './modules/project-clients/project-clients.routes';
 import clientFeedbackRoutes from './modules/client-feedback/client-feedback.routes';
@@ -13,6 +15,13 @@ const app = express();
 // Enable CORS
 app.use(cors());
 app.use(express.json());
+
+app.use(
+  bearerAuthMiddleware({
+    authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
+    skip: defaultInternalAuthSkip,
+  })
+);
 
 app.get('/', (req, res) => {
   res.send({ message: 'Client Management Service API' });

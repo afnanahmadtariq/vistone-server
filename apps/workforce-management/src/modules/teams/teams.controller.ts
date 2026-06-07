@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { normalizeOrgEntityNameKey } from "@vistone-server/shared-internal-auth";
 import prisma from "../../lib/prisma";
 import axios from "axios";
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
@@ -25,8 +26,23 @@ interface ProjectData {
   id: string;
   name: string;
   status: string;
+  teamIds?: string[];
   endDate?: Date;
   updatedAt?: Date;
+}
+function getForwardHeaders(req?: Request) {
+  const headers: Record<string, string> = {};
+  const authHeader = req?.headers?.authorization;
+  const orgHeader = req?.headers?.["x-organization-id"];
+
+  if (typeof authHeader === "string" && authHeader.trim()) {
+    headers.Authorization = authHeader;
+  }
+  if (typeof orgHeader === "string" && orgHeader.trim()) {
+    headers["X-Organization-Id"] = orgHeader;
+  }
+
+  return headers;
 }
 async function fetchUserData(userId: string) {
   try {
@@ -37,9 +53,28 @@ async function fetchUserData(userId: string) {
     return null;
   }
 }
-async function fetchProjects(): Promise<ProjectData[]> {
+
+async function fetchUserRole(userId: string): Promise<string> {
   try {
-    const response = await axios.get(`${PROJECT_SERVICE_URL}/projects`);
+    // Get organization membership for the user
+    const membershipsRes = await axios.get(`${AUTH_SERVICE_URL}/organization-members?userId=${userId}`);
+    const memberships = membershipsRes.data;
+    if (Array.isArray(memberships) && memberships.length > 0 && memberships[0].roleId) {
+      // Fetch the role name
+      const roleRes = await axios.get(`${AUTH_SERVICE_URL}/roles/${memberships[0].roleId}`);
+      if (roleRes.data?.name) return roleRes.data.name;
+    }
+  } catch (error) {
+    console.error(`Failed to fetch role for user ${userId}:`, error);
+  }
+  return 'Contributor';
+}
+
+async function fetchProjects(req?: Request): Promise<ProjectData[]> {
+  try {
+    const response = await axios.get(`${PROJECT_SERVICE_URL}/projects`, {
+      headers: getForwardHeaders(req),
+    });
     return response.data;
   } catch (error) {
     console.error('Failed to fetch projects:', error);
@@ -47,10 +82,60 @@ async function fetchProjects(): Promise<ProjectData[]> {
   }
 }
 
+async function teamNameTaken(
+  organizationId: string,
+  name: string,
+  excludeTeamId?: string
+): Promise<boolean> {
+  const key = normalizeOrgEntityNameKey(name);
+  if (!key) return false;
+  const rows = await prisma.team.findMany({
+    where: { organizationId },
+    select: { id: true, name: true },
+  });
+  return rows.some(
+    (t: { id: string; name: string }) =>
+      t.id !== excludeTeamId && normalizeOrgEntityNameKey(t.name) === key
+  );
+}
+
 export async function createTeamHandler(req: Request, res: Response) {
   try {
+    const { organizationId, name } = req.body as Record<string, unknown>;
+
+    if (typeof organizationId !== "string" || !organizationId.trim()) {
+      res.status(400).json({ error: "organizationId is required" });
+      return;
+    }
+    if (typeof name !== "string" || !name.trim()) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
+    if (await teamNameTaken(organizationId.trim(), name)) {
+      res.status(409).json({
+        error: "A team with this name already exists in your organization.",
+      });
+      return;
+    }
+
+    const raw = req.body as Record<string, unknown>;
+    const description =
+      raw.description === null || raw.description === undefined
+        ? null
+        : String(raw.description);
+    const managerRaw = raw.managerId;
+    const managerId =
+      typeof managerRaw === "string" && managerRaw.trim() !== ""
+        ? managerRaw.trim()
+        : null;
+
     const team = await prisma.team.create({
-      data: req.body,
+      data: {
+        organizationId: organizationId.trim(),
+        name: name.trim(),
+        description,
+        managerId,
+      },
     });
     res.json(team);
   } catch (error) {
@@ -75,9 +160,51 @@ export async function getAllTeamsHandler(req: Request, res: Response) {
       },
     }) as TeamWithMembers[];
 
-    const enhancedTeams = teams.map((team: TeamWithMembers) => ({
-      ...team,
-      memberCount: team.members.length,
+    // Fetch all projects once to avoid multiple API calls
+    const allProjects = await fetchProjects(req);
+
+    const enhancedTeams = await Promise.all(teams.map(async (team: TeamWithMembers) => {
+      // Fetch manager data
+      let manager = null;
+      if (team.managerId) {
+        const managerData = await fetchUserData(team.managerId);
+        if (managerData) {
+          manager = {
+            id: managerData.id,
+            name: [managerData.firstName, managerData.lastName].filter(Boolean).join(' ') || managerData.email,
+            avatar: null,
+          };
+        }
+      }
+
+      // Fetch enriched member data with real roles
+      const members = await Promise.all(
+        team.members.map(async (member: TeamMemberRecord) => {
+          const userData = await fetchUserData(member.userId);
+          const role = await fetchUserRole(member.userId);
+          return {
+            id: member.userId,
+            name: userData ? [userData.firstName, userData.lastName].filter(Boolean).join(' ') || userData.email : 'Unknown',
+            role,
+            jobTitle: userData?.jobTitle || '',
+            email: userData?.email || '',
+            status: userData?.status || 'active',
+            avatar: null,
+          };
+        })
+      );
+
+      // Filter projects for this team
+      const ongoingCount = allProjects.filter((p: ProjectData) => p.teamIds?.includes(team.id) && p.status !== 'completed' && p.status !== 'Completed').length;
+      const completedCount = allProjects.filter((p: ProjectData) => p.teamIds?.includes(team.id) && (p.status === 'completed' || p.status === 'Completed')).length;
+
+      return {
+        ...team,
+        memberCount: team.members.length,
+        assignedProjects: ongoingCount + completedCount,
+        manager,
+        members,
+      };
     }));
 
     res.json(enhancedTeams);
@@ -114,26 +241,28 @@ export async function getTeamByIdHandler(req: Request, res: Response) {
       }
     }
 
-    // Fetch member details
+    // Fetch member details with real roles from org membership
     const members = await Promise.all(
       team.members.map(async (member: TeamMemberRecord) => {
         const userData = await fetchUserData(member.userId);
+        const role = await fetchUserRole(member.userId);
         return {
           id: member.userId,
           name: userData ? [userData.firstName, userData.lastName].filter(Boolean).join(' ') || userData.email : 'Unknown',
-          role: member.role || 'member',
+          role,
+          jobTitle: userData?.jobTitle || '',
           email: userData?.email || '',
-          status: 'active',
+          status: userData?.status || 'active',
           avatar: null,
         };
       })
     );
 
     // Fetch projects and filter by team
-    const allProjects = await fetchProjects();
+    const allProjects = await fetchProjects(req);
 
     const ongoingProjects = allProjects
-      .filter((p: ProjectData) => p.status !== 'completed' && p.status !== 'Completed')
+      .filter((p: ProjectData) => p.teamIds?.includes(team.id) && p.status !== 'completed' && p.status !== 'Completed')
       .slice(0, 5)
       .map((p: ProjectData) => ({
         id: p.id,
@@ -143,7 +272,7 @@ export async function getTeamByIdHandler(req: Request, res: Response) {
       }));
 
     const completedProjects = allProjects
-      .filter((p: ProjectData) => p.status === 'completed' || p.status === 'Completed')
+      .filter((p: ProjectData) => p.teamIds?.includes(team.id) && (p.status === 'completed' || p.status === 'Completed'))
       .slice(0, 5)
       .map((p: ProjectData) => ({
         id: p.id,
@@ -172,6 +301,36 @@ export async function getTeamByIdHandler(req: Request, res: Response) {
 
 export async function updateTeamHandler(req: Request, res: Response) {
   try {
+    const existing = await prisma.team.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, organizationId: true },
+    });
+    if (!existing) {
+      res.status(404).json({ error: 'Team not found' });
+      return;
+    }
+
+    const body = req.body as Record<string, unknown>;
+    if (body.name !== undefined && body.name !== null) {
+      const nextName = body.name;
+      if (typeof nextName !== "string" || !nextName.trim()) {
+        res.status(400).json({ error: "name cannot be empty" });
+        return;
+      }
+      if (
+        await teamNameTaken(
+          existing.organizationId,
+          nextName,
+          req.params.id
+        )
+      ) {
+        res.status(409).json({
+          error: "A team with this name already exists in your organization.",
+        });
+        return;
+      }
+    }
+
     const team = await prisma.team.update({
       where: { id: req.params.id },
       data: req.body,
@@ -185,6 +344,12 @@ export async function updateTeamHandler(req: Request, res: Response) {
 
 export async function deleteTeamHandler(req: Request, res: Response) {
   try {
+    // First delete all team members associated with the team
+    await prisma.teamMember.deleteMany({
+      where: { teamId: req.params.id },
+    });
+
+    // Then delete the team itself
     await prisma.team.delete({
       where: { id: req.params.id },
     });

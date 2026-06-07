@@ -1,8 +1,16 @@
 import { Request, Response } from "express";
 import prisma from "../../lib/prisma";
+import { ensureDocumentInCallerOrg } from "../../lib/org-scope";
 
 export async function createDocumentPermissionHandler(req: Request, res: Response) {
     try {
+    const documentId = req.body?.documentId;
+    if (typeof documentId !== 'string' || !documentId.trim()) {
+      res.status(400).json({ error: 'documentId is required' });
+      return;
+    }
+    if (!(await ensureDocumentInCallerOrg(documentId.trim(), req, res))) return;
+
     const documentPermission = await prisma.documentPermission.create({
       data: req.body,
     });
@@ -15,7 +23,16 @@ export async function createDocumentPermissionHandler(req: Request, res: Respons
 
 export async function getAllDocumentPermissionsHandler(req: Request, res: Response) {
     try {
-    const documentPermissions = await prisma.documentPermission.findMany();
+    const documentId = req.query.documentId;
+    if (typeof documentId !== 'string' || !documentId.trim()) {
+      res.status(400).json({ error: 'documentId query parameter is required' });
+      return;
+    }
+    if (!(await ensureDocumentInCallerOrg(documentId.trim(), req, res))) return;
+
+    const documentPermissions = await prisma.documentPermission.findMany({
+      where: { documentId: documentId.trim() },
+    });
     res.json(documentPermissions);
     } catch (error) {
     console.error(error);
@@ -32,6 +49,8 @@ export async function getDocumentPermissionByIdHandler(req: Request, res: Respon
       res.status(404).json({ error: 'Document permission not found' });
       return;
     }
+    if (!(await ensureDocumentInCallerOrg(documentPermission.documentId, req, res))) return;
+
     res.json(documentPermission);
     } catch (error) {
     console.error(error);
@@ -41,6 +60,13 @@ export async function getDocumentPermissionByIdHandler(req: Request, res: Respon
 
 export async function updateDocumentPermissionHandler(req: Request, res: Response) {
     try {
+    const existing = await prisma.documentPermission.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Document permission not found' });
+      return;
+    }
+    if (!(await ensureDocumentInCallerOrg(existing.documentId, req, res))) return;
+
     const documentPermission = await prisma.documentPermission.update({
       where: { id: req.params.id },
       data: req.body,
@@ -54,6 +80,13 @@ export async function updateDocumentPermissionHandler(req: Request, res: Respons
 
 export async function deleteDocumentPermissionHandler(req: Request, res: Response) {
     try {
+    const existing = await prisma.documentPermission.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Document permission not found' });
+      return;
+    }
+    if (!(await ensureDocumentInCallerOrg(existing.documentId, req, res))) return;
+
     await prisma.documentPermission.delete({
       where: { id: req.params.id },
     });

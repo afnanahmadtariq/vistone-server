@@ -29,8 +29,17 @@ export const config = {
 
     // ── RAG Behaviour ─────────────────────────────────────────────
     rag: {
-        maxConversationHistory: parseInt(process.env.MAX_CONVERSATION_HISTORY || '10'),
+        maxConversationHistory: parseInt(process.env.MAX_CONVERSATION_HISTORY || '24'),
         maxContextLength: parseInt(process.env.MAX_CONTEXT_LENGTH || '6000'),
+    },
+
+    /** High-level org snapshot injected into every agent prompt (members, projects, teams, CRM clients). */
+    orgOverview: {
+        maxMembers: parseInt(process.env.AI_ORG_OVERVIEW_MAX_MEMBERS || '50'),
+        maxProjects: parseInt(process.env.AI_ORG_OVERVIEW_MAX_PROJECTS || '35'),
+        maxTeams: parseInt(process.env.AI_ORG_OVERVIEW_MAX_TEAMS || '25'),
+        maxClients: parseInt(process.env.AI_ORG_OVERVIEW_MAX_CLIENTS || '25'),
+        maxChars: parseInt(process.env.AI_ORG_OVERVIEW_MAX_CHARS || '10000'),
     },
 
     // ── Agent ─────────────────────────────────────────────────────

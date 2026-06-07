@@ -2,11 +2,7 @@ import axios from 'axios';
 import * as crypto from 'crypto';
 
 // 🔑 Login Credentials (password: Password123!)
-// Admin: sarah.admin@vistone.io
-// Organizer: omar.organizer@vistone.io
-// Managers: emily.manager@vistone.io / james.manager@vistone.io
-// Contributors: aisha.dev@vistone.io, lucas.dev@vistone.io, sofia.design@vistone.io, raj.dev@vistone.io, mei.qa@vistone.io, david.content@vistone.io
-
+// One organizer per org in this seed (Sarah); Omar is a Manager. Managers/Contributors as listed in userDefs below.
 // ─── Service URLs ───────────────────────────────────────────────────────────────
 const SVC = {
   auth: 'http://localhost:3001',
@@ -137,7 +133,7 @@ async function seedAuth() {
   // Users — 10 people
   const userDefs = [
     { email: `sarah.organizer1.${runSuffix}@vistone.io`, firstName: 'Sarah', lastName: 'Chen', role: 'organizer' },
-    { email: `omar.organizer2.${runSuffix}@vistone.io`, firstName: 'Omar', lastName: 'Khalid', role: 'organizer' },
+    { email: `omar.organizer2.${runSuffix}@vistone.io`, firstName: 'Omar', lastName: 'Khalid', role: 'manager' },
     { email: `emily.manager.${runSuffix}@vistone.io`, firstName: 'Emily', lastName: 'Rodriguez', role: 'manager' },
     { email: `james.manager.${runSuffix}@vistone.io`, firstName: 'James', lastName: 'Park', role: 'manager' },
     { email: `aisha.dev.${runSuffix}@vistone.io`, firstName: 'Aisha', lastName: 'Patel', role: 'contributor' },
@@ -430,132 +426,6 @@ async function seedClients() {
   }
 }
 
-// ─── 5. KNOWLEDGE HUB ──────────────────────────────────────────────────────────
-async function seedKnowledge() {
-  console.log('\n📚 Seeding Knowledge Hub...');
-
-  // Folders
-  const folderDefs = ['Engineering', 'Design System', 'Policies & HR', 'Project Docs'];
-  for (const name of folderDefs) {
-    const created = await post(SVC.knowledge, '/document-folders', { organizationId: id.org, name });
-    id.folders.push(created.id);
-    console.log(`  ✅ Folder: ${name}`);
-  }
-
-  // Documents
-  const docDefs = [
-    [0, 'API Design Guidelines', '/docs/api-guidelines.pdf'],
-    [0, 'Database Schema Reference', '/docs/db-schema.md'],
-    [0, 'Git Branching Strategy', '/docs/git-workflow.md'],
-    [1, 'Brand Color Palette', '/docs/brand-colors.pdf'],
-    [1, 'Component Library Specs', '/docs/components.pdf'],
-    [2, 'Remote Work Policy', '/docs/remote-policy.pdf'],
-    [2, 'Employee Handbook', '/docs/handbook.pdf'],
-    [3, 'E-Commerce PRD', '/docs/ecommerce-prd.pdf'],
-  ];
-  for (const [fi, name, url] of docDefs) {
-    const created = await post(SVC.knowledge, '/documents', {
-      organizationId: id.org, folderId: id.folders[fi as number],
-      name, url, metadata: { type: (url as string).endsWith('.pdf') ? 'pdf' : 'markdown' },
-    });
-    id.documents.push(created.id);
-  }
-  console.log(`  ✅ Documents (${docDefs.length})`);
-
-  // Document permissions
-  await post(SVC.knowledge, '/document-permissions', { documentId: id.documents[0], userId: id.users[4], permission: 'edit' });
-  await post(SVC.knowledge, '/document-permissions', { documentId: id.documents[5], roleId: id.roles.contributor, permission: 'read' });
-
-  // Document links
-  await post(SVC.knowledge, '/document-links', { documentId: id.documents[7], entityType: 'project', entityId: id.projects[0] });
-
-  // Wiki pages
-  const wikiDefs = [
-    ['Getting Started at Vistone', '# Welcome to Vistone Digital!\n\nThis guide helps new team members get set up quickly.\n\n## First Day\n1. Set up your development environment\n2. Join Slack channels\n3. Review the codebase\n\n## Key Contacts\n- Sarah Chen (Admin)\n- Omar Khalid (Organizer)'],
-    ['Development Environment Setup', '# Development Setup\n\n## Prerequisites\n- Node.js 20+\n- Docker Desktop\n- VS Code with ESLint & Prettier\n- PostgreSQL 15\n\n## Steps\n```bash\ngit clone https://github.com/vistone/server.git\nnpm install\nnx run-many -t serve\n```'],
-    ['Coding Standards', '# Coding Standards\n\n## TypeScript\n- Use strict mode\n- Prefer interfaces over types\n- Use barrel exports\n\n## Git\n- Conventional commits\n- Feature branches from `develop`\n- Squash merge to `main`'],
-    ['Deployment Guide', '# Deployment Process\n\n## Environments\n- `staging` — auto-deploy from `develop`\n- `production` — manual promotion from staging\n\n## CI/CD\nWe use GitHub Actions for all pipelines.'],
-  ];
-  for (const [title, content] of wikiDefs) {
-    const created = await post(SVC.knowledge, '/wiki-pages', { title, content });
-    id.wikis.push(created.id);
-    console.log(`  ✅ Wiki: ${title}`);
-  }
-
-  // Wiki version
-  await post(SVC.knowledge, '/wiki-page-versions', { wikiPageId: id.wikis[1], content: wikiDefs[1][1] + '\n\n## Troubleshooting\n- Port 3000 in use? Kill the process.', version: 2 });
-  console.log('  ✅ Wiki version');
-}
-
-// ─── 6. COMMUNICATION ───────────────────────────────────────────────────────────
-async function seedCommunication() {
-  console.log('\n💬 Seeding Communication Service...');
-
-  const channelDefs = [
-    { name: 'general', type: 'public' },
-    { name: 'engineering', type: 'public', teamId: id.teams[0] },
-    { name: 'design', type: 'public', teamId: id.teams[1] },
-    { name: 'ecommerce-project', type: 'project', projectId: id.projects[0] },
-    { name: 'random', type: 'public' },
-  ];
-
-  for (const ch of channelDefs) {
-    const created = await post(SVC.communication, '/chat-channels', ch);
-    id.channels.push(created.id);
-    console.log(`  ✅ Channel: #${ch.name}`);
-  }
-
-  // Add all users to general & random; relevant users to others
-  for (const uid of id.users) {
-    await post(SVC.communication, '/channel-members', { channelId: id.channels[0], userId: uid, role: 'member' });
-    await post(SVC.communication, '/channel-members', { channelId: id.channels[4], userId: uid, role: 'member' });
-  }
-  for (const ui of [2, 4, 5, 7]) {
-    await post(SVC.communication, '/channel-members', { channelId: id.channels[1], userId: id.users[ui], role: 'member' });
-  }
-  for (const ui of [3, 6]) {
-    await post(SVC.communication, '/channel-members', { channelId: id.channels[2], userId: id.users[ui], role: 'member' });
-  }
-  for (const ui of [2, 4, 5, 6, 8]) {
-    await post(SVC.communication, '/channel-members', { channelId: id.channels[3], userId: id.users[ui], role: 'member' });
-  }
-  console.log('  ✅ Channel members');
-
-  // Messages
-  const msgDefs = [
-    [0, 0, 'Welcome to Vistone Digital! 🎉 Excited to have everyone on board.'],
-    [0, 1, 'Thanks Sarah! Looking forward to building great things together.'],
-    [0, 4, 'Happy to be here! When is our first sprint planning?'],
-    [0, 2, 'Sprint planning is tomorrow at 10 AM. See you all there!'],
-    [1, 4, 'Has anyone tried the new Prisma 6 features? The typed SQL looks amazing.'],
-    [1, 5, 'Yes! The performance improvements are significant too.'],
-    [1, 7, 'I benchmarked it — 40% faster queries with the new engine.'],
-    [3, 2, 'Sprint 3 starts Monday. @Aisha please update the backlog priorities.'],
-    [3, 4, 'On it! I\'ll have everything ready by Friday EOD.'],
-    [3, 6, 'The product detail page mockups are ready for review 🎨'],
-    [4, 9, 'Anyone up for virtual coffee? ☕'],
-    [4, 8, 'Count me in! 3 PM works for me.'],
-  ];
-
-  const messageIds: string[] = [];
-  for (const [ci, ui, content] of msgDefs) {
-    const created = await post(SVC.communication, '/chat-messages', {
-      channelId: id.channels[ci as number], senderId: id.users[ui as number], content,
-    });
-    messageIds.push(created.id);
-  }
-  console.log(`  ✅ Messages (${msgDefs.length})`);
-
-  // Mentions & attachments
-  await post(SVC.communication, '/message-mentions', { messageId: messageIds[7], userId: id.users[4] });
-  await post(SVC.communication, '/message-attachments', { messageId: messageIds[9], url: '/uploads/product-detail-v3.fig', fileType: 'figma' });
-
-  // Communication log
-  await post(SVC.communication, '/communication-logs', {
-    type: 'email', details: { from: 'noreply@vistone.io', to: 'team@vistone.io', subject: 'Sprint 2 Recap', status: 'sent' },
-  });
-  console.log('  ✅ Mentions, attachments, logs');
-}
 
 // ─── 7. MONITORING & REPORTING ──────────────────────────────────────────────────
 async function seedMonitoring() {
@@ -759,8 +629,8 @@ async function main() {
     await seedWorkforce();
     await seedProjects();
     await seedClients();
-    await seedKnowledge();
-    await seedCommunication();
+    console.log('\n📚 Skipping Knowledge Hub (wiki) seeding');
+    console.log('\n💬 Skipping Communication (chat) seeding');
     await seedMonitoring();
     await seedNotifications();
 

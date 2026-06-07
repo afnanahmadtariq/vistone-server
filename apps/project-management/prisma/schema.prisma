@@ -8,6 +8,17 @@ datasource db {
   schemas  = ["project"]
 }
 
+/// Contributor work submitted for a task (text + attachment metadata). Reviewed by organizer/manager.
+enum TaskSubmissionStatus {
+  DRAFT
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  CHANGES_REQUESTED
+
+  @@schema("project")
+}
+
 // Project Management Schema
 
 model Project {
@@ -24,6 +35,7 @@ model Project {
   
   clientId       String?
   managerId      String?
+  /// Workforce team ids assigned to this project (no cross-schema FK; ids must belong to the same organization).
   teamIds        String[]
 
   metadata       Json?
@@ -32,6 +44,7 @@ model Project {
   tasks          Task[]
   milestones     Milestone[]
   risks          RiskRegister[]
+  riskQualityMetrics ProjectRiskQualityMetrics?
   aiInsights     AiInsight[]
   
   createdAt      DateTime @default(now())
@@ -61,6 +74,7 @@ model Task {
   id             String   @id @default(uuid())
   projectId      String
   parentId       String?
+  milestoneId    String?
   assigneeId     String?
   creatorId      String?
   title          String
@@ -73,19 +87,46 @@ model Task {
   actualHours    Float?
   aiSuggestions  Json?
   
-  project        Project  @relation(fields: [projectId], references: [id])
-  parent         Task?    @relation("Subtasks", fields: [parentId], references: [id])
-  subtasks       Task[]   @relation("Subtasks")
+  project        Project   @relation(fields: [projectId], references: [id])
+  milestone      Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  parent         Task?     @relation("Subtasks", fields: [parentId], references: [id])
+  subtasks       Task[]    @relation("Subtasks")
   
   checklists     TaskChecklist[]
   dependencies   TaskDependency[] @relation("TaskDependencies")
   dependentOn    TaskDependency[] @relation("TaskDependents")
+  submissions    TaskSubmission[]
   aiInsights     AiInsight[]
   
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@map("tasks")
+  @@schema("project")
+}
+
+model TaskSubmission {
+  id              String               @id @default(uuid())
+  taskId          String
+  version         Int
+  submittedById   String
+  body            String               @default("")
+  /// [{ "url": string, "filename": string, "contentType"?: string, "size"?: number }]
+  attachments     Json?
+  status          TaskSubmissionStatus @default(DRAFT)
+  submittedAt     DateTime?
+  reviewedAt      DateTime?
+  reviewedById    String?
+  reviewNote      String?
+
+  task            Task                 @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([taskId, version])
+  @@index([taskId, status])
+  @@map("task_submissions")
   @@schema("project")
 }
 
@@ -108,6 +149,7 @@ model TaskDependency {
   id          String   @id @default(uuid())
   taskId      String
   dependsOnId String
+  /// Link type: FS = predecessor finishes before successor starts; SS = both start together; FF = both finish together; SF = predecessor starts before successor finishes.
   type        String
   
   task        Task     @relation("TaskDependencies", fields: [taskId], references: [id])
@@ -131,11 +173,35 @@ model Milestone {
   completedAt DateTime?
   
   project     Project  @relation(fields: [projectId], references: [id])
+  tasks       Task[]
+  /// This milestone depends on prerequisite milestones (see dependsOnId).
+  dependencies MilestoneDependency[] @relation("MilestoneDependencySuccessor")
+  /// Other milestones list this one as a prerequisite.
+  dependentFor MilestoneDependency[] @relation("MilestoneDependencyPredecessor")
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("milestones")
+  @@schema("project")
+}
+
+/// Milestone B depends on milestone A: A must be completed before B can be approved.
+model MilestoneDependency {
+  id          String   @id @default(uuid())
+  milestoneId String
+  dependsOnId String
+  /// FS / SS / FF / SF (same semantics as task dependencies).
+  type        String
+
+  milestone   Milestone @relation("MilestoneDependencySuccessor", fields: [milestoneId], references: [id], onDelete: Cascade)
+  dependsOn   Milestone @relation("MilestoneDependencyPredecessor", fields: [dependsOnId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([milestoneId, dependsOnId])
+  @@map("milestone_dependencies")
   @@schema("project")
 }
 
@@ -154,6 +220,22 @@ model RiskRegister {
   updatedAt   DateTime @updatedAt
 
   @@map("risk_register")
+  @@schema("project")
+}
+
+/// QA / testing-style numeric inputs and derived formulas (RE, RPN, EMV, MTBF, etc.) per project.
+model ProjectRiskQualityMetrics {
+  id         String   @id @default(uuid())
+  projectId  String   @unique
+  inputs     Json     @default("{}")
+  computed   Json?
+
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("project_risk_quality_metrics")
   @@schema("project")
 }
 

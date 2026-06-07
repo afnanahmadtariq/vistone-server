@@ -1,12 +1,17 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { bearerAuthMiddleware, defaultInternalAuthSkip } from '@vistone-server/shared-internal-auth';
 import projectRoutes from './modules/projects/projects.routes';
 import projectMemberRoutes from './modules/project-members/project-members.routes';
 import taskRoutes from './modules/tasks/tasks.routes';
 import taskChecklistRoutes from './modules/task-checklists/task-checklists.routes';
 import taskDependencyRoutes from './modules/task-dependencies/task-dependencies.routes';
+import milestoneDependencyRoutes from './modules/milestone-dependencies/milestone-dependencies.routes';
+import taskSubmissionRoutes from './modules/task-submissions/task-submissions.routes';
 import milestoneRoutes from './modules/milestones/milestones.routes';
 import riskRegisterRoutes from './modules/risk-register/risk-register.routes';
+import riskQualityMetricsRoutes from './modules/risk-quality-metrics/risk-quality-metrics.routes';
 import aiInsightRoutes from './modules/ai-insights/ai-insights.routes';
 
 const host = process.env.HOST ?? 'localhost';
@@ -17,6 +22,13 @@ const app = express();
 // Enable CORS
 app.use(cors());
 app.use(express.json());
+
+app.use(
+  bearerAuthMiddleware({
+    authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
+    skip: defaultInternalAuthSkip,
+  })
+);
 
 app.get('/', (req, res) => {
   res.send({ message: 'Project Management Service API' });
@@ -32,8 +44,11 @@ app.use('/project-members', projectMemberRoutes);
 app.use('/tasks', taskRoutes);
 app.use('/task-checklists', taskChecklistRoutes);
 app.use('/task-dependencies', taskDependencyRoutes);
+app.use('/milestone-dependencies', milestoneDependencyRoutes);
+app.use('/task-submissions', taskSubmissionRoutes);
 app.use('/milestones', milestoneRoutes);
 app.use('/risk-register', riskRegisterRoutes);
+app.use('/risk-quality-metrics', riskQualityMetricsRoutes);
 app.use('/ai-insights', aiInsightRoutes);
 
 app.listen(port, host, () => {

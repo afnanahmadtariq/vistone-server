@@ -40,7 +40,7 @@ erDiagram
 | Endpoint                 | Description |
 | ------------------------ | ----------- |
 | `POST /wiki-pages`       | Create page |
-| `GET /wiki-pages`        | List all    |
+| `GET /wiki-pages`        | List pages; use `?wikiId=<id>` to scope to one wiki (gateway always sends this) |
 | `GET /wiki-pages/:id`    | Get by ID   |
 | `PUT /wiki-pages/:id`    | Update      |
 | `DELETE /wiki-pages/:id` | Delete      |

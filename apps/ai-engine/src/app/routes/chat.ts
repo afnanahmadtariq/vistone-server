@@ -1,14 +1,23 @@
 /**
  * AI Engine — Unified Chat Route
  * Single endpoint that handles both informational and action queries.
+ * Runs the chat pipeline inside AsyncLocalStorage so outbound HTTP to microservices
+ * carries the same Bearer token + X-Organization-Id as this request.
  */
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyRequest } from 'fastify';
 import { chat, clearHistory } from '../services/chat.service';
+import { runWithServiceRequestContextAsync } from '../services/request-context';
 import type { ChatRequest } from '../types';
+
+function extractBearerToken(request: FastifyRequest): string | null {
+  const authHeader = request.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const t = authHeader.slice(7).trim();
+  return t || null;
+}
 
 export default async function chatRoutes(fastify: FastifyInstance) {
   // ── POST /api/chat ──────────────────────────────────────────
-  // Unified endpoint: auto-detects info vs action queries.
   fastify.post<{
     Body: ChatRequest;
   }>('/api/chat', async (request, reply) => {
@@ -16,14 +25,33 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Authentication required' });
     }
 
-    const { query, sessionId } = request.body;
+    const { query, sessionId, confirmAction, enableAgent, enabledToolCategories, contentTypes } = request.body;
 
     if (!query || typeof query !== 'string' || query.trim().length === 0) {
       return reply.status(400).send({ error: 'Query is required' });
     }
 
+    const token = extractBearerToken(request);
+    if (!token) {
+      return reply.status(401).send({ error: 'Authentication required' });
+    }
+
+    const organizationId = request.user.organizationId?.trim();
+    if (!organizationId) {
+      return reply.status(400).send({
+        error:
+          'No active organization for this session. Select an organization in the app, or call this API with the X-Organization-Id header.',
+      });
+    }
+
     try {
-      const result = await chat(request.user, query.trim(), sessionId);
+      const result = await runWithServiceRequestContextAsync({ token, organizationId }, () =>
+        chat(request.user!, query.trim(), sessionId, confirmAction, {
+          enableAgent: !!enableAgent,
+          enabledToolCategories: Array.isArray(enabledToolCategories) ? enabledToolCategories : undefined,
+          contentTypes: Array.isArray(contentTypes) ? contentTypes : undefined,
+        })
+      );
       return reply.send(result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Chat failed';
@@ -40,8 +68,16 @@ export default async function chatRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Authentication required' });
     }
 
+    const token = extractBearerToken(request);
+    const organizationId = request.user.organizationId?.trim();
+    if (!token || !organizationId) {
+      return reply.status(401).send({ error: 'Authentication required' });
+    }
+
     try {
-      await clearHistory(request.params.sessionId);
+      await runWithServiceRequestContextAsync({ token, organizationId }, () =>
+        clearHistory(request.params.sessionId)
+      );
       return reply.send({ success: true });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to clear history';

@@ -8,8 +8,16 @@ export const userSchema = z.object({
         password: z.string().nullable().optional(),
         googleId: z.string().nullable().optional(),
         avatarUrl: z.string().nullable().optional(),
+        status: z.string().optional(),
+        jobTitle: z.string().nullable().optional(),
       })
     });
 export const updateUserSchema = z.object({
-      body: userSchema.shape.body.partial()
+      body: userSchema.shape.body
+        .partial()
+        // GraphQL / clients send `avatar`; DB column is `avatarUrl`
+        .extend({
+          avatar: z.string().nullable().optional(),
+          professionalProfile: z.any().optional(),
+        }),
     });

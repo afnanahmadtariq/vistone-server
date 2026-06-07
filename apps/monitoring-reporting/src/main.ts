@@ -1,5 +1,7 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { bearerAuthMiddleware, defaultInternalAuthSkip } from '@vistone-server/shared-internal-auth';
 import kpiDefinitionsRouter from './modules/kpi-definitions/kpi-definitions.routes';
 import kpiMeasurementsRouter from './modules/kpi-measurements/kpi-measurements.routes';
 import reportTemplatesRouter from './modules/report-templates/report-templates.routes';
@@ -20,6 +22,13 @@ const app = express();
 // Enable CORS
 app.use(cors());
 app.use(express.json());
+
+app.use(
+  bearerAuthMiddleware({
+    authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
+    skip: defaultInternalAuthSkip,
+  })
+);
 
 app.get('/', (req, res) => {
   res.send({ message: 'Monitoring & Reporting Service' });

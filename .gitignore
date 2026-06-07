@@ -64,3 +64,7 @@ logs/
 # Prisma
 *.db
 *.db-journal
+
+.nx/polygraph
+.claude/worktrees
+.claude/settings.local.json

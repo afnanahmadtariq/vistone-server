@@ -10,6 +10,7 @@ import auth from './plugins/auth';
 import rootRoutes from './routes/root';
 import chatRoutes from './routes/chat';
 import syncRoutes from './routes/sync';
+import autoAgentRoutes from './routes/auto-agent';
 
 export default async function app(fastify: FastifyInstance) {
   // Plugins
@@ -21,4 +22,5 @@ export default async function app(fastify: FastifyInstance) {
   await fastify.register(rootRoutes);
   await fastify.register(chatRoutes);
   await fastify.register(syncRoutes);
+  await fastify.register(autoAgentRoutes);
 }

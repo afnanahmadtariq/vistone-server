@@ -9,6 +9,7 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=4000
+      - FORWARD_GATEWAY_IDENTITY_TO_SERVICES=true
       - AUTH_SERVICE_URL=http://auth-service:3001
       - WORKFORCE_SERVICE_URL=http://workforce-management:3002
       - PROJECT_SERVICE_URL=http://project-management:3003
@@ -53,6 +54,8 @@ services:
       - HOST=0.0.0.0
       - PORT=3002
       - DATABASE_URL=${DATABASE_URL}
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - TRUST_GATEWAY_IDENTITY_HEADERS=true
     restart: unless-stopped
     networks:
       - vistone-net
@@ -68,6 +71,8 @@ services:
       - HOST=0.0.0.0
       - PORT=3003
       - DATABASE_URL=${DATABASE_URL}
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - TRUST_GATEWAY_IDENTITY_HEADERS=true
     restart: unless-stopped
     networks:
       - vistone-net
@@ -83,6 +88,8 @@ services:
       - HOST=0.0.0.0
       - PORT=3004
       - DATABASE_URL=${DATABASE_URL}
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - TRUST_GATEWAY_IDENTITY_HEADERS=true
     restart: unless-stopped
     networks:
       - vistone-net
@@ -98,6 +105,8 @@ services:
       - HOST=0.0.0.0
       - PORT=3005
       - DATABASE_URL=${DATABASE_URL}
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - TRUST_GATEWAY_IDENTITY_HEADERS=true
     restart: unless-stopped
     networks:
       - vistone-net
@@ -113,6 +122,8 @@ services:
       - HOST=0.0.0.0
       - PORT=3006
       - DATABASE_URL=${DATABASE_URL}
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - TRUST_GATEWAY_IDENTITY_HEADERS=true
     restart: unless-stopped
     networks:
       - vistone-net
@@ -128,6 +139,8 @@ services:
       - HOST=0.0.0.0
       - PORT=3007
       - DATABASE_URL=${DATABASE_URL}
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - TRUST_GATEWAY_IDENTITY_HEADERS=true
     restart: unless-stopped
     networks:
       - vistone-net
@@ -143,6 +156,8 @@ services:
       - HOST=0.0.0.0
       - PORT=3008
       - DATABASE_URL=${DATABASE_URL}
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - TRUST_GATEWAY_IDENTITY_HEADERS=true
     restart: unless-stopped
     networks:
       - vistone-net

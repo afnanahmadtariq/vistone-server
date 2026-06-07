@@ -1,37 +1,140 @@
+import http from 'http';
+import https from 'https';
 import axios, { AxiosInstance, AxiosError } from 'axios';
+import { GATEWAY_FORWARDED_IDENTITY_HEADERS } from '@vistone-server/shared-internal-auth';
+import { ServiceError } from '../lib/errors';
+import { gatewayAuthStore } from '../lib/requestAuthContext';
+
+/** Reuse TCP connections to microservices (major latency win vs. one socket per request). */
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 100 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 100 });
 
 /** Generic record type representing data from REST microservices */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ServiceRecord = Record<string, any>;
 
+export type ServiceClientOptions = {
+  /** Override default 30s (slow networks / long AI agent runs). */
+  timeout?: number;
+};
+
 class ServiceClient {
   private client: AxiosInstance;
   private serviceName: string;
 
-  constructor(baseURL: string, serviceName: string) {
+  constructor(baseURL: string, serviceName: string, options?: ServiceClientOptions) {
     this.serviceName = serviceName;
     this.client = axios.create({
       baseURL,
-      timeout: 30000,
+      timeout: options?.timeout ?? 30000,
+      httpAgent,
+      httpsAgent,
       headers: {
         'Content-Type': 'application/json',
       },
     });
+
+    this.client.interceptors.request.use((config) => {
+      const store = gatewayAuthStore.getStore();
+      const token = store?.bearerToken;
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      const orgId = store?.organizationId;
+      if (orgId) {
+        config.headers['X-Organization-Id'] = orgId;
+      }
+      const forwardIdentity =
+        process.env.FORWARD_GATEWAY_IDENTITY_TO_SERVICES === 'true' &&
+        this.serviceName !== 'Auth Service';
+      const identity = store?.forwardedIdentity;
+      if (forwardIdentity && identity) {
+        const H = GATEWAY_FORWARDED_IDENTITY_HEADERS;
+        config.headers[H.USER_ID] = identity.userId;
+        config.headers[H.EMAIL] = identity.email;
+        config.headers[H.ROLE] = identity.role;
+        if (identity.status) {
+          config.headers[H.STATUS] = identity.status;
+        }
+        if (identity.organizationId) {
+          config.headers[H.ORG_ID] = identity.organizationId;
+        }
+      }
+      return config;
+    });
   }
 
+  /**
+   * Extracts a detailed, human-readable error message and any validation
+   * details from a downstream microservice HTTP error response.
+   *
+   * All services return at least `{ error: string }`.
+   * Some also return `{ message, details, validRoles, validTypes }`.
+   */
   private handleError(error: unknown, operation: string): never {
     if (axios.isAxiosError(error)) {
       const axiosError = error as AxiosError;
+
+      // ── Connection refused — service is down ──
       if (axiosError.code === 'ECONNREFUSED') {
-        throw new Error(`${this.serviceName} is not available. Please ensure the service is running.`);
+        throw new ServiceError(
+          `${this.serviceName} is not available. Please ensure the service is running.`,
+          503,
+          this.serviceName,
+          operation,
+        );
       }
+
+      // ── Timeout ──
+      if (axiosError.code === 'ECONNABORTED' || axiosError.code === 'ETIMEDOUT') {
+        throw new ServiceError(
+          `${this.serviceName} request timed out. Please try again.`,
+          504,
+          this.serviceName,
+          operation,
+        );
+      }
+
+      // ── HTTP error response from the service ──
       if (axiosError.response) {
+        const status = axiosError.response.status;
         const data = axiosError.response.data as ServiceRecord | undefined;
-        const message = data?.error || axiosError.message;
-        throw new Error(`${this.serviceName} ${operation} failed: ${message}`);
+
+        // Extract the most specific message available.
+        // Services may return: { error, message, details, validRoles, validTypes }
+        const primaryMessage: string =
+          data?.message ||
+          data?.error ||
+          (typeof data === 'string' ? data : null) ||
+          axiosError.message ||
+          `Request failed with status ${status}`;
+
+        // Extract validation details (Zod issues array)
+        const details =
+          data?.details ||
+          data?.errors ||
+          data?.issues ||
+          undefined;
+
+        throw new ServiceError(
+          primaryMessage,
+          status,
+          this.serviceName,
+          operation,
+          details,
+        );
       }
-      throw new Error(`${this.serviceName} ${operation} failed: ${axiosError.message}`);
+
+      // ── Network error without a response ──
+      throw new ServiceError(
+        `${this.serviceName} request failed: ${axiosError.message}`,
+        502,
+        this.serviceName,
+        operation,
+      );
     }
+
+    // ── Non-Axios error — re-throw as-is ──
     throw error;
   }
 
@@ -44,13 +147,15 @@ class ServiceClient {
     }
   }
 
-  async getWithAuth(endpoint: string, token: string): Promise<ServiceRecord | ServiceRecord[]> {
+  async getWithAuth(endpoint: string, token: string, organizationId?: string): Promise<ServiceRecord | ServiceRecord[]> {
     try {
-      const response = await this.client.get(endpoint, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (organizationId) {
+        headers['X-Organization-Id'] = organizationId;
+      }
+      const response = await this.client.get(endpoint, { headers });
       return response.data;
     } catch (error) {
       this.handleError(error, 'GET');
@@ -75,12 +180,16 @@ class ServiceClient {
     }
   }
 
-  async postWithAuth(endpoint: string, data: ServiceRecord, token: string): Promise<ServiceRecord> {
+  async postWithAuth(endpoint: string, data: ServiceRecord, token: string, organizationId?: string): Promise<ServiceRecord> {
     try {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (organizationId) {
+        headers['X-Organization-Id'] = organizationId;
+      }
       const response = await this.client.post(endpoint, data, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
       });
       return response.data;
     } catch (error) {
@@ -106,12 +215,16 @@ class ServiceClient {
     }
   }
 
-  async deleteWithAuth(endpoint: string, id: string, token: string): Promise<ServiceRecord> {
+  async deleteWithAuth(endpoint: string, id: string, token: string, organizationId?: string): Promise<ServiceRecord> {
     try {
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+      };
+      if (organizationId) {
+        headers['X-Organization-Id'] = organizationId;
+      }
       const response = await this.client.delete(`${endpoint}/${id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
       });
       return response.data;
     } catch (error) {
@@ -161,9 +274,16 @@ export const notificationClient = new ServiceClient(
   'Notification Service'
 );
 
+/** Gateway → AI Engine: agent + tools often exceed 30s on slow links (env override). */
+const AI_ENGINE_GATEWAY_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AI_ENGINE_GATEWAY_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 180000;
+})();
+
 export const aiEngineClient = new ServiceClient(
   process.env.AI_ENGINE_URL || 'http://localhost:3009',
-  'AI Engine Service'
+  'AI Engine Service',
+  { timeout: AI_ENGINE_GATEWAY_TIMEOUT_MS }
 );
 
 // Legacy export for backward compatibility (deprecated)

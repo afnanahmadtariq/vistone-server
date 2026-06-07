@@ -13,6 +13,13 @@ export async function logActivity(data: {
   ipAddress?: string;
 }) {
   try {
+    const userExists = await prisma.user.findUnique({
+      where: { id: data.userId },
+      select: { id: true },
+    });
+    if (!userExists) {
+      return null;
+    }
     return await prisma.activityLog.create({
       data: {
         userId: data.userId,
@@ -43,18 +50,31 @@ export async function createActivityLogHandler(req: Request, res: Response) {
 
 export async function getAllActivityLogsHandler(req: Request, res: Response) {
   try {
-    const { userId, action } = req.query;
-    const where: Record<string, unknown> = {};
+    const { userId, action, entityType, entityId, organizationId } = req.query ?? {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const where: any = {};
     if (userId) where.userId = userId as string;
     if (action) where.action = action as string;
+    if (entityType) where.entityType = entityType as string;
+    if (entityId) where.entityId = entityId as string;
+    if (typeof organizationId === "string" && organizationId.trim() !== "") {
+      // Restrict to users who belong to this org (avoids loading global logs in dashboards)
+      where.user = {
+        is: {
+          organizationMemberships: {
+            some: { organizationId: organizationId.trim() },
+          },
+        },
+      };
+    }
     const activityLogs = await prisma.activityLog.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
     res.json(activityLogs);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to fetch activity logs' });
+    res.status(500).json({ error: "Failed to fetch activity logs" });
   }
 }
 

@@ -10,6 +10,8 @@ import {
   syncTasks,
   syncTeams,
   syncMembers,
+  syncContributorProfessionalProfiles,
+  syncContributorSkills,
   syncClients,
   syncMilestones,
   syncRisks,
@@ -24,6 +26,7 @@ import {
 
 type SyncType =
   | 'projects' | 'tasks' | 'teams' | 'members'
+  | 'contributor_profiles' | 'contributor_skills'
   | 'clients' | 'milestones' | 'risks'
   | 'wiki' | 'documents' | 'proposals';
 
@@ -32,6 +35,8 @@ const syncFunctions: Record<SyncType, (orgId: string) => Promise<{ synced: numbe
   tasks: syncTasks,
   teams: syncTeams,
   members: syncMembers,
+  contributor_profiles: syncContributorProfessionalProfiles,
+  contributor_skills: syncContributorSkills,
   clients: syncClients,
   milestones: syncMilestones,
   risks: syncRisks,

@@ -12,7 +12,7 @@ datasource db {
 
 model Client {
   id             String   @id @default(uuid())
-  organizationId String?
+  organizationId String
   name           String
   email          String?
   company        String?
@@ -23,7 +23,9 @@ model Client {
   contactInfo    Json?
   portalAccess   Boolean  @default(false)
   contactPersonId String?
-  
+  /// Auth user id for the invited portal client (set on invite acceptance). Used for chat/wiki access — not the internal contact person.
+  portalUserId    String?
+
   projects       ProjectClient[]
   feedback       ClientFeedback[]
   proposals      Proposal[]

@@ -24,5 +24,6 @@ export const updateMilestoneSchema = z.object({
         status: z.string().optional(),
         completed: z.boolean().optional(),
         completedAt: z.string().or(z.date()).nullable().optional(),
+        skipScheduleCascade: z.boolean().optional(),
       })
     });

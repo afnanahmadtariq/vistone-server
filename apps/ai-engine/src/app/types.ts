@@ -16,9 +16,36 @@ export interface AuthenticatedUser {
     email: string;
     role: string;
     status: string;
+    /** Empty when user has no membership or org context was not resolved — chat routes reject before agent runs. */
     organizationId: string;
     organizationName?: string;
     permissions: UserPermissions | null;
+}
+
+/** Row-level scope for agent tools and RAG (organizers bypass with null / allInOrganization). */
+export type ProjectScope =
+    | { allInOrganization: true }
+    | { allInOrganization: false; ids: Set<string> };
+
+export interface AiDataScope {
+    projectScope: ProjectScope;
+    /** null = all clients in org (organizer) */
+    clientIds: Set<string> | null;
+    /** null = all wikis in org (organizer) */
+    wikiIds: Set<string> | null;
+}
+
+/** RAG vector hit (also used for scope filtering). */
+export interface SimilarDocument {
+    documentId: string;
+    chunkText: string;
+    similarity: number;
+    title: string;
+    contentType: string;
+    sourceId: string;
+    sourceSchema: string;
+    sourceTable: string;
+    metadata: Record<string, unknown>;
 }
 
 // ── Chat ────────────────────────────────────────────────────────
@@ -39,6 +66,25 @@ export type ContentType =
 export interface ChatRequest {
     query: string;
     sessionId?: string;
+    /** When true, execute the previously proposed pending action */
+    confirmAction?: boolean;
+    /** When true, run the agent planning path for in-scope queries (not only keyword-detected “action” phrasing). */
+    enableAgent?: boolean;
+    /** Optional filter forwarded from the app (reserved for future tool-category scoping). */
+    enabledToolCategories?: string[];
+    /** Optional RAG / retrieval hints from the app (reserved for future use). */
+    contentTypes?: string[];
+}
+
+export type ChatRequestOptions = Pick<ChatRequest, 'enableAgent' | 'enabledToolCategories' | 'contentTypes'>;
+
+export interface PendingAction {
+    /** Human-readable description of what the agent wants to do */
+    description: string;
+    /** Tool names the agent plans to call */
+    tools: string[];
+    /** The original query that triggered the action */
+    originalQuery: string;
 }
 
 export interface ChatResponse {
@@ -48,6 +94,8 @@ export interface ChatResponse {
     isOutOfScope?: boolean;
     isActionResponse?: boolean;
     actionResult?: ActionResult;
+    /** Set when the agent wants to perform a write action and needs user confirmation */
+    pendingAction?: PendingAction;
 }
 
 export interface SourceReference {

@@ -8,6 +8,18 @@ datasource db {
   schemas  = ["auth"]
 }
 
+// Internal / external classification for organization membership rows.
+// Exactly one ORGANIZER per organization is enforced in SQL (partial unique index).
+// At most one organization membership per user is enforced with @@unique([userId]).
+enum OrganizationMemberKind {
+  ORGANIZER
+  MANAGER
+  CONTRIBUTOR
+  CLIENT
+
+  @@schema("auth")
+}
+
 // Auth Service Schema - User & Organization Management
 
 model Organization {
@@ -34,6 +46,9 @@ model User {
   password    String?
   googleId    String?  @unique
   avatarUrl   String?
+  jobTitle    String?
+  /// Structured profile for contributors/managers: skill tags + experience entries (AI-friendly JSON).
+  professionalProfile Json?
   status      String   @default("active") // active | paused
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -43,8 +58,23 @@ model User {
   kycData                 KycData?
   mfaSettings             MfaSetting?
   activityLogs            ActivityLog[]
+  refreshTokens           RefreshToken[]
   
   @@map("users")
+  @@schema("auth")
+}
+
+/// Opaque refresh tokens (stored as SHA-256 hashes). Survives auth-service restarts.
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
   @@schema("auth")
 }
 
@@ -53,6 +83,8 @@ model OrganizationMember {
   organizationId String
   userId         String
   roleId         String?
+  /// Internal taxonomy aligned with Role.name; CLIENT for portal users with Client role.
+  memberKind     OrganizationMemberKind @default(CONTRIBUTOR)
   
   organization   Organization @relation(fields: [organizationId], references: [id])
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -61,6 +93,7 @@ model OrganizationMember {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  @@unique([userId])
   @@map("organization_members")
   @@schema("auth")
 }
@@ -116,7 +149,7 @@ model MfaSetting {
 
 model ActivityLog {
   id          String   @id @default(uuid())
-  userId      String?
+  userId      String
   action      String
   entityType  String
   entityId    String?

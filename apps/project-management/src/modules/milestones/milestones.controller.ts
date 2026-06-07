@@ -1,5 +1,11 @@
 import { Request, Response } from "express";
 import prisma from "../../lib/prisma";
+import type { Prisma } from "../../lib/prisma-namespace";
+import { assertMilestonePrerequisitesMetForCompletion } from "../../lib/milestone-dependency-utils";
+import {
+  calendarSlipDays,
+  shiftDependentMilestoneDueDates,
+} from "../../lib/milestone-schedule-cascade";
 
 export async function createMilestoneHandler(req: Request, res: Response) {
   try {
@@ -19,7 +25,7 @@ export async function createMilestoneHandler(req: Request, res: Response) {
         title: milestoneTitle,
         description,
         dueDate: dueDate ? new Date(dueDate) : undefined,
-        status: status || 'pending',
+        status: status || 'NOT_STARTED',
         completed: completed || false,
         completedAt: completedAt ? new Date(completedAt) : undefined,
       },
@@ -63,21 +69,60 @@ export async function getMilestoneByIdHandler(req: Request, res: Response) {
 
 export async function updateMilestoneHandler(req: Request, res: Response) {
   try {
+    const id = req.params.id;
+    const prev = await prisma.milestone.findUnique({ where: { id } });
+    if (!prev) {
+      res.status(404).json({ error: "Milestone not found" });
+      return;
+    }
+
     const data: Record<string, unknown> = { ...req.body };
+    const skipScheduleCascade = data.skipScheduleCascade === true;
+    delete data.skipScheduleCascade;
+
     if (data.dueDate) data.dueDate = new Date(data.dueDate as string);
     // Auto-set completedAt when marking as completed
     if (data.completed === true && !data.completedAt) {
       data.completedAt = new Date();
     }
     if (data.completedAt) data.completedAt = new Date(data.completedAt as string);
-    const milestone = await prisma.milestone.update({
-      where: { id: req.params.id },
-      data,
+
+    const completing =
+      data.completed === true ||
+      String(data.status ?? "").toUpperCase() === "COMPLETED";
+    const prevCompleted =
+      prev.completed === true || String(prev.status ?? "").toUpperCase() === "COMPLETED";
+    const becameCompleted = completing && !prevCompleted;
+
+    if (completing) {
+      const gate = await assertMilestonePrerequisitesMetForCompletion(id);
+      if (!gate.ok) {
+        res.status(400).json({ error: gate.message });
+        return;
+      }
+    }
+
+    delete data.dependsOnIds;
+
+    const milestone = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const updated = await tx.milestone.update({
+        where: { id },
+        data,
+      });
+
+      if (becameCompleted && !skipScheduleCascade && prev.dueDate) {
+        const completedAt = updated.completedAt ?? new Date();
+        const slip = calendarSlipDays(prev.dueDate, completedAt);
+        await shiftDependentMilestoneDueDates(tx, id, slip);
+      }
+
+      return updated;
     });
+
     res.json(milestone);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to update milestone' });
+    res.status(500).json({ error: "Failed to update milestone" });
   }
 }
 
