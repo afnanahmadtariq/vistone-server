@@ -59,6 +59,7 @@ model User {
   mfaSettings             MfaSetting?
   activityLogs            ActivityLog[]
   refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
   
   @@map("users")
   @@schema("auth")
@@ -132,11 +133,13 @@ model KycData {
 }
 
 model MfaSetting {
-  id          String   @id @default(uuid())
-  userId      String   @unique
-  enabled     Boolean  @default(false)
-  secret      String?
-  backupCodes String[]
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  enabled          Boolean  @default(false)
+  secret           String?
+  backupCodes      String[]
+  verifiedAt       DateTime?
+  emailMfaEnabled  Boolean  @default(true)
   
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
@@ -144,6 +147,21 @@ model MfaSetting {
   updatedAt   DateTime @updatedAt
 
   @@map("mfa_settings")
+  @@schema("auth")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
   @@schema("auth")
 }
 

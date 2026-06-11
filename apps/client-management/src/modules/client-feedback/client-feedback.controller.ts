@@ -15,7 +15,18 @@ export async function createClientFeedbackHandler(req: Request, res: Response) {
 
 export async function getAllClientFeedbacksHandler(req: Request, res: Response) {
     try {
-    const clientFeedbacks = await prisma.clientFeedback.findMany();
+    const { projectId, clientId } = req.query;
+    const where: { projectId?: string; clientId?: string } = {};
+    if (typeof projectId === "string" && projectId) {
+      where.projectId = projectId;
+    }
+    if (typeof clientId === "string" && clientId) {
+      where.clientId = clientId;
+    }
+    const clientFeedbacks = await prisma.clientFeedback.findMany({
+      where: Object.keys(where).length > 0 ? where : undefined,
+      orderBy: { createdAt: "desc" },
+    });
     res.json(clientFeedbacks);
     } catch (error) {
     console.error(error);

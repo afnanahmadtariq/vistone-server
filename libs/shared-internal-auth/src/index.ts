@@ -1,7 +1,10 @@
 export {
   bearerAuthMiddleware,
+  combineInternalAuthSkips,
   defaultInternalAuthSkip,
   GATEWAY_FORWARDED_IDENTITY_HEADERS,
+  INTERNAL_SERVICE_KEY_HEADER,
+  internalServiceKeySkip,
   parseTrustedGatewayIdentity,
   type BearerAuthMiddlewareOptions,
   type InternalAuthUser,

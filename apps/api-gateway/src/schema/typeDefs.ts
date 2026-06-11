@@ -8,10 +8,50 @@ export const typeDefs = gql`
   # Authentication Types
 
   type AuthPayload {
-    accessToken: String!
-    refreshToken: String!
-    user: AuthUser!
+    accessToken: String
+    refreshToken: String
+    user: AuthUser
     isNewUser: Boolean
+    mfaRequired: Boolean
+    mfaToken: String
+    mfaEmailHint: String
+  }
+
+  type MfaSetupPayload {
+    otpauthUrl: String!
+    qrCodeDataUrl: String!
+  }
+
+  type MfaStatus {
+    enabled: Boolean!
+    verifiedAt: DateTime
+    totpEnabled: Boolean!
+    emailMfaEnabled: Boolean!
+    emailHint: String
+  }
+
+  type MfaEmailSetupPayload {
+    success: Boolean!
+    setupToken: String!
+    emailHint: String
+    message: String
+  }
+
+  type MfaSendEmailCodePayload {
+    success: Boolean!
+    message: String
+    emailHint: String
+    disableToken: String
+  }
+
+  type MfaVerifySetupPayload {
+    success: Boolean!
+    backupCodes: [String!]!
+  }
+
+  type PasswordResetResponse {
+    success: Boolean!
+    message: String
   }
 
   type InviteDetails {
@@ -843,6 +883,7 @@ export const typeDefs = gql`
     mfaSettings: [MfaSetting!]!
     mfaSetting(id: ID!): MfaSetting
     activityLogs(organizationId: ID, userId: String, action: String, entityType: String, limit: Int, offset: Int): [ActivityLog!]!
+    mfaStatus: MfaStatus!
     activityLog(id: ID!): ActivityLog
 
     # Teams
@@ -885,7 +926,7 @@ export const typeDefs = gql`
     client(id: ID!): Client
     projectClients: [ProjectClient!]!
     projectClient(id: ID!): ProjectClient
-    clientFeedbacks: [ClientFeedback!]!
+    clientFeedbacks(projectId: ID): [ClientFeedback!]!
     clientFeedback(id: ID!): ClientFeedback
     proposals: [Proposal!]!
     proposal(id: ID!): Proposal
@@ -1003,6 +1044,17 @@ export const typeDefs = gql`
     googleSignup(idToken: String!): AuthPayload!
     refreshToken(refreshToken: String!): TokenPayload!
     logout: Boolean!
+    forgotPassword(email: String!, turnstileToken: String!): PasswordResetResponse!
+    resetPassword(token: String!, password: String!): PasswordResetResponse!
+    changePassword(currentPassword: String!, newPassword: String!): PasswordResetResponse!
+    setupMfa: MfaSetupPayload!
+    setupMfaEmail: MfaEmailSetupPayload!
+    verifyMfaSetup(code: String!): MfaVerifySetupPayload!
+    verifyMfaSetupEmail(code: String!, setupToken: String!): MfaVerifySetupPayload!
+    sendMfaEmailCode(mfaToken: String!): MfaSendEmailCodePayload!
+    sendMfaDisableEmailCode: MfaSendEmailCodePayload!
+    verifyMfaLogin(mfaToken: String!, code: String!): AuthPayload!
+    disableMfa(code: String!, disableToken: String): PasswordResetResponse!
     
     """
     Permanently deletes the currently authenticated user and their associated data.

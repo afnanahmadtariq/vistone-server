@@ -74,6 +74,31 @@ export function defaultInternalAuthSkip(req: Request): boolean {
   return req.method === 'OPTIONS' || req.path === '/health' || req.path === '/';
 }
 
+/** Header auth-service and other workers send for trusted service-to-service calls. */
+export const INTERNAL_SERVICE_KEY_HEADER = 'x-internal-service-key';
+
+/**
+ * Skip bearer auth when `INTERNAL_SERVICE_KEY` matches and the path is under an allowed prefix
+ * (e.g. notification `/emails/*` for MFA and password-reset mail).
+ */
+export function internalServiceKeySkip(pathPrefixes: string[]): (req: Request) => boolean {
+  return (req: Request) => {
+    const expected = process.env.INTERNAL_SERVICE_KEY?.trim();
+    if (!expected) return false;
+    const provided = firstHeader(req, INTERNAL_SERVICE_KEY_HEADER);
+    if (provided !== expected) return false;
+    return pathPrefixes.some(
+      (prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`),
+    );
+  };
+}
+
+export function combineInternalAuthSkips(
+  ...skips: Array<(req: Request) => boolean>
+): (req: Request) => boolean {
+  return (req) => skips.some((skip) => skip(req));
+}
+
 /**
  * Validates `Authorization: Bearer <jwt>` by calling auth-service `POST /auth/me`.
  * Forwards optional org selection via `X-Organization-Id` header (same as gateway).

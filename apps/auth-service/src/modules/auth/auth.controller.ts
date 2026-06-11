@@ -4,6 +4,7 @@ import prisma from "../../lib/prisma";
 import { consumeValidRefreshToken, persistRefreshToken } from "../../lib/refresh-token-store";
 import * as crypto from "crypto";
 import { logActivity } from "../activity-logs/activity-logs.controller";
+import { createMfaRequiredResponse } from "../../lib/mfa-pending-store";
 import { OAuth2Client } from "google-auth-library";
 import { ROLE_NAMES, ORGANIZER_PERMISSIONS } from "../../lib/roles";
 import { memberKindFromRoleName } from "../../lib/org-member-kind";
@@ -12,7 +13,7 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const generateToken = (): string => {
   return crypto.randomBytes(32).toString('hex');
 };
-const hashPassword = (password: string): string => {
+export const hashPassword = (password: string): string => {
   return crypto.createHash('sha256').update(password).digest('hex');
 };
 const generateSlug = (name: string): string => {
@@ -198,6 +199,68 @@ async function getTeamMembershipWithRole(_userId: string): Promise<TeamMemberDat
   return null;
 }
 
+export function getUserIdFromBearerToken(authHeader: string | undefined): string | null {
+  const token = authHeader?.replace('Bearer ', '');
+  if (!token) return null;
+  const tokenData = tokenStore.get(token);
+  if (!tokenData || tokenData.expiresAt < new Date()) {
+    if (tokenData) tokenStore.delete(token);
+    return null;
+  }
+  return tokenData.userId;
+}
+
+export async function issueAuthTokensForUser(userId: string, requestedOrgId?: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  const accessToken = generateToken();
+  const refreshToken = generateToken();
+  const accessTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
+  const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
+  await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
+
+  const teamMember = await getTeamMembershipWithRole(user.id);
+  const { memberships, activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
+
+  logActivity({
+    userId: user.id,
+    action: 'LOGIN',
+    entityType: 'USER',
+    entityId: user.id,
+    details: { method: 'email' },
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+    mfaRequired: false,
+    user: formatAuthUser(
+      user,
+      teamMember,
+      activeMembership?.organization,
+      activeMembership?.role,
+      memberships,
+    ),
+  };
+}
+
+async function mfaGateResponseForUser(userId: string, email: string | null) {
+  const mfa = await prisma.mfaSetting.findUnique({ where: { userId } });
+  if (
+    mfa?.enabled &&
+    mfa.verifiedAt &&
+    (mfa.secret || mfa.emailMfaEnabled)
+  ) {
+    return createMfaRequiredResponse(userId, email);
+  }
+  return null;
+}
+
 export async function loginHandler(req: Request, res: Response) {
   try {
     const { email, password } = req.body;
@@ -223,32 +286,15 @@ export async function loginHandler(req: Request, res: Response) {
       return;
     }
 
-    // Generate tokens
-    const accessToken = generateToken();
-    const refreshToken = generateToken();
+    const mfaGate = await mfaGateResponseForUser(user.id, user.email);
+    if (mfaGate) {
+      res.json(mfaGate);
+      return;
+    }
 
-    // Store tokens
-    const accessTokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-    const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-    tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
-    await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
-
-    // Get user's team membership
-    const teamMember = await getTeamMembershipWithRole(user.id);
-
-    // Get user's organization and role
     const requestedOrgId = req.headers['x-organization-id'] as string;
-    const { memberships, activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
-
-    // Log login activity
-    logActivity({ userId: user.id, action: 'LOGIN', entityType: 'USER', entityId: user.id, details: { method: 'email' } });
-
-    res.json({
-      accessToken,
-      refreshToken,
-      user: formatAuthUser(user, teamMember, activeMembership?.organization, activeMembership?.role, memberships),
-    });
+    const payload = await issueAuthTokensForUser(user.id, requestedOrgId);
+    res.json(payload);
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
@@ -447,30 +493,30 @@ export async function googleOauthHandler(req: Request, res: Response) {
       role = orgData.role;
     }
 
-    // Generate tokens
-    const accessToken = generateToken();
-    const refreshToken = generateToken();
-
-    // Store tokens
-    const accessTokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-    const refreshTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-    tokenStore.set(accessToken, { userId: user.id, expiresAt: accessTokenExpiry });
-    await persistRefreshToken(user.id, refreshToken, refreshTokenExpiry);
-
-    // Get user's team membership
-    const teamMember = await getTeamMembershipWithRole(user.id);
+    if (!isNewUser) {
+      const mfaGate = await mfaGateResponseForUser(user.id, user.email);
+      if (mfaGate) {
+        res.json({ ...mfaGate, isNewUser: false });
+        return;
+      }
+    }
 
     const requestedOrgId = req.headers['x-organization-id'] as string;
+    const authPayload = await issueAuthTokensForUser(user.id, requestedOrgId);
+    const teamMember = await getTeamMembershipWithRole(user.id);
     const { memberships, activeMembership } = await getActiveOrgAndMemberships(user.id, requestedOrgId);
 
-    // Log Google OAuth activity
     logActivity({ userId: user.id, action: isNewUser ? 'REGISTER' : 'LOGIN', entityType: 'USER', entityId: user.id, details: { method: 'google' } });
 
     res.json({
-      accessToken,
-      refreshToken,
-      user: formatAuthUser(user, teamMember, activeMembership?.organization || organization, activeMembership?.role || role, memberships),
+      ...authPayload,
+      user: formatAuthUser(
+        user,
+        teamMember,
+        activeMembership?.organization || organization,
+        activeMembership?.role || role,
+        memberships,
+      ),
       isNewUser,
     });
   } catch (error) {

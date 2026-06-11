@@ -39,6 +39,76 @@ function portalMetaAllowsMilestones(metadata: unknown): boolean {
   return (metadata as Record<string, unknown>).clientCanViewMilestones !== false;
 }
 
+function isProjectCompletedStatus(status: unknown): boolean {
+  const s = String(status ?? '').trim().toLowerCase();
+  return s === 'completed' || s === 'done';
+}
+
+/** CRM client ids linked to a portal user (portalUserId, email, or contact person). */
+async function resolvePortalClientIdsForUser(user: ServiceRecord): Promise<Set<string>> {
+  const crmIds = new Set<string>();
+  const orgId = getUserOrganizationId(user);
+  try {
+    const clientsInOrg = await clientMgmtClient
+      .get(`/clients?organizationId=${encodeURIComponent(orgId)}`)
+      .catch(() => [] as ServiceRecord[]);
+    const emailNorm =
+      typeof user.email === 'string' ? user.email.trim().toLowerCase() : '';
+    if (Array.isArray(clientsInOrg)) {
+      for (const c of clientsInOrg) {
+        if (typeof c.portalUserId === 'string' && c.portalUserId === user.id) {
+          if (typeof c.id === 'string' && c.id) crmIds.add(c.id);
+          continue;
+        }
+        if (
+          emailNorm &&
+          typeof c.email === 'string' &&
+          c.email.trim().toLowerCase() === emailNorm &&
+          typeof c.id === 'string' &&
+          c.id
+        ) {
+          crmIds.add(c.id);
+        }
+      }
+    }
+    const contactClients = await clientMgmtClient
+      .get(`/clients?contactPersonId=${user.id}`)
+      .catch(() => [] as ServiceRecord[]);
+    if (Array.isArray(contactClients)) {
+      contactClients.forEach((c: ServiceRecord) => {
+        if (typeof c.id === 'string' && c.id) crmIds.add(c.id);
+      });
+    }
+  } catch {
+    /* non-fatal */
+  }
+  return crmIds;
+}
+
+async function resolveClientIdForProjectFeedback(
+  projectId: string,
+  project: ServiceRecord,
+  crmIds: Set<string>,
+): Promise<string | null> {
+  const projectClientId =
+    typeof project.clientId === 'string' && project.clientId ? project.clientId : null;
+  if (projectClientId && crmIds.has(projectClientId)) {
+    return projectClientId;
+  }
+  for (const cid of crmIds) {
+    const pcs = await clientMgmtClient
+      .get(`/project-clients?clientId=${encodeURIComponent(cid)}`)
+      .catch(() => [] as ServiceRecord[]);
+    if (
+      Array.isArray(pcs) &&
+      pcs.some((pc) => typeof pc.projectId === 'string' && pc.projectId === projectId)
+    ) {
+      return cid;
+    }
+  }
+  return null;
+}
+
 /** Align task priority with app UI labels (Low / Medium / High / Urgent). */
 function normalizeTaskPriorityForGraphQL(raw: unknown): string {
   if (raw == null || raw === '') return 'Medium';
@@ -645,6 +715,11 @@ export const resolvers = {
       await requirePermission(context, 'settings', 'read');
       return authClient.getById('/kyc-data', id);
     },
+    mfaStatus: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return authClient.getWithAuth('/auth/mfa/status', context.token!);
+    },
+
     mfaSettings: async (_: unknown, _args: unknown, context: Context) => {
       await requireAuth(context);
       return authClient.get('/mfa-settings');
@@ -913,9 +988,30 @@ export const resolvers = {
       await requirePermission(context, 'clients', 'read');
       return clientMgmtClient.getById('/project-clients', id);
     },
-    clientFeedbacks: async (_: unknown, _args: unknown, context: Context) => {
+    clientFeedbacks: async (
+      _: unknown,
+      { projectId }: { projectId?: string },
+      context: Context,
+    ) => {
+      const user = await requireAuth(context);
+      const params = new URLSearchParams();
+      if (projectId) params.set('projectId', projectId);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+
+      if (hasRole(user, 'client')) {
+        const crmIds = await resolvePortalClientIdsForUser(user);
+        if (crmIds.size === 0) return [];
+        const all = (await clientMgmtClient
+          .get(`/client-feedback${qs}`)
+          .catch(() => [])) as ServiceRecord[];
+        if (!Array.isArray(all)) return [];
+        return all.filter(
+          (fb) => typeof fb.clientId === 'string' && crmIds.has(fb.clientId),
+        );
+      }
+
       await requirePermission(context, 'clients', 'read');
-      return clientMgmtClient.get('/client-feedback');
+      return clientMgmtClient.get(`/client-feedback${qs}`);
     },
     clientFeedback: async (_: unknown, { id }: { id: string }, context: Context) => {
       await requirePermission(context, 'clients', 'read');
@@ -2035,6 +2131,92 @@ export const resolvers = {
         return true;
       }
       return authClient.postWithAuth('/auth/logout', {}, context.token);
+    },
+
+    forgotPassword: async (
+      _: unknown,
+      { email, turnstileToken }: { email: string; turnstileToken: string },
+      context: Context,
+    ) => {
+      const ip = (Array.isArray(context.headers['x-forwarded-for'])
+        ? context.headers['x-forwarded-for'][0]
+        : context.headers['x-forwarded-for']) || '';
+      const isValid = await verifyTurnstileToken(turnstileToken, ip);
+      if (!isValid) {
+        throw new GraphQLError('Invalid CAPTCHA verification. Please try again.', {
+          extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+        });
+      }
+      return authClient.post('/auth/forgot-password', { email });
+    },
+
+    resetPassword: async (
+      _: unknown,
+      { token, password }: { token: string; password: string },
+    ) => {
+      return authClient.post('/auth/reset-password', { token, password });
+    },
+
+    changePassword: async (
+      _: unknown,
+      { currentPassword, newPassword }: { currentPassword: string; newPassword: string },
+      context: Context,
+    ) => {
+      await requireAuth(context);
+      return authClient.postWithAuth(
+        '/auth/change-password',
+        { currentPassword, newPassword },
+        context.token!,
+      );
+    },
+
+    setupMfa: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return authClient.postWithAuth('/auth/mfa/setup', {}, context.token!);
+    },
+
+    setupMfaEmail: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return authClient.postWithAuth('/auth/mfa/setup-email', {}, context.token!);
+    },
+
+    verifyMfaSetup: async (_: unknown, { code }: { code: string }, context: Context) => {
+      await requireAuth(context);
+      return authClient.postWithAuth('/auth/mfa/verify-setup', { code }, context.token!);
+    },
+
+    verifyMfaSetupEmail: async (
+      _: unknown,
+      { code, setupToken }: { code: string; setupToken: string },
+      context: Context,
+    ) => {
+      await requireAuth(context);
+      return authClient.postWithAuth('/auth/mfa/verify-setup-email', { code, setupToken }, context.token!);
+    },
+
+    sendMfaEmailCode: async (_: unknown, { mfaToken }: { mfaToken: string }) => {
+      return authClient.post('/auth/mfa/send-email-code', { mfaToken });
+    },
+
+    sendMfaDisableEmailCode: async (_: unknown, _args: unknown, context: Context) => {
+      await requireAuth(context);
+      return authClient.postWithAuth('/auth/mfa/send-disable-email-code', {}, context.token!);
+    },
+
+    verifyMfaLogin: async (
+      _: unknown,
+      { mfaToken, code }: { mfaToken: string; code: string },
+    ) => {
+      return authClient.post('/auth/mfa/verify-login', { mfaToken, code });
+    },
+
+    disableMfa: async (
+      _: unknown,
+      { code, disableToken }: { code: string; disableToken?: string },
+      context: Context,
+    ) => {
+      await requireAuth(context);
+      return authClient.postWithAuth('/auth/mfa/disable', { code, disableToken }, context.token!);
     },
 
     // Accept invitation and complete onboarding
@@ -4017,6 +4199,75 @@ export const resolvers = {
       return clientMgmtClient.delete('/project-clients', id);
     },
     createClientFeedback: async (_: unknown, { input }: { input: ServiceRecord }, context: Context) => {
+      const user = await requireAuth(context);
+
+      if (hasRole(user, 'client')) {
+        const projectId =
+          typeof input.projectId === 'string' && input.projectId ? input.projectId : null;
+        if (!projectId) {
+          throw new GraphQLError('projectId is required to submit feedback.', {
+            extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+          });
+        }
+
+        const accessible = await getAccessibleProjectIds(user);
+        if (!accessible.has(projectId)) {
+          throw new GraphQLError('You do not have access to this project.', {
+            extensions: { code: 'FORBIDDEN', statusCode: 403 },
+          });
+        }
+
+        const project = (await projectClient
+          .getById('/projects', projectId)
+          .catch(() => null)) as ServiceRecord | null;
+        if (!project) {
+          throw new GraphQLError('Project not found.', {
+            extensions: { code: 'NOT_FOUND', statusCode: 404 },
+          });
+        }
+        if (!isProjectCompletedStatus(project.status)) {
+          throw new GraphQLError(
+            'Feedback can only be submitted after the project is completed.',
+            { extensions: { code: 'BAD_USER_INPUT', statusCode: 400 } },
+          );
+        }
+
+        const crmIds = await resolvePortalClientIdsForUser(user);
+        const clientId = await resolveClientIdForProjectFeedback(projectId, project, crmIds);
+        if (!clientId) {
+          throw new GraphQLError('No client record is linked to this project for your account.', {
+            extensions: { code: 'FORBIDDEN', statusCode: 403 },
+          });
+        }
+
+        const existing = (await clientMgmtClient
+          .get(
+            `/client-feedback?projectId=${encodeURIComponent(projectId)}&clientId=${encodeURIComponent(clientId)}`,
+          )
+          .catch(() => [])) as ServiceRecord[];
+        if (Array.isArray(existing) && existing.length > 0) {
+          throw new GraphQLError('You have already submitted feedback for this project.', {
+            extensions: { code: 'BAD_USER_INPUT', statusCode: 400 },
+          });
+        }
+
+        const rating =
+          typeof input.rating === 'number' && input.rating >= 1 && input.rating <= 5
+            ? Math.round(input.rating)
+            : null;
+        const comment =
+          typeof input.comment === 'string' && input.comment.trim()
+            ? input.comment.trim()
+            : null;
+
+        return clientMgmtClient.post('/client-feedback', {
+          clientId,
+          projectId,
+          rating,
+          comment,
+        });
+      }
+
       await requirePermission(context, 'clients', 'update');
       return clientMgmtClient.post('/client-feedback', input);
     },
